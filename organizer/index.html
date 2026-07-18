@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>主办台 · ym</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* ym identity — the reception table (see ym/design/ym-event-day.jsx) */
+  :root{
+    --felt:#16241E;--felt-up:#1E3129;--stock:#E8E0CD;--stock-dim:#8E9A90;
+    --brass:#C9A356;--brass-dim:#6E5F36;--ink:#0E1512;--muted:#7C8F85;
+    --line:#2C4238;--alarm:#D2604A;--ok:#7FA98A;
+    --w:1060px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{background:#0E1713;color:var(--stock);
+    font:14px/1.6 "Noto Sans JP",-apple-system,"PingFang SC","Hiragino Sans",sans-serif}
+  .num{font-family:Oswald,sans-serif;font-variant-numeric:tabular-nums}
+  .app{max-width:var(--w);margin:0 auto;min-height:100vh;background:var(--felt);position:relative}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+  input,select,textarea{font:inherit;color:var(--stock);background:var(--felt-up);
+    border:1px solid var(--line);border-radius:4px;padding:8px 10px;width:100%}
+  input::placeholder,textarea::placeholder{color:var(--brass-dim)}
+  input:focus,select:focus{outline:1px solid var(--brass);border-color:var(--brass)}
+  .muted{color:var(--muted)}
+  .lbl{font-size:10px;letter-spacing:.2em;color:var(--muted)}
+  /* top bar */
+  .topbar{position:sticky;top:0;z-index:20;height:50px;display:flex;align-items:center;gap:12px;
+    padding:0 14px;background:var(--felt);border-bottom:1px solid var(--line)}
+  .topbar .logo{font-family:Oswald,sans-serif;font-size:17px;color:var(--brass);letter-spacing:.06em}
+  .topbar .ttl{font-size:12px;color:var(--muted);letter-spacing:.18em}
+  .topbar .sp{flex:1}
+  .navlinks{display:flex;gap:2px}
+  .navlinks button{color:var(--muted);font-size:12.5px;letter-spacing:.14em;padding:7px 12px;border-radius:4px}
+  .navlinks button.on{color:var(--brass);border-bottom:2px solid var(--brass);border-radius:0}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--brass);color:var(--ink);
+    font-weight:700;display:grid;place-items:center;font-size:12px;flex:none}
+  /* layout: library panel + sheet */
+  .wrap{display:flex;align-items:flex-start}
+  .main{flex:1;min-width:0;padding:14px 14px 90px}
+  .panel{width:252px;flex:none;position:sticky;top:50px;max-height:calc(100vh - 50px);
+    overflow:auto;padding:14px 12px 30px;border-right:1px solid var(--line);display:none}
+  @media(min-width:900px){.panel{display:block}.fab{display:none}}
+  /* phone drawer */
+  .drawerbg{position:fixed;inset:0;background:rgba(8,12,10,.6);z-index:40}
+  .drawer{position:fixed;top:0;bottom:0;left:0;width:min(78vw,300px);z-index:41;background:var(--felt);
+    border-right:1px solid var(--line);overflow:auto;padding:14px 12px 30px;
+    animation:slidein .18s ease}
+  @keyframes slidein{from{transform:translateX(-40px);opacity:0}to{transform:none;opacity:1}}
+  .fab{position:fixed;bottom:20px;left:16px;z-index:30;background:var(--brass);color:var(--ink);
+    border-radius:6px;padding:11px 16px;font-size:13px;font-weight:700;letter-spacing:.08em;
+    box-shadow:0 8px 20px -6px rgba(0,0,0,.7)}
+  /* library */
+  .libtabs{display:flex;gap:4px;margin-bottom:12px}
+  .libtabs button{flex:1;font-size:11.5px;letter-spacing:.08em;padding:7px 2px;color:var(--muted);
+    border:1px solid var(--line);border-radius:4px}
+  .libtabs button.on{color:var(--ink);background:var(--stock);border-color:var(--stock);font-weight:700}
+  .libitem{display:block;width:100%;text-align:left;background:var(--felt-up);border:1px solid var(--line);
+    border-radius:4px;padding:9px 11px;margin-bottom:7px;transition:transform .12s ease}
+  .libitem:hover{border-color:var(--brass)}
+  .libitem:active{transform:translateY(-2px)}
+  .libitem .t{font-size:13px}
+  .libitem .m{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .libhint{font-size:10.5px;color:var(--muted);line-height:1.7;margin:10px 2px}
+  /* sheet */
+  .evhead{background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:13px 14px;margin-bottom:12px}
+  .evhead.sel{border-color:var(--brass)}
+  .evhead .name{font-size:16px;font-weight:700}
+  .evhead .meta{font-size:11.5px;color:var(--muted);margin-top:2px;letter-spacing:.06em}
+  .rowcard{display:flex;gap:10px;background:var(--felt-up);border:1px solid var(--line);
+    border-radius:6px;padding:10px 12px;margin-bottom:8px;position:relative}
+  .rowcard.sel{border-color:var(--brass)}
+  .rowcard .tm{width:64px;flex:none}
+  .rowcard .tm input{padding:6px 4px;text-align:center;font-family:Oswald,sans-serif;font-size:14px}
+  .rowcard .bd{flex:1;min-width:0}
+  .rowcard .bd input{padding:6px 8px}
+  .rowcard .seg2{display:flex;gap:6px}
+  .rowcard .seg2 .segi{flex:2}.rowcard .seg2 .owni{flex:1}
+  .rowops{display:flex;flex-direction:column;gap:2px;flex:none;justify-content:center}
+  .rowops button{color:var(--brass-dim);font-size:12px;padding:2px 5px;border-radius:3px}
+  .rowops button:hover{color:var(--brass)}
+  .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:3px;
+    background:var(--felt);border:1px solid var(--line);color:var(--stock-dim);cursor:pointer;user-select:none}
+  .chip .x{color:var(--brass-dim);padding:0 1px}
+  .chip .x:hover{color:var(--alarm)}
+  .chip.s0{border-style:dashed}
+  .chip.s1{border-color:var(--brass-dim);color:var(--stock)}
+  .chip.s2{border-color:var(--brass);color:var(--brass)}
+  .chip.s3{background:var(--stock);border-color:var(--stock);color:var(--ink);font-weight:700;
+    box-shadow:0 3px 8px -2px rgba(0,0,0,.5)}
+  .chip.money{border-radius:12px}
+  .chip.money.in{color:var(--ok)}
+  .chip.money.out{color:var(--stock-dim)}
+  .chip.money .amt{font-family:Oswald,sans-serif;font-size:11.5px}
+  .addrow{width:100%;border:1px dashed var(--line);border-radius:6px;padding:11px;color:var(--muted);
+    font-size:12.5px;letter-spacing:.1em;margin:2px 0 16px}
+  .addrow:hover{border-color:var(--brass);color:var(--brass)}
+  /* strips */
+  .strips{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .strip{flex:1;min-width:230px;background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+  .strip .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .strip .hd .lbl{font-size:10px}
+  .stcounts{display:flex;gap:10px}
+  .stcounts .c{text-align:center}
+  .stcounts .c .n{font-family:Oswald,sans-serif;font-size:19px;line-height:1.1}
+  .stcounts .c .l{font-size:9.5px;color:var(--muted);letter-spacing:.06em}
+  .stcounts .c.warn .n{color:var(--alarm)}
+  .stcounts .c.ok .n{color:var(--brass)}
+  .mline{display:flex;justify-content:space-between;font-size:12px;margin:3px 0}
+  .mline .num{font-size:13px}
+  .mline.total{border-top:1px solid var(--line);padding-top:5px;margin-top:5px;font-weight:700}
+  .mline .neg{color:var(--alarm)}.mline .pos{color:var(--ok)}
+  /* event switcher */
+  .evsw{display:flex;gap:7px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .evsw select{flex:1;min-width:150px}
+  .btn{background:var(--brass);color:var(--ink);border-radius:4px;padding:9px 14px;font-size:12.5px;
+    font-weight:700;letter-spacing:.06em;flex:none}
+  .btn.ghost{background:none;color:var(--brass);border:1px solid var(--brass-dim)}
+  .btn.sm{padding:6px 10px;font-size:11.5px}
+  .btn.danger{background:none;color:var(--alarm);border:1px solid var(--alarm);opacity:.85}
+  /* today */
+  .todaycard{background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:10px}
+  .todaycard .d{font-size:11px;color:var(--muted);letter-spacing:.14em}
+  .todaycard .t{font-size:15px;font-weight:700;margin-top:2px}
+  .todaycard .fu{font-size:12px;color:var(--stock-dim);margin-top:6px;line-height:1.8}
+  .todaycard .fu b{color:var(--alarm);font-weight:700}
+  .sec{font-size:11px;letter-spacing:.2em;color:var(--muted);margin:18px 2px 9px}
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px}
+  .cal .dow{text-align:center;font-size:10px;color:var(--muted);padding:2px 0}
+  .cal .day{border:1px solid var(--line);border-radius:4px;min-height:44px;padding:3px 4px;font-size:10.5px;color:var(--muted)}
+  .cal .day.out{opacity:.3}
+  .cal .day.today{border-color:var(--brass)}
+  .cal .day .dot{margin-top:3px;font-size:9px;color:var(--brass);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .empty{color:var(--muted);text-align:center;padding:30px 10px;font-size:12.5px;line-height:2}
+  /* library manage view */
+  .libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+  .addform{background:var(--felt-up);border:1px dashed var(--line);border-radius:6px;padding:11px;margin-top:10px}
+  .addform .frow{display:flex;gap:6px;margin-bottom:6px}
+  .toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);z-index:60;background:var(--stock);
+    color:var(--ink);font-size:12.5px;padding:9px 16px;border-radius:4px;box-shadow:0 8px 20px -4px rgba(0,0,0,.6)}
+  .hintbar{font-size:11px;color:var(--muted);line-height:1.7;margin:0 2px 12px}
+  .hintbar b{color:var(--brass);font-weight:500}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script>
+'use strict';
+/* ================= helpers ================= */
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function yen(n){return '¥'+Number(n||0).toLocaleString('ja-JP');}
+function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmtDate(s){if(!s)return '未定';const d=new Date(s+'T00:00:00');if(isNaN(d))return s;
+  return (d.getMonth()+1)+'/'+d.getDate()+'('+'日一二三四五六'[d.getDay()]+')';}
+function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;
+  document.body.appendChild(t);setTimeout(()=>t.remove(),1800);}
+function share(text){
+  if(navigator.share){navigator.share({text}).catch(()=>{});}
+  else{(navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(
+    ()=>toast('已复制，去微信/LINE粘贴发送'),()=>prompt('复制以下内容发送：',text));}
+}
+
+/* ================= data ================= */
+// Test stage: local-first, per-browser (auth lands with 0008_ym.sql — see ym/PLAN.md §4)
+const LS_KEY='jjym_v1';
+const RES_ST=['未联系','已联系','已确认','到位'];
+let STORE=null;
+function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){
+  if(!S._quota){S._quota=1;toast('⚠ 本机存储已满');}}}
+function load(){try{return JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){return null;}}
+
+/* --- seeded demo library + event (all fabricated data) --- */
+function seed(){
+  const R=(n,t,role)=>({id:uid(),name:n,type:t,role:role||''});
+  const M=(n,k,a)=>({id:uid(),name:n,kind:k,amount:a});
+  const lib={
+    resources:[R('小林','人','主持'),R('王芳','人','签到'),R('阿健','人','摄影'),
+      R('张姐','人','后勤'),R('陈叔','人','配对协助'),
+      R('陽光カフェ 2F','物','场地'),R('●●堂 茶点','物','茶歇'),R('号牌·笔·登记表','物','物料')],
+    money:[M('场地费','out',40000),M('饮料点心','out',15000),M('物料印刷','out',3000),
+      M('活动保险','out',5000),M('男士门票 ×10','in',60000),M('女士门票 ×10','in',30000)],
+    ideas:[
+      {id:uid(),seg:'场地布置',dur:30,res:['后勤']},{id:uid(),seg:'签到入场',dur:30,res:['签到']},
+      {id:uid(),seg:'开场介绍',dur:10,res:['主持']},{id:uid(),seg:'自我介绍轮',dur:30,res:['主持']},
+      {id:uid(),seg:'快问快答',dur:30,res:['主持']},{id:uid(),seg:'茶歇',dur:20,res:['茶歇']},
+      {id:uid(),seg:'一对一轮转',dur:60,res:['主持','配对协助']},{id:uid(),seg:'心动投票',dur:15,res:['配对协助']},
+      {id:uid(),seg:'配对公布',dur:10,res:['主持']},{id:uid(),seg:'自由交流 · 合影',dur:20,res:['摄影']},
+      {id:uid(),seg:'复盘收尾',dur:30,res:['后勤']}],
+    templates:[]
+  };
+  const findR=q=>lib.resources.find(r=>r.role===q||r.name===q);
+  const rchip=(q,st)=>{const r=findR(q);return r?{id:uid(),refId:r.id,name:r.name,role:r.role,type:r.type,status:st==null?0:st}:null;};
+  const mchip=(name,actual)=>{const m=lib.money.find(x=>x.name===name);return m?{id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,actual:actual==null?null:actual}:null;};
+  const row=(time,seg,owner,res,mon)=>({id:uid(),time,seg,owner:owner||'',
+    resources:(res||[]).filter(Boolean),money:(mon||[]).filter(Boolean)});
+  const tplRows=[
+    row('13:00','场地布置','张姐',[rchip('后勤'),rchip('物料')]),
+    row('13:30','签到入场','王芳',[rchip('签到')]),
+    row('14:00','开场介绍','小林',[rchip('主持')]),
+    row('14:10','自我介绍轮','小林',[]),
+    row('14:40','快问快答','小林',[]),
+    row('15:10','茶歇','张姐',[rchip('茶歇')],[mchip('饮料点心')]),
+    row('15:30','一对一轮转','小林',[rchip('配对协助')]),
+    row('16:30','心动投票','陈叔',[]),
+    row('16:50','配对公布','小林',[]),
+    row('17:00','自由交流 · 合影','阿健',[rchip('摄影')]),
+    row('17:30','复盘收尾','张姐',[rchip('后勤')])];
+  lib.templates.push({id:uid(),name:'十对十 标准流程',note:'11环节 · 13:00-18:00',
+    rows:tplRows,header:{resources:[rchip('场地')].filter(Boolean),
+      money:[mchip('场地费'),mchip('男士门票 ×10'),mchip('女士门票 ×10'),mchip('物料印刷'),mchip('活动保险')].filter(Boolean)}});
+  // demo event: next Saturday, partially followed-up
+  const d=new Date();d.setDate(d.getDate()+((6-d.getDay()+7)%7||7));
+  const ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const ev=instantiate(lib.templates[0],lib);
+  ev.name='夏日茶会 · 十对十';ev.theme='轻松茶会 · 25-35岁';ev.date=ds;ev.start='14:00';ev.venue='陽光カフェ 2F';
+  ev.header.resources.forEach(c=>c.status=2);
+  ev.rows[0].resources.forEach(c=>c.status=3);
+  ev.rows[1].resources.forEach(c=>c.status=2);
+  ev.rows[2].resources.forEach(c=>c.status=1);
+  const hm=ev.header.money.find(c=>c.name==='场地费');if(hm)hm.actual=40000;
+  return {events:[ev],library:lib};
+}
+function instantiate(tpl,lib){
+  lib=lib||STORE.library;
+  const cp=c=>Object.assign({},c,{id:uid()});
+  return {id:uid(),name:tpl?tpl.name:'新活动',theme:'',date:'',start:'',venue:'',status:'plan',
+    header:{resources:(tpl?tpl.header.resources:[]).map(cp),money:(tpl?tpl.header.money:[]).map(cp)},
+    rows:(tpl?tpl.rows:[]).map(r=>Object.assign({},r,{id:uid(),
+      resources:r.resources.map(cp),money:r.money.map(cp)}))};
+}
+
+/* ================= state ================= */
+const S={view:'sheet',evId:null,sel:'header',libTab:'tpl',drawer:false};
+function ev(){return STORE.events.find(e=>e.id===S.evId)||STORE.events[0]||null;}
+
+/* ================= aggregations (the strips) ================= */
+function allResChips(e){let out=e.header.resources.map(c=>({c,where:'活动全场'}));
+  e.rows.forEach(r=>r.resources.forEach(c=>out.push({c,where:(r.time?r.time+' ':'')+(r.seg||'')})));return out;}
+function allMoneyChips(e){let out=e.header.money.map(c=>({c,where:'活动全场'}));
+  e.rows.forEach(r=>r.money.forEach(c=>out.push({c,where:(r.seg||'')})));return out;}
+function resCounts(e){const n=[0,0,0,0];allResChips(e).forEach(x=>n[x.c.status||0]++);return n;}
+function moneyTotals(e){
+  const t={inPlan:0,inActual:0,outPlan:0,outActual:0};
+  allMoneyChips(e).forEach(x=>{const c=x.c;
+    if(c.kind==='in'){t.inPlan+=c.plan||0;t.inActual+=c.actual||0;}
+    else{t.outPlan+=c.plan||0;t.outActual+=c.actual||0;}});
+  t.planNet=t.inPlan-t.outPlan;t.actualNet=t.inActual-t.outActual;return t;}
+function followUps(e){const f=[];
+  allResChips(e).forEach(x=>{if((x.c.status||0)<2)f.push({type:'res',c:x.c,where:x.where,ev:e});});
+  allMoneyChips(e).forEach(x=>{if(x.c.actual==null)f.push({type:'money',c:x.c,where:x.where,ev:e});});
+  return f;}
+
+/* ================= render ================= */
+const $=id=>document.getElementById(id);
+function render(){
+  const nav=[['today','今日'],['sheet','活动'],['lib','资产库']].map(([k,l])=>
+    `<button class="${S.view===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
+  let body='';
+  if(S.view==='sheet')body=viewSheet();
+  else if(S.view==='today')body=viewToday();
+  else body=viewLib();
+  $('app').innerHTML=`
+    <div class="topbar">
+      <span class="logo">ym</span><span class="ttl">主办台</span>
+      <span class="sp"></span>
+      <div class="navlinks">${nav}</div>
+      <span class="avatar" title="演示模式 — 正式登录随 0008 上线">演</span>
+    </div>${body}
+    ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
+      <div class="drawer">${libPanel()}</div>`:''}`;
+}
+function go(v){S.view=v;S.drawer=false;render();}
+
+/* ---------- library panel (pick & apply) ---------- */
+function libPanel(){
+  const L=STORE.library;
+  const tabs=[['tpl','模板'],['idea','灵感'],['res','资源'],['money','收支']].map(([k,l])=>
+    `<button class="${S.libTab===k?'on':''}" onclick="S.libTab='${k}';render()">${l}</button>`).join('');
+  let items='',hint='';
+  if(S.libTab==='tpl'){
+    items=L.templates.map(t=>`<button class="libitem" onclick="applyTpl('${t.id}')">
+      <div class="t">${esc(t.name)}</div><div class="m">${esc(t.note||t.rows.length+'环节')}</div></button>`).join('');
+    hint='点一下 → 整份台本铺进当前活动。';
+  }else if(S.libTab==='idea'){
+    items=L.ideas.map(i=>`<button class="libitem" onclick="applyIdea('${i.id}')">
+      <div class="t">${esc(i.seg)}</div><div class="m">约${i.dur}分${i.res&&i.res.length?' · 需要：'+esc(i.res.join('/')):''}</div></button>`).join('');
+    hint='点一下 → 在台本末尾加一个环节（所需资源自动挂上）。';
+  }else if(S.libTab==='res'){
+    items=L.resources.map(r=>`<button class="libitem" onclick="applyRes('${r.id}')">
+      <div class="t">${r.type==='人'?'👤':'📦'} ${esc(r.name)}</div><div class="m">${esc(r.role)}</div></button>`).join('');
+    hint='先在台本里点选一行（或活动卡），再点这里 → 资源挂到该行。';
+  }else{
+    items=L.money.map(m=>`<button class="libitem" onclick="applyMoney('${m.id}')">
+      <div class="t">${m.kind==='in'?'⊕':'⊖'} ${esc(m.name)}</div><div class="m num">${yen(m.amount)} · ${m.kind==='in'?'收入':'支出'}</div></button>`).join('');
+    hint='先点选一行（或活动卡），再点这里 → 收支项挂到该行（金额=计划）。';
+  }
+  return `<div class="lbl" style="margin-bottom:10px">资产库 · 点选应用</div>
+    <div class="libtabs">${tabs}</div>${items||'<div class="empty">空</div>'}
+    <div class="libhint">${hint}</div>
+    <div class="libhint muted">整理条目 → 顶部「资产库」页。</div>`;
+}
+
+/* ---------- apply ops ---------- */
+function applyTpl(id){const t=STORE.library.templates.find(x=>x.id===id),e=ev();if(!t)return;
+  if(!e){const ne=instantiate(t);STORE.events.push(ne);S.evId=ne.id;}
+  else{
+    if(e.rows.length&&!confirm('当前台本已有 '+e.rows.length+' 个环节，用模板覆盖？'))return;
+    const ne=instantiate(t);e.rows=ne.rows;e.header=ne.header;
+  }
+  S.view='sheet';S.drawer=false;save();render();toast('模板已铺入台本');}
+function applyIdea(id){const i=STORE.library.ideas.find(x=>x.id===id),e=ev();if(!i||!e)return;
+  const chips=(i.res||[]).map(q=>{const r=STORE.library.resources.find(x=>x.role===q||x.name===q);
+    return r?{id:uid(),refId:r.id,name:r.name,role:r.role,type:r.type,status:0}:null;}).filter(Boolean);
+  e.rows.push({id:uid(),time:'',seg:i.seg,owner:'',resources:chips,money:[]});
+  S.sel=e.rows[e.rows.length-1].id;S.drawer=false;save();render();toast('已加入环节：'+i.seg);}
+function applyRes(id){const r=STORE.library.resources.find(x=>x.id===id),e=ev();if(!r||!e)return;
+  const tgt=S.sel==='header'?e.header:e.rows.find(x=>x.id===S.sel);if(!tgt){toast('先点选一行');return;}
+  tgt.resources.push({id:uid(),refId:r.id,name:r.name,role:r.role,type:r.type,status:0});
+  S.drawer=false;save();render();toast(r.name+' 已挂上');}
+function applyMoney(id){const m=STORE.library.money.find(x=>x.id===id),e=ev();if(!m||!e)return;
+  const tgt=S.sel==='header'?e.header:e.rows.find(x=>x.id===S.sel);if(!tgt){toast('先点选一行');return;}
+  tgt.money.push({id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,actual:null});
+  S.drawer=false;save();render();toast(m.name+' 已挂上');}
+
+/* ---------- sheet view ---------- */
+function viewSheet(){
+  const e=ev();
+  const sw=`<div class="evsw">
+    <select onchange="S.evId=this.value;S.sel='header';render()">
+      ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
+    </select>
+    <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
+    ${e?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
+  </div>`;
+  if(!e)return `<div class="wrap"><div class="panel">${libPanel()}</div>
+    <div class="main">${sw}<div class="empty">还没有活动。<br>点「＋ 新活动」，或从左侧资产库点一个模板开始。</div></div></div>
+    <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>`;
+  const rc=resCounts(e),mt=moneyTotals(e);
+  const strips=`<div class="strips">
+    <div class="strip"><div class="hd"><span class="lbl">资源 · 跟进</span>
+      <button class="btn ghost sm" onclick="remindAll()">📤 催未确认</button></div>
+      <div class="stcounts">
+        <div class="c ${rc[0]?'warn':''}"><div class="n num">${rc[0]}</div><div class="l">未联系</div></div>
+        <div class="c"><div class="n num">${rc[1]}</div><div class="l">已联系</div></div>
+        <div class="c"><div class="n num">${rc[2]}</div><div class="l">已确认</div></div>
+        <div class="c ok"><div class="n num">${rc[3]}</div><div class="l">到位</div></div>
+      </div></div>
+    <div class="strip"><div class="hd"><span class="lbl">收支 · 计划 / 实际</span></div>
+      <div class="mline"><span>收入</span><span class="num">${yen(mt.inPlan)} / ${yen(mt.inActual)}</span></div>
+      <div class="mline"><span>支出</span><span class="num">${yen(mt.outPlan)} / ${yen(mt.outActual)}</span></div>
+      <div class="mline total"><span>差额</span>
+        <span class="num ${mt.planNet<0?'neg':'pos'}">${yen(mt.planNet)}</span></div>
+    </div></div>`;
+  const hd=`<div class="evhead ${S.sel==='header'?'sel':''}" onclick="selRow('header',event)">
+    <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+      <input style="flex:2;min-width:140px;font-weight:700" value="${esc(e.name)}" placeholder="活动名"
+        onclick="event.stopPropagation();selRow('header')" onchange="e_upd('name',this.value)">
+      <input style="flex:1;min-width:100px" value="${esc(e.theme)}" placeholder="主题/人群"
+        onclick="event.stopPropagation();selRow('header')" onchange="e_upd('theme',this.value)"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+      <input type="date" style="flex:1;min-width:130px" value="${esc(e.date)}"
+        onclick="event.stopPropagation();selRow('header')" onchange="e_upd('date',this.value)">
+      <input type="time" style="width:100px" value="${esc(e.start)}"
+        onclick="event.stopPropagation();selRow('header')" onchange="e_upd('start',this.value)">
+      <input style="flex:2;min-width:130px" value="${esc(e.venue)}" placeholder="场地"
+        onclick="event.stopPropagation();selRow('header')" onchange="e_upd('venue',this.value)"></div>
+    <div class="chips">${chipsHtml(e.header,'header')}</div>
+    <div class="lbl" style="margin-top:8px">活动全场 — 点选此卡后，从资产库挂「全场」资源/收支</div>
+  </div>`;
+  const rows=e.rows.map((r,i)=>`<div class="rowcard ${S.sel===r.id?'sel':''}" onclick="selRow('${r.id}',event)">
+    <div class="tm"><input value="${esc(r.time)}" placeholder="--:--"
+      onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','time',this.value)"></div>
+    <div class="bd">
+      <div class="seg2">
+        <input class="segi" value="${esc(r.seg)}" placeholder="环节"
+          onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','seg',this.value)">
+        <input class="owni" value="${esc(r.owner)}" placeholder="负责人"
+          onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','owner',this.value)">
+      </div>
+      <div class="chips">${chipsHtml(r,r.id)}</div>
+    </div>
+    <div class="rowops">
+      <button onclick="event.stopPropagation();moveRow('${r.id}',-1)" ${i===0?'disabled':''}>▲</button>
+      <button onclick="event.stopPropagation();moveRow('${r.id}',1)" ${i===e.rows.length-1?'disabled':''}>▼</button>
+      <button onclick="event.stopPropagation();delRow('${r.id}')">✕</button>
+    </div></div>`).join('');
+  return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main">
+    ${sw}
+    <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧/📚 资产库点选应用。</div>
+    ${strips}${hd}${rows}
+    <button class="addrow" onclick="addRow()">＋ 添加环节</button>
+  </div></div>
+  <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>`;
+}
+function chipsHtml(holder,loc){
+  const res=holder.resources.map(c=>`<span class="chip s${c.status||0}"
+    onclick="event.stopPropagation();cycleRes('${loc}','${c.id}')"
+    title="点击翻状态 · ${RES_ST[c.status||0]}">${c.type==='人'?'👤':'📦'} ${esc(c.name)}
+    <span class="lbl">${RES_ST[c.status||0]}</span>
+    <span class="x" onclick="event.stopPropagation();delChip('${loc}','res','${c.id}')">✕</span></span>`).join('');
+  const money=holder.money.map(c=>`<span class="chip money ${c.kind==='in'?'in':'out'}"
+    onclick="event.stopPropagation();editMoney('${loc}','${c.id}')"
+    title="点击填实际金额">${c.kind==='in'?'⊕':'⊖'} ${esc(c.name)}
+    <span class="amt">${yen(c.plan)}${c.actual!=null?' → '+yen(c.actual):''}</span>
+    <span class="x" onclick="event.stopPropagation();delChip('${loc}','money','${c.id}')">✕</span></span>`).join('');
+  return res+money;
+}
+function holderOf(loc){const e=ev();return loc==='header'?e.header:e.rows.find(r=>r.id===loc);}
+function selRow(id,evt){S.sel=id;render();}
+function e_upd(f,v){ev()[f]=v;save();render();}
+function r_upd(id,f,v){const r=ev().rows.find(x=>x.id===id);if(r){r[f]=v;save();render();}}
+function addRow(){const e=ev();e.rows.push({id:uid(),time:'',seg:'',owner:'',resources:[],money:[]});
+  S.sel=e.rows[e.rows.length-1].id;save();render();}
+function delRow(id){const e=ev();const r=e.rows.find(x=>x.id===id);
+  if(r&&(r.seg||r.resources.length||r.money.length)&&!confirm('删除环节「'+(r.seg||'')+'」？'))return;
+  e.rows=e.rows.filter(x=>x.id!==id);if(S.sel===id)S.sel='header';save();render();}
+function moveRow(id,d){const e=ev();const i=e.rows.findIndex(x=>x.id===id);const j=i+d;
+  if(i<0||j<0||j>=e.rows.length)return;const t=e.rows[i];e.rows[i]=e.rows[j];e.rows[j]=t;save();render();}
+function cycleRes(loc,cid){const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
+  if(c){c.status=((c.status||0)+1)%4;save();render();}}
+function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
+  const k=kind==='res'?'resources':'money';h[k]=h[k].filter(x=>x.id!==cid);save();render();}
+function editMoney(loc,cid){const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
+  const v=prompt((c.kind==='in'?'收入':'支出')+'「'+c.name+'」实际金额（计划 '+yen(c.plan)+'；留空=未发生）',
+    c.actual!=null?c.actual:'');
+  if(v===null)return;c.actual=v===''?null:(parseInt(v.replace(/[^\d]/g,''),10)||0);save();render();}
+function newEvent(){const e=instantiate(null);e.name='新活动';STORE.events.push(e);
+  S.evId=e.id;S.sel='header';save();render();toast('从资产库点一个模板铺台本');}
+function delEvent(){const e=ev();if(!e)return;
+  if(!confirm('删除活动「'+e.name+'」？此操作不可恢复'))return;
+  STORE.events=STORE.events.filter(x=>x.id!==e.id);S.evId=STORE.events[0]?STORE.events[0].id:null;
+  S.sel='header';save();render();}
+function remindAll(){const e=ev();const un=allResChips(e).filter(x=>(x.c.status||0)<2);
+  if(!un.length){toast('资源都已确认，无需催');return;}
+  const txt='【'+e.name+'】'+fmtDate(e.date)+(e.start?' '+e.start:'')+' 提醒：\n'+
+    un.map(x=>'· '+x.c.name+'（'+(x.c.role||x.c.type)+' / '+x.where+'）— 请确认').join('\n')+'\n收到请回复，谢谢！';
+  share(txt);}
+
+/* ---------- today view ---------- */
+function viewToday(){
+  const t=todayStr();
+  const evs=STORE.events.slice().sort((a,b)=>(a.date||'9999')<(b.date||'9999')?-1:1);
+  const up=evs.filter(e=>e.date>=t),past=evs.filter(e=>e.date&&e.date<t);
+  const cards=up.map(e=>{
+    const f=followUps(e);const days=Math.round((new Date(e.date+'T00:00:00')-new Date(t+'T00:00:00'))/86400000);
+    return `<div class="todaycard" onclick="S.evId='${e.id}';go('sheet')" style="cursor:pointer">
+      <div class="d">${fmtDate(e.date)}${e.start?' '+e.start:''} · ${days===0?'<b style="color:var(--brass)">今天</b>':'还有 '+days+' 天'}</div>
+      <div class="t">${esc(e.name)}</div>
+      <div class="fu">${f.length?('待跟进 <b>'+f.length+'</b> 项：'+
+        f.slice(0,4).map(x=>esc(x.c.name)+(x.type==='res'?'('+RES_ST[x.c.status||0]+')':'(未记实际)')).join(' · ')+
+        (f.length>4?' …':'')):'✓ 跟进全部完成'}</div></div>`;}).join('');
+  return `<div class="main" style="max-width:640px;margin:0 auto">
+    <div class="sec">接下来</div>
+    ${cards||'<div class="empty">没有即将举行的活动。<br>去「活动」页新建一个。</div>'}
+    <div class="sec">本月</div>${calHtml()}
+    ${past.length?`<div class="sec">已过往</div>`+past.map(e=>
+      `<div class="todaycard" onclick="S.evId='${e.id}';go('sheet')" style="cursor:pointer;opacity:.6">
+        <div class="d">${fmtDate(e.date)}</div><div class="t">${esc(e.name)}</div></div>`).join(''):''}
+  </div>`;
+}
+function calHtml(){
+  const now=new Date();const y=now.getFullYear(),m=now.getMonth();
+  const first=new Date(y,m,1);const start=first.getDay();const dim=new Date(y,m+1,0).getDate();
+  const t=todayStr();
+  let cells='日一二三四五六'.split('').map(d=>`<div class="dow">${d}</div>`).join('');
+  for(let i=0;i<start;i++)cells+='<div class="day out"></div>';
+  for(let d=1;d<=dim;d++){
+    const ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const here=STORE.events.filter(e=>e.date===ds);
+    cells+=`<div class="day ${ds===t?'today':''}"><span class="num">${d}</span>
+      ${here.map(e=>`<div class="dot">● ${esc(e.name.slice(0,6))}</div>`).join('')}</div>`;}
+  return `<div class="cal">${cells}</div>`;
+}
+
+/* ---------- library manage view ---------- */
+function viewLib(){
+  const L=STORE.library;
+  const tabs=[['tpl','模板'],['idea','灵感'],['res','资源'],['money','收支项']].map(([k,l])=>
+    `<button class="${S.libTab===k?'on':''}" onclick="S.libTab='${k}';render()">${l}</button>`).join('');
+  let list='',form='';
+  if(S.libTab==='tpl'){
+    list=L.templates.map(x=>`<div class="libitem"><div class="t">${esc(x.name)}</div>
+      <div class="m">${esc(x.note||'')} · ${x.rows.length}环节
+      <button class="btn danger sm" style="float:right" onclick="libDel('templates','${x.id}')">删除</button></div></div>`).join('');
+    form=`<div class="libhint">模板来自活动：Y3 的「保存回资产库」把办完的活动一键存为模板。现阶段由种子提供。</div>`;
+  }else if(S.libTab==='idea'){
+    list=L.ideas.map(x=>`<div class="libitem"><div class="t">${esc(x.seg)}</div>
+      <div class="m">约${x.dur}分 · ${esc((x.res||[]).join('/'))||'无需资源'}
+      <button class="btn danger sm" style="float:right" onclick="libDel('ideas','${x.id}')">删除</button></div></div>`).join('');
+    form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新灵感（环节）</div>
+      <div class="frow"><input id="ni_seg" placeholder="环节名，如：桌游破冰"><input id="ni_dur" style="width:90px" placeholder="分钟" inputmode="numeric"></div>
+      <button class="btn sm" onclick="libAddIdea()">加入资产库</button></div>`;
+  }else if(S.libTab==='res'){
+    list=L.resources.map(x=>`<div class="libitem"><div class="t">${x.type==='人'?'👤':'📦'} ${esc(x.name)}</div>
+      <div class="m">${esc(x.role)}
+      <button class="btn danger sm" style="float:right" onclick="libDel('resources','${x.id}')">删除</button></div></div>`).join('');
+    form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新资源</div>
+      <div class="frow"><select id="nr_type" style="width:90px"><option value="人">👤 人</option><option value="物">📦 物</option></select>
+      <input id="nr_name" placeholder="姓名 / 物品"><input id="nr_role" style="width:110px" placeholder="角色，如：摄影"></div>
+      <button class="btn sm" onclick="libAddRes()">加入资产库</button></div>`;
+  }else{
+    list=L.money.map(x=>`<div class="libitem"><div class="t">${x.kind==='in'?'⊕':'⊖'} ${esc(x.name)}</div>
+      <div class="m num">${yen(x.amount)} · ${x.kind==='in'?'收入':'支出'}
+      <button class="btn danger sm" style="float:right" onclick="libDel('money','${x.id}')">删除</button></div></div>`).join('');
+    form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新收支项</div>
+      <div class="frow"><select id="nm_kind" style="width:90px"><option value="out">⊖ 支出</option><option value="in">⊕ 收入</option></select>
+      <input id="nm_name" placeholder="名目，如：场地费"><input id="nm_amt" style="width:110px" placeholder="金额¥" inputmode="numeric"></div>
+      <button class="btn sm" onclick="libAddMoney()">加入资产库</button></div>`;
+  }
+  return `<div class="main" style="max-width:720px;margin:0 auto">
+    <div class="sec">资产库 — 每办一场活动，这里越攒越值钱</div>
+    <div class="libtabs" style="max-width:360px">${tabs}</div>
+    <div class="libgrid">${list||'<div class="empty">空</div>'}</div>${form}</div>`;
+}
+function libDel(k,id){const L=STORE.library;
+  if(!confirm('从资产库删除？（已挂到活动上的不受影响）'))return;
+  L[k]=L[k].filter(x=>x.id!==id);save();render();}
+function libAddIdea(){const seg=$('ni_seg').value.trim();if(!seg){toast('环节名必填');return;}
+  STORE.library.ideas.push({id:uid(),seg,dur:parseInt($('ni_dur').value,10)||15,res:[]});save();render();}
+function libAddRes(){const name=$('nr_name').value.trim();if(!name){toast('名称必填');return;}
+  STORE.library.resources.push({id:uid(),name,type:$('nr_type').value,role:$('nr_role').value.trim()});save();render();}
+function libAddMoney(){const name=$('nm_name').value.trim();if(!name){toast('名目必填');return;}
+  STORE.library.money.push({id:uid(),name,kind:$('nm_kind').value,
+    amount:parseInt(($('nm_amt').value||'').replace(/[^\d]/g,''),10)||0});save();render();}
+
+/* ================= boot ================= */
+STORE=load();
+if(!STORE||!STORE.library){STORE=seed();save();}
+S.evId=STORE.events[0]?STORE.events[0].id:null;
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>缘满沙龙 · ym</title>
+<meta name="description" content="缘满沙龙 — 用心经营的相亲与交友活动。近期活动·文章·新闻。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* front of house — light card-stock; the organizer app is the dark felt backstage */
+  :root{
+    --felt:#16241E;--stock:#F4EFE2;--paper:#FBF8F0;--ink:#22302A;--muted:#7C8A82;
+    --brass:#A9853E;--brass-l:#C9A356;--line:#E3DCC9;--alarm:#D2604A;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  html,body{margin:0}
+  body{background:var(--stock);color:var(--ink);
+    font:15px/1.75 "Noto Sans JP",-apple-system,"PingFang SC","Hiragino Sans",sans-serif}
+  a{color:inherit;text-decoration:none}
+  .num{font-family:Oswald,sans-serif;font-variant-numeric:tabular-nums}
+  .wrap{max-width:880px;margin:0 auto;padding:0 18px}
+  /* navbar */
+  header{position:sticky;top:0;z-index:20;background:var(--felt);color:var(--stock)}
+  .nav{max-width:880px;margin:0 auto;padding:0 18px;height:54px;display:flex;align-items:center;gap:14px}
+  .nav .logo{font-family:Oswald,sans-serif;font-size:18px;color:var(--brass-l);letter-spacing:.06em}
+  .nav .name{font-size:13px;letter-spacing:.22em;color:var(--stock);opacity:.9}
+  .nav .sp{flex:1}
+  .nav a.lk{font-size:12.5px;letter-spacing:.12em;color:var(--stock);opacity:.75;padding:6px 9px}
+  .nav a.lk:hover{opacity:1;color:var(--brass-l)}
+  .nav a.login{font-size:12.5px;letter-spacing:.1em;background:var(--brass-l);color:#16241E;
+    font-weight:700;border-radius:4px;padding:8px 15px;white-space:nowrap}
+  @media(max-width:640px){.nav a.lk{display:none}}
+  /* hero = 组织介绍 */
+  .hero{background:var(--felt);color:var(--stock);padding:52px 0 58px}
+  .hero .k{font-size:11px;letter-spacing:.3em;color:var(--brass-l)}
+  .hero h1{font-size:30px;margin:12px 0 14px;font-weight:700;letter-spacing:.04em}
+  .hero p{max-width:560px;color:#B8C4BC;font-size:14.5px}
+  .hero .stats{display:flex;gap:34px;margin-top:30px}
+  .hero .stats .s .n{font-family:Oswald,sans-serif;font-size:26px;color:var(--brass-l)}
+  .hero .stats .s .l{font-size:11px;letter-spacing:.16em;color:#8E9A90}
+  /* sections */
+  section{padding:44px 0 8px}
+  .sec-k{font-size:11px;letter-spacing:.3em;color:var(--brass)}
+  h2{font-size:21px;margin:8px 0 20px;letter-spacing:.04em}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px;
+    box-shadow:0 1px 2px rgba(40,40,20,.04)}
+  .card .date{font-family:Oswald,sans-serif;font-size:12px;color:var(--brass);letter-spacing:.06em}
+  .card h3{font-size:15.5px;margin:6px 0 8px}
+  .card p{font-size:13px;color:var(--muted);margin:0;line-height:1.8}
+  .card .tag{display:inline-block;font-size:10.5px;letter-spacing:.1em;color:var(--brass);
+    border:1px solid var(--line);border-radius:3px;padding:2px 8px;margin-top:12px}
+  .card.ev{border-top:3px solid var(--brass-l)}
+  .card.full{opacity:.62}
+  .newslist{border-top:1px solid var(--line)}
+  .newslist .n-item{display:flex;gap:16px;align-items:baseline;padding:13px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
+  .newslist .n-item .date{flex:none;width:86px}
+  footer{margin-top:56px;background:var(--felt);color:#8E9A90;font-size:12px;padding:26px 0 34px}
+  footer .brand{color:var(--brass-l);font-family:Oswald,sans-serif;font-size:15px;margin-bottom:8px}
+  footer a{color:#B8C4BC}
+  .demo-note{background:#F1E8D2;border:1px solid #E0D2AC;color:#6E5F36;font-size:12px;
+    border-radius:6px;padding:8px 14px;margin:14px 0 0}
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="nav">
+    <span class="logo">ym</span><span class="name">缘满沙龙</span>
+    <span class="sp"></span>
+    <a class="lk" href="#about">组织介绍</a>
+    <a class="lk" href="#events">活动</a>
+    <a class="lk" href="#articles">文章</a>
+    <a class="lk" href="#news">新闻</a>
+    <a class="login" href="organizer/">主办登录</a>
+  </nav>
+</header>
+
+<!-- 组织介绍 -->
+<div class="hero" id="about">
+  <div class="wrap">
+    <div class="k">YUANMAN SALON · 东京</div>
+    <h1>认真办好每一场相遇</h1>
+    <p>缘满沙龙是面向在日华人的相亲交友组织。我们不做海量配对，只做小而精的线下活动——
+      十对十茶会、兴趣小组、季节远足。每一场都有主持、有节奏、有跟进，
+      让认真想认识新朋友的人，见到同样认真的人。</p>
+    <div class="stats">
+      <div class="s"><div class="n">36</div><div class="l">场活动</div></div>
+      <div class="s"><div class="n">420+</div><div class="l">位参加者</div></div>
+      <div class="s"><div class="n">19</div><div class="l">对成功牵手</div></div>
+    </div>
+    <div class="demo-note">演示页面 — 以下内容均为示例数据。</div>
+  </div>
+</div>
+
+<!-- 活动 -->
+<section id="events">
+  <div class="wrap">
+    <div class="sec-k">EVENTS</div>
+    <h2>近期活动</h2>
+    <div class="grid">
+      <div class="card ev">
+        <div class="date">7/25 (六) 14:00</div>
+        <h3>夏日茶会 · 十对十</h3>
+        <p>轻松茶会形式，25–35岁。自我介绍、快问快答、一对一轮转，主持全程带节奏。陽光カフェ 2F。</p>
+        <span class="tag">报名中 · 男余2 女余1</span>
+      </div>
+      <div class="card ev">
+        <div class="date">8/8 (六) 10:00</div>
+        <h3>高尾山远足 · 兴趣局</h3>
+        <p>边走边聊的半日远足，山顶茶歇。适合喜欢户外、不爱拘谨场合的朋友。集合：高尾山口駅。</p>
+        <span class="tag">报名中</span>
+      </div>
+      <div class="card ev full">
+        <div class="date">7/19 (日) 15:00</div>
+        <h3>桌游下午茶 · 八对八</h3>
+        <p>桌游破冰 + 自由交流。本场名额已满，可候补下一场。</p>
+        <span class="tag">已满员</span>
+      </div>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:14px">报名方式：活动页海报扫码 / 微信联系工作人员。线上报名功能筹备中。</p>
+  </div>
+</section>
+
+<!-- 文章 -->
+<section id="articles">
+  <div class="wrap">
+    <div class="sec-k">ARTICLES</div>
+    <h2>文章</h2>
+    <div class="grid">
+      <div class="card">
+        <div class="date">7/10</div>
+        <h3>第一次参加十对十，怎么准备？</h3>
+        <p>穿什么、聊什么、紧张怎么办——写给第一次来的你。其实只需要准备一件事：把周末下午空出来。</p>
+      </div>
+      <div class="card">
+        <div class="date">6/28</div>
+        <h3>在日本相亲，和国内有什么不一样</h3>
+        <p>节奏更慢、边界感更强、也更看重「合适」而不是「条件」。我们办了三年活动的观察。</p>
+      </div>
+      <div class="card">
+        <div class="date">6/15</div>
+        <h3>为什么我们坚持小场活动</h3>
+        <p>二十个人的茶会，比两百人的酒会更容易认识人。小场的秘密是：每个人都被看见。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 新闻 -->
+<section id="news">
+  <div class="wrap">
+    <div class="sec-k">NEWS</div>
+    <h2>新闻</h2>
+    <div class="newslist">
+      <div class="n-item"><span class="date num">2026-07-12</span><span>7月「夏日茶会」报名开启，两天内女生名额过半，请尽早报名。</span></div>
+      <div class="n-item"><span class="date num">2026-07-01</span><span>6月「初夏烧烤局」圆满结束，42位朋友参加，促成3对牵手。</span></div>
+      <div class="n-item"><span class="date num">2026-06-20</span><span>沙龙志愿者招募：摄影、签到、后勤岗位，参加活动免门票。</span></div>
+      <div class="n-item"><span class="date num">2026-06-05</span><span>八月起新增「兴趣局」系列：远足、桌游、料理教室轮流举办。</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="brand">ym · 缘满沙龙</div>
+    <div>用心经营的相遇。 · <a href="organizer/">主办方入口</a></div>
+    <div style="margin-top:6px;opacity:.7">© 2026 ym.jjconnect.tokyo — 示例演示页</div>
+  </div>
+</footer>
+
+</body>
+</html>

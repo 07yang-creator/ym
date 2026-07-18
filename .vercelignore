@@ -1,0 +1,5 @@
+# ym subdomain project deploys only the app pages
+design/
+archive/
+*.md
+.vercel/
