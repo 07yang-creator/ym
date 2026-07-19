@@ -140,13 +140,14 @@ real upload; all testing on seeded data.
 - [x] Evaluations: voice/manual note per participant, confirm-first
 
 ### Y3 — the round trip + rehearsal
-- [ ] After-event view: planned vs actual times; 预算 vs 实际; attendance summary
-- [ ] 保存回资产库: sheet→template · new segments→ideas · helpers/suppliers→resources ·
+- [x] After-event view: planned vs actual times; 预算 vs 实际; attendance summary
+- [x] 保存回资产库: sheet→template · new segments→ideas · helpers/suppliers→resources ·
       actual prices→收支项 (one confirmation screen, tap what to keep)
-- [ ] Exports: 台本 print/share view · 收支 CSV · attendance/evaluation CSV
-- [ ] Rehearsal: seed ~20 participants / 5 volunteers / 8 jobs; walk ① twice alone, then
-      with the organizer; build the next event from the library (② timed)
-- [ ] Fix only what blocks ① or ②
+- [x] Exports: 台本 print/share view · 收支 CSV · attendance/evaluation CSV
+- [x] Rehearsal (alone): full loop walked twice in preview 2026-07-19; next event built
+      from the saved template with states reset (② verified)
+- [ ] Rehearsal (with the organizer watching) — this is the owner's tasting run
+- [x] Fix only what blocks ① or ②
 
 ## 6. Cut
 

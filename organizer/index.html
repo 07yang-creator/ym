@@ -218,6 +218,26 @@
   .scbtns .alt{border:1px solid rgba(14,21,18,.25);border-radius:3px;padding:11px 16px;font-size:12px}
   .transcript9{font-size:10px;margin-top:10px;line-height:1.7;color:rgba(14,21,18,.55)}
   .draftline{font-size:13.5px;line-height:1.8}
+  /* ===== 复盘 review + 保存回资产库 ===== */
+  .rvsec{background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:12px}
+  .rvsec .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .rvrow{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .rvrow:last-child{border-bottom:0}
+  .rvrow .c1{font-family:Oswald,sans-serif;width:50px;flex:none;color:var(--stock-dim)}
+  .rvrow .c2{flex:1;min-width:0}
+  .rvrow .c3{font-family:Oswald,sans-serif;color:var(--brass)}
+  .rvrow .gap{font-size:11px;flex:none}
+  .rvrow .gap.late{color:var(--alarm)}
+  .rvrow .gap.early,.rvrow .gap.ontime{color:var(--ok)}
+  .rvrow .gap.miss{color:var(--muted)}
+  .exports{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+  .sbitem{display:flex;gap:9px;align-items:center;width:100%;text-align:left;padding:9px 11px;
+    border:1px dashed var(--line);border-radius:4px;margin-bottom:6px;color:var(--stock-dim);font-size:12.5px}
+  .sbitem.on{border:1px solid var(--brass);color:var(--stock)}
+  .sbitem .tick{width:16px;flex:none;color:var(--brass);font-size:13px}
+  .sbitem .what{flex:1;min-width:0}
+  .sbitem .delta{font-family:Oswald,sans-serif;font-size:12px;color:var(--brass)}
+  .sbsec{font-size:10px;letter-spacing:.2em;color:var(--muted);margin:14px 2px 8px}
   .toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);z-index:60;background:var(--stock);
     color:var(--ink);font-size:12.5px;padding:9px 16px;border-radius:4px;box-shadow:0 8px 20px -4px rgba(0,0,0,.6)}
   .hintbar{font-size:11px;color:var(--muted);line-height:1.7;margin:0 2px 12px}
@@ -383,6 +403,7 @@ function render(){
   if(S.view==='sheet')body=viewSheet();
   else if(S.view==='today')body=viewToday();
   else if(S.view==='day')body=viewDay();
+  else if(S.view==='review')body=viewReview();
   else body=viewLib();
   $('app').innerHTML=`
     <div class="topbar">
@@ -454,7 +475,8 @@ function viewSheet(){
     <select onchange="S.evId=this.value;S.sel='header';render()">
       ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
     </select>
-    ${e?`<button class="btn sm" onclick="goDay()">▶ 当天</button>`:''}
+    ${e?`<button class="btn sm" onclick="goDay()">▶ 当天</button>
+    <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
     ${e?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
   </div>`;
@@ -942,6 +964,160 @@ function confirmForm(){
     profile:{age:v('age'),contact:v('contact'),area:v('area'),hobbies:v('hobbies'),
       personality:v('personality'),pref_age:v('pref_age'),pref_other:v('pref_other')}});
   S.formDraft=null;save();render();toast(g+n+' '+name+' 已加入名册');
+}
+
+/* ================= 复盘 review + 保存回资产库 (pass ②) ================= */
+function goReview(){S.view='review';S.saveBack=null;render();}
+function parseHM(t){if(!t||!/^\d{1,2}:\d{2}$/.test(t))return null;const a=t.split(':');return (+a[0])*60+(+a[1]);}
+function fmtGap(plan,act){
+  const p=parseHM(plan),a=parseHM(act);
+  if(a==null)return {cls:'miss',txt:'未记'};
+  if(p==null)return {cls:'ontime',txt:''};
+  const d=a-p;if(!d)return {cls:'ontime',txt:'准点'};
+  return d>0?{cls:'late',txt:'晚'+d+'分'}:{cls:'early',txt:'早'+(-d)+'分'};
+}
+function viewReview(){
+  const e=ev();if(!e){S.view='sheet';return viewSheet();}
+  const mt=moneyTotals(e);
+  const am=arrCount(e,'男'),aw=arrCount(e,'女');
+  const total=e.participants.length;
+  const noshow=e.participants.filter(p=>!p.arrived);
+  const evals=e.participants.reduce((s,p)=>s+p.evals.length,0);
+  const rows=e.rows.map(r=>{const g=fmtGap(r.time,r.actual);
+    return `<div class="rvrow"><span class="c1">${esc(r.time||'--:--')}</span>
+      <span class="c2">${esc(r.seg||'')}</span>
+      <span class="gap ${g.cls}">${g.txt}</span>
+      <span class="c3">${r.actual?esc(r.actual):''}</span></div>`;}).join('');
+  const mline=(l,p2,a2)=>`<div class="mline"><span>${l}</span><span class="num">${yen(p2)} → ${yen(a2)}</span></div>`;
+  return `<div class="main" style="max-width:640px;margin:0 auto">
+    <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('sheet')">← 计划</span> · 复盘</div>
+      <div class="t">${esc(e.name)} · ${fmtDate(e.date)}</div></div></div>
+    <div class="rvsec"><div class="hd"><span class="lbl">台本 · 计划 → 实际</span></div>${rows||'<div class="empty">无环节</div>'}</div>
+    <div class="rvsec"><div class="hd"><span class="lbl">收支 · 预算 → 实际</span></div>
+      ${mline('收入',mt.inPlan,mt.inActual)}${mline('支出',mt.outPlan,mt.outActual)}
+      <div class="mline total"><span>差额</span><span class="num ${mt.actualNet<0?'neg':'pos'}">${yen(mt.planNet)} → ${yen(mt.actualNet)}</span></div></div>
+    <div class="rvsec"><div class="hd"><span class="lbl">到场</span>
+      <span class="num" style="font-size:15px">${am+aw}/${total}</span></div>
+      <div style="font-size:12.5px">男 ${am} · 女 ${aw} · 评价 ${evals} 条${noshow.length?`<br><span class="muted">未到：${noshow.map(p=>esc(p.gender+p.n+' '+p.name)).join('、')}</span>`:''}</div></div>
+    <div class="exports">
+      <button class="btn sm" onclick="startSaveBack()">💾 保存回资产库</button>
+      <button class="btn ghost sm" onclick="shareRundown()">📤 分享台本</button>
+      <button class="btn ghost sm" onclick="printRundown()">🖨 打印台本</button>
+      <button class="btn ghost sm" onclick="exportMoney()">⬇ 收支 CSV</button>
+      <button class="btn ghost sm" onclick="exportPeople()">⬇ 名单·评价 CSV</button></div>
+    ${S.saveBack?saveBackCard():''}
+    <p class="note9">保存回资产库＝这场活动变成下一场的起点：台本成模板、新环节成灵感、帮过忙的人进资源、实际价格更新收支项。</p>
+  </div>`;
+}
+/* ---- save-back builder: what this event can teach the library ---- */
+function startSaveBack(){S.saveBack=buildSaveBack(ev());render();}
+function buildSaveBack(e){
+  const L=STORE.library;
+  const dur=i=>{const a=parseHM(e.rows[i].time),b=e.rows[i+1]?parseHM(e.rows[i+1].time):null;
+    return a!=null&&b!=null&&b>a?b-a:15;};
+  const ideas=[];e.rows.forEach((r,i)=>{
+    if(r.seg&&!L.ideas.some(x=>x.seg===r.seg)&&!ideas.some(x=>x.seg===r.seg))
+      ideas.push({on:true,seg:r.seg,dur:dur(i),res:r.resources.map(c=>c.role||c.name).slice(0,3)});});
+  const rseen={},res=[];
+  allResChips(e).forEach(x=>{const c=x.c;
+    if(rseen[c.name]||L.resources.some(y=>y.name===c.name))return;
+    rseen[c.name]=1;res.push({on:true,name:c.name,type:c.type||'人',role:c.role||''});});
+  const mseen={},money=[];
+  allMoneyChips(e).forEach(x=>{const c=x.c;
+    if(c.actual==null||mseen[c.name])return;mseen[c.name]=1;
+    const it=c.refId?L.money.find(y=>y.id===c.refId):L.money.find(y=>y.name===c.name);
+    if(it){if(it.amount!==c.actual)money.push({on:true,mode:'update',refId:it.id,name:c.name,from:it.amount,to:c.actual,kind:c.kind});}
+    else money.push({on:true,mode:'new',refId:null,name:c.name,from:null,to:c.actual,kind:c.kind});});
+  return {tpl:{on:true,name:(e.name||'活动')+' 模板'},ideas,res,money};
+}
+function sbToggle(kind,i){const sb=S.saveBack;
+  if(kind==='tpl')sb.tpl.on=!sb.tpl.on;else sb[kind][i].on=!sb[kind][i].on;render();}
+function sbItem(on,click,what,delta){
+  return `<button class="sbitem ${on?'on':''}" onclick="${click}">
+    <span class="tick">${on?'✓':'○'}</span><span class="what">${what}</span>
+    ${delta?`<span class="delta">${delta}</span>`:''}</button>`;
+}
+function saveBackCard(){
+  const sb=S.saveBack;const e=ev();
+  let h=`<div class="rvsec"><div class="hd"><span class="lbl">保存回资产库 — 点选要保留的</span></div>`;
+  h+=`<div class="sbsec">模板</div>`+sbItem(sb.tpl.on,"sbToggle('tpl')",
+    esc(sb.tpl.name)+`（${e.rows.length}环节·含资源/收支牌，状态清零）`);
+  if(sb.ideas.length){h+=`<div class="sbsec">新灵感（库里没有的环节）</div>`+
+    sb.ideas.map((x,i)=>sbItem(x.on,`sbToggle('ideas',${i})`,esc(x.seg),'约'+x.dur+'分')).join('');}
+  if(sb.res.length){h+=`<div class="sbsec">新资源</div>`+
+    sb.res.map((x,i)=>sbItem(x.on,`sbToggle('res',${i})`,(x.type==='人'?'👤 ':'📦 ')+esc(x.name)+(x.role?' · '+esc(x.role):''))).join('');}
+  if(sb.money.length){h+=`<div class="sbsec">收支项价格</div>`+
+    sb.money.map((x,i)=>sbItem(x.on,`sbToggle('money',${i})`,esc(x.name)+(x.mode==='update'?'（更新价格）':'（新收支项）'),
+      (x.from!=null?yen(x.from)+' → ':'')+yen(x.to))).join('');}
+  if(!sb.ideas.length&&!sb.res.length&&!sb.money.length)
+    h+=`<div class="note9">环节、资源、价格都已在库里 — 只需存模板。</div>`;
+  h+=`<div class="scbtns" style="border:0;padding-top:6px">
+    <button class="btn" style="flex:1" onclick="applySaveBack()">确认保存</button>
+    <button class="btn ghost sm" onclick="S.saveBack=null;render()">取消</button></div></div>`;
+  return h;
+}
+function applySaveBack(){
+  const sb=S.saveBack,L=STORE.library,e=ev();let n=0;
+  const cpR=c=>Object.assign({},c,{id:uid(),status:0});
+  const cpM=c=>Object.assign({},c,{id:uid(),actual:null});
+  if(sb.tpl.on){L.templates.push({id:uid(),name:sb.tpl.name,
+    note:e.rows.length+'环节 · 来自 '+fmtDate(e.date),
+    rows:e.rows.map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,
+      resources:r.resources.map(cpR),money:r.money.map(cpM)})),
+    header:{resources:e.header.resources.map(cpR),money:e.header.money.map(cpM)}});n++;}
+  sb.ideas.filter(x=>x.on).forEach(x=>{L.ideas.push({id:uid(),seg:x.seg,dur:x.dur,res:x.res});n++;});
+  sb.res.filter(x=>x.on).forEach(x=>{L.resources.push({id:uid(),name:x.name,type:x.type,role:x.role});n++;});
+  sb.money.filter(x=>x.on).forEach(x=>{
+    if(x.refId){const it=L.money.find(y=>y.id===x.refId);if(it)it.amount=x.to;}
+    else L.money.push({id:uid(),name:x.name,kind:x.kind,amount:x.to});n++;});
+  S.saveBack=null;save();render();toast('已保存回资产库（'+n+' 项）— 下一场从这里开始');
+}
+/* ---- exports ---- */
+function csvEsc(v){v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function dlCSV(name,rows){
+  const txt='﻿'+rows.map(r=>r.map(csvEsc).join(',')).join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([txt],{type:'text/csv;charset=utf-8'}));
+  a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
+function exportMoney(){
+  const e=ev();const rows=[['类型','名目','计划(円)','实际(円)','挂在']];
+  allMoneyChips(e).forEach(x=>rows.push([x.c.kind==='in'?'收入':'支出',x.c.name,
+    x.c.plan||0,x.c.actual==null?'':x.c.actual,x.where]));
+  const t=moneyTotals(e);
+  rows.push(['合计','收入',t.inPlan,t.inActual,'']);
+  rows.push(['合计','支出',t.outPlan,t.outActual,'']);
+  rows.push(['差额','',t.planNet,t.actualNet,'']);
+  dlCSV((e.name||'ym')+'_收支.csv',rows);
+}
+function exportPeople(){
+  const e=ev();const rows=[['编号','姓名','性别','职业','到场','签到时间','评价数','优点','建议改进','后续跟进']];
+  e.participants.forEach(p=>{
+    const j=k=>p.evals.map(v2=>v2[k]).filter(Boolean).join('；');
+    rows.push([p.gender+p.n,p.name,p.gender,p.job||'',p.arrived?'到场':'未到',p.at||'',
+      p.evals.length,j('strengths'),j('improvements'),j('follow_up')]);});
+  dlCSV((e.name||'ym')+'_名单评价.csv',rows);
+}
+function shareRundown(){
+  const e=ev();
+  const txt='【'+e.name+'】'+fmtDate(e.date)+(e.start?' '+e.start:'')+(e.venue?' · '+e.venue:'')+'\n'+
+    e.rows.map(r=>(r.time||'--:--')+' '+(r.seg||'')+(r.owner?'（'+r.owner+'）':'')).join('\n');
+  share(txt);
+}
+function printRundown(){
+  const e=ev();const w=window.open('','_blank');
+  if(!w){toast('浏览器拦截了打印窗口，请允许弹窗');return;}
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(e.name)+' 台本</title>'+
+    '<style>body{font:14px/1.8 "Noto Sans JP","PingFang SC",sans-serif;color:#222;padding:28px;max-width:640px;margin:0 auto}'+
+    'h1{font-size:18px;margin:0 0 2px}p.m{color:#666;font-size:12px;margin:0 0 16px}'+
+    'table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ccc;padding:7px 8px;text-align:left;font-size:13px;vertical-align:top}'+
+    'th{font-size:11px;color:#666;font-weight:400}.o{color:#666;font-size:12px}</style></head><body>'+
+    '<h1>'+esc(e.name)+'</h1><p class="m">'+fmtDate(e.date)+(e.start?' '+esc(e.start):'')+(e.venue?' · '+esc(e.venue):'')+'</p>'+
+    '<table><tr><th>时间</th><th>环节</th><th>负责人</th><th>资源</th></tr>'+
+    e.rows.map(r=>'<tr><td>'+esc(r.time||'')+'</td><td>'+esc(r.seg||'')+'</td><td>'+esc(r.owner||'')+
+      '</td><td class="o">'+esc(r.resources.map(c=>c.name).join('、'))+'</td></tr>').join('')+
+    '</table><scr'+'ipt>print()</scr'+'ipt></body></html>');
+  w.document.close();
 }
 
 /* ================= boot ================= */
