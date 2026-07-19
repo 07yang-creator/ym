@@ -141,6 +141,83 @@
   .libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
   .addform{background:var(--felt-up);border:1px dashed var(--line);border-radius:6px;padding:11px;margin-top:10px}
   .addform .frow{display:flex;gap:6px;margin-bottom:6px}
+  /* ===== day mode 当天 (design: ym/design/ym-event-day.jsx) ===== */
+  .dayhead{display:flex;align-items:flex-end;justify-content:space-between;padding:2px 2px 12px;
+    border-bottom:1px solid var(--line);margin-bottom:14px}
+  .dayhead .d{font-size:10px;color:var(--muted);letter-spacing:.18em}
+  .dayhead .d .bk{color:var(--brass);cursor:pointer}
+  .dayhead .t{font-size:15px;font-weight:500;margin-top:4px}
+  .ratio{text-align:right}
+  .ratio .n{font-family:Oswald,sans-serif;font-size:22px;line-height:1;font-variant-numeric:tabular-nums}
+  .ratio .l{font-size:9px;letter-spacing:.12em;color:var(--muted);margin-top:3px}
+  .ratio.bad .n,.ratio.bad .l{color:var(--alarm)}
+  .cols{display:flex;gap:12px}
+  .col{flex:1;min-width:0}
+  .colsep{width:1px;background:var(--line);flex:none}
+  .colhd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;padding:0 2px}
+  .colhd .g{font-size:11px;letter-spacing:.18em;color:var(--muted)}
+  .colhd .c{font-family:Oswald,sans-serif;font-size:13px;color:var(--stock-dim)}
+  .colhd .c.full{color:var(--brass)}
+  .bgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .badge{position:relative;aspect-ratio:1/1.15;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;border-radius:3px;border:1px dashed var(--line);color:var(--stock-dim);
+    transition:transform .14s ease,background .14s ease,box-shadow .14s ease}
+  .badge .bn{font-family:Oswald,sans-serif;font-size:24px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+  .badge .bl{font-size:9px;margin-top:3px;opacity:.5;letter-spacing:.02em}
+  .badge.on{background:var(--stock);border:1px solid var(--stock);color:var(--ink);
+    transform:translateY(-3px) rotate(-1.2deg);box-shadow:0 6px 12px -4px rgba(0,0,0,.65)}
+  .badge.on .bl{opacity:.75}
+  .badge.on .dot{position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:9px;background:var(--brass)}
+  .ticketbar{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--felt-up);
+    border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:16px 0 8px;font-size:12px}
+  .boardops{display:flex;gap:8px;margin-top:10px}
+  .note9{font-size:10px;color:var(--muted);margin-top:16px;line-height:1.8}
+  .daytabs{position:fixed;bottom:0;left:0;right:0;background:var(--felt);border-top:1px solid var(--line);
+    display:flex;z-index:30}
+  .daytabs button{flex:1;padding:15px 0 calc(15px + env(safe-area-inset-bottom));font-size:12px;
+    letter-spacing:.2em;color:var(--muted);border-top:2px solid transparent;margin-top:-1px}
+  .daytabs button.on{color:var(--brass);border-top-color:var(--brass)}
+  .runrow{display:flex;gap:10px;align-items:center;padding:12px 10px;border:1px solid var(--line);
+    border-radius:6px;margin-bottom:7px;background:none;width:100%;text-align:left}
+  .runrow .rt{font-family:Oswald,sans-serif;font-size:15px;width:52px;flex:none;color:var(--stock-dim)}
+  .runrow .rs{flex:1;min-width:0;font-size:13.5px}
+  .runrow .rs .ow{font-size:10.5px;color:var(--muted)}
+  .runrow .ra{font-family:Oswald,sans-serif;font-size:12px;color:var(--brass);flex:none}
+  .runrow .tag9{font-size:9px;letter-spacing:.18em;color:var(--brass);flex:none}
+  .runrow.done{opacity:.45}
+  .runrow.now{border-color:var(--brass);background:var(--felt-up)}
+  .runrow.next{border-style:dashed;border-color:var(--brass-dim)}
+  .whochips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px}
+  .whochip{border-radius:3px;padding:7px 11px;border:1px solid var(--line);color:var(--stock-dim);
+    font-family:Oswald,sans-serif;font-size:13px;font-variant-numeric:tabular-nums}
+  .whochip.on{background:var(--stock);border-color:var(--stock);color:var(--ink)}
+  .recbtn{width:100%;height:112px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border:1px solid var(--line);border-radius:3px;transition:border-color .16s ease}
+  .recbtn.rec{background:var(--felt-up);border-color:var(--brass)}
+  .recbtn:disabled{opacity:.35}
+  .recline{height:2px;background:var(--brass);width:12%;opacity:.35;transition:width .9s linear}
+  .recbtn.rec .recline{opacity:1}
+  .reclbl{font-size:11px;color:var(--muted);margin-top:14px;letter-spacing:.12em}
+  .recbtn.rec .reclbl{color:var(--brass)}
+  .stockcard{background:var(--stock);color:var(--ink);border-radius:3px;padding:16px;
+    box-shadow:0 10px 24px -8px rgba(0,0,0,.7);margin-top:14px}
+  .stockcard .schd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+  .stockcard .schd .who{font-family:Oswald,sans-serif;font-size:20px}
+  .stockcard .schd .sub{font-size:11px;opacity:.5}
+  .sfield{margin-bottom:11px}
+  .sfield .fl{font-size:9px;opacity:.5;letter-spacing:.18em;margin-bottom:3px}
+  .sfield input,.sfield textarea{background:none;border:0;border-bottom:1.5px solid rgba(14,21,18,.25);
+    border-radius:0;color:var(--ink);padding:4px 2px;font-size:13px;width:100%}
+  .sfield input:focus,.sfield textarea:focus{outline:none;border-bottom-color:var(--brass-dim)}
+  .sfield.blank input{border-bottom:1.5px dotted rgba(14,21,18,.5)}
+  .sfield .hint9{font-size:10px;color:var(--alarm);opacity:.85}
+  .sgrid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+  .scbtns{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(14,21,18,.15)}
+  .scbtns .ok{flex:1;background:var(--ink);color:var(--stock);border-radius:3px;padding:11px;
+    font-size:12px;letter-spacing:.08em}
+  .scbtns .alt{border:1px solid rgba(14,21,18,.25);border-radius:3px;padding:11px 16px;font-size:12px}
+  .transcript9{font-size:10px;margin-top:10px;line-height:1.7;color:rgba(14,21,18,.55)}
+  .draftline{font-size:13.5px;line-height:1.8}
   .toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);z-index:60;background:var(--stock);
     color:var(--ink);font-size:12.5px;padding:9px 16px;border-radius:4px;box-shadow:0 8px 20px -4px rgba(0,0,0,.6)}
   .hintbar{font-size:11px;color:var(--muted);line-height:1.7;margin:0 2px 12px}
@@ -165,6 +242,17 @@ function share(text){
   else{(navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(
     ()=>toast('已复制，去微信/LINE粘贴发送'),()=>prompt('复制以下内容发送：',text));}
 }
+// AI endpoints live on the main product (CORS-allowed for this origin) — ym/PLAN.md §3
+const API='https://www.jjconnect.tokyo';
+function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+function shrink(file,cb){ // photos → ≤1600px jpeg before upload
+  const img=new Image();
+  img.onload=()=>{const s=Math.min(1,1600/Math.max(img.width,img.height));
+    const c=document.createElement('canvas');c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    cb(c.toDataURL('image/jpeg',.85).split(',')[1]);URL.revokeObjectURL(img.src);};
+  img.src=URL.createObjectURL(file);
+}
 
 /* ================= data ================= */
 // Test stage: local-first, per-browser (auth lands with 0008_ym.sql — see ym/PLAN.md §4)
@@ -184,7 +272,9 @@ function seed(){
       R('张姐','人','后勤'),R('陈叔','人','配对协助'),
       R('陽光カフェ 2F','物','场地'),R('●●堂 茶点','物','茶歇'),R('号牌·笔·登记表','物','物料')],
     money:[M('场地费','out',40000),M('饮料点心','out',15000),M('物料印刷','out',3000),
-      M('活动保险','out',5000),M('男士门票 ×10','in',60000),M('女士门票 ×10','in',30000)],
+      M('活动保险','out',5000),
+      Object.assign(M('男士门票 ×10','in',60000),{unit:6000}),
+      Object.assign(M('女士门票 ×10','in',30000),{unit:3000})],
     ideas:[
       {id:uid(),seg:'场地布置',dur:30,res:['后勤']},{id:uid(),seg:'签到入场',dur:30,res:['签到']},
       {id:uid(),seg:'开场介绍',dur:10,res:['主持']},{id:uid(),seg:'自我介绍轮',dur:30,res:['主持']},
@@ -196,7 +286,7 @@ function seed(){
   };
   const findR=q=>lib.resources.find(r=>r.role===q||r.name===q);
   const rchip=(q,st)=>{const r=findR(q);return r?{id:uid(),refId:r.id,name:r.name,role:r.role,type:r.type,status:st==null?0:st}:null;};
-  const mchip=(name,actual)=>{const m=lib.money.find(x=>x.name===name);return m?{id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,actual:actual==null?null:actual}:null;};
+  const mchip=(name,actual)=>{const m=lib.money.find(x=>x.name===name);return m?{id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,unit:m.unit,actual:actual==null?null:actual}:null;};
   const row=(time,seg,owner,res,mon)=>({id:uid(),time,seg,owner:owner||'',
     resources:(res||[]).filter(Boolean),money:(mon||[]).filter(Boolean)});
   const tplRows=[
@@ -224,7 +314,35 @@ function seed(){
   ev.rows[1].resources.forEach(c=>c.status=2);
   ev.rows[2].resources.forEach(c=>c.status=1);
   const hm=ev.header.money.find(c=>c.name==='场地费');if(hm)hm.actual=40000;
+  ev.participants=seedParticipants();
   return {events:[ev],library:lib};
+}
+// Fabricated demo roster (design: ym/design/ym-event-day.jsx). No real people.
+function seedParticipants(){
+  const mk=(gender,n,name,job)=>({id:uid(),gender,n,name,job,arrived:false,at:null,evals:[],profile:null});
+  const men=[['王思远','建筑师'],['陈立坤','研究员'],['李泽宇','医生'],['周明轩','教师'],['吴俊杰','工程师'],
+    ['郑家豪','会计'],['孙志强','律师'],['马文涛','厨师'],['冯浩然','设计师'],['许伟辰','销售']];
+  const women=[['陈雨桐','护士'],['林静怡','编辑'],['黄佳宁','药剂师'],['赵晓萌','设计师'],['刘欣然','教师'],
+    ['何雅琳','翻译'],['唐清雅','咨询师'],['邓子涵','程序员'],['苏梦琪','策展人'],['曹亦柔','会计']];
+  return men.map((x,i)=>mk('男',i+1,x[0],x[1])).concat(women.map((x,i)=>mk('女',i+1,x[0],x[1])));
+}
+// Y1 → Y2 localStorage migration: add fields older stores don't have.
+function ensureY2(){
+  STORE.events.forEach(e=>{
+    if(!e.participants)e.participants=[];
+    e.rows.forEach(r=>{if(r.actual===undefined)r.actual=null;});
+  });
+  if(!STORE.y2){
+    const demo=STORE.events.find(e=>e.name==='夏日茶会 · 十对十');
+    if(demo&&!demo.participants.length)demo.participants=seedParticipants();
+    const setU=arr=>(arr||[]).forEach(m=>{
+      if(m.name&&m.name.indexOf('男士门票')>=0&&!m.unit)m.unit=6000;
+      if(m.name&&m.name.indexOf('女士门票')>=0&&!m.unit)m.unit=3000;});
+    setU(STORE.library.money);
+    STORE.events.forEach(e=>{setU(e.header.money);e.rows.forEach(r=>setU(r.money));});
+    STORE.y2=1;
+  }
+  save();
 }
 function instantiate(tpl,lib){
   lib=lib||STORE.library;
@@ -264,6 +382,7 @@ function render(){
   let body='';
   if(S.view==='sheet')body=viewSheet();
   else if(S.view==='today')body=viewToday();
+  else if(S.view==='day')body=viewDay();
   else body=viewLib();
   $('app').innerHTML=`
     <div class="topbar">
@@ -325,7 +444,7 @@ function applyRes(id){const r=STORE.library.resources.find(x=>x.id===id),e=ev();
   S.drawer=false;save();render();toast(r.name+' 已挂上');}
 function applyMoney(id){const m=STORE.library.money.find(x=>x.id===id),e=ev();if(!m||!e)return;
   const tgt=S.sel==='header'?e.header:e.rows.find(x=>x.id===S.sel);if(!tgt){toast('先点选一行');return;}
-  tgt.money.push({id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,actual:null});
+  tgt.money.push({id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,unit:m.unit,actual:null});
   S.drawer=false;save();render();toast(m.name+' 已挂上');}
 
 /* ---------- sheet view ---------- */
@@ -335,6 +454,7 @@ function viewSheet(){
     <select onchange="S.evId=this.value;S.sel='header';render()">
       ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
     </select>
+    ${e?`<button class="btn sm" onclick="goDay()">▶ 当天</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
     ${e?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
   </div>`;
@@ -351,7 +471,9 @@ function viewSheet(){
         <div class="c"><div class="n num">${rc[2]}</div><div class="l">已确认</div></div>
         <div class="c ok"><div class="n num">${rc[3]}</div><div class="l">到位</div></div>
       </div></div>
-    <div class="strip"><div class="hd"><span class="lbl">收支 · 计划 / 实际</span></div>
+    <div class="strip"><div class="hd"><span class="lbl">收支 · 计划 / 实际</span>
+      <label class="btn ghost sm" style="cursor:pointer">📷 票据
+        <input type="file" accept="image/*" capture="environment" style="display:none" onchange="costPhoto(this)"></label></div>
       <div class="mline"><span>收入</span><span class="num">${yen(mt.inPlan)} / ${yen(mt.inActual)}</span></div>
       <div class="mline"><span>支出</span><span class="num">${yen(mt.outPlan)} / ${yen(mt.outActual)}</span></div>
       <div class="mline total"><span>差额</span>
@@ -393,7 +515,7 @@ function viewSheet(){
   return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main">
     ${sw}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧/📚 资产库点选应用。</div>
-    ${strips}${hd}${rows}
+    ${strips}${S.costDraft?costDraftCard():''}${hd}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
   <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>`;
@@ -529,9 +651,303 @@ function libAddMoney(){const name=$('nm_name').value.trim();if(!name){toast('名
   STORE.library.money.push({id:uid(),name,kind:$('nm_kind').value,
     amount:parseInt(($('nm_amt').value||'').replace(/[^\d]/g,''),10)||0});save();render();}
 
+/* ================= day mode 当天 ================= */
+function goDay(){S.view='day';S.dayTab='board';S.draft=null;render();}
+function arrCount(e,g){return e.participants.filter(p=>p.gender===g&&p.arrived).length;}
+function ratioHtml(e){
+  const m=arrCount(e,'男'),w=arrCount(e,'女'),gap=Math.abs(m-w),bad=gap>=3;
+  return `<div class="ratio ${bad?'bad':''}"><div class="n">${m}<span style="color:var(--muted);font-size:15px"> : </span>${w}</div>
+    <div class="l">${bad?'差 '+gap+' 人':'平衡'}</div></div>`;
+}
+function viewDay(){
+  const e=ev();if(!e){S.view='sheet';return viewSheet();}
+  const inner=S.dayTab==='run'?dayRun(e):S.dayTab==='rec'?dayRec(e):dayBoard(e);
+  return `<div class="main" style="max-width:560px;margin:0 auto;padding-bottom:130px">
+    <div class="dayhead">
+      <div><div class="d"><span class="bk" onclick="go('sheet')">← 计划</span> · ${fmtDate(e.date)}${e.start?' '+esc(e.start):''}</div>
+        <div class="t">${esc(e.name)}</div></div>
+      ${ratioHtml(e)}
+    </div>${inner}</div>
+  <div class="daytabs">${[['board','看板'],['run','台本'],['rec','记录']].map(([k,l])=>
+    `<button class="${S.dayTab===k?'on':''}" onclick="S.dayTab='${k}';S.draft=null;render()">${l}</button>`).join('')}</div>`;
+}
+/* ---- 看板 board ---- */
+function colHtml(e,g){
+  const list=e.participants.filter(p=>p.gender===g);
+  const here=list.filter(p=>p.arrived).length;
+  return `<div class="col"><div class="colhd"><span class="g">${g}</span>
+      <span class="c ${here===list.length&&list.length?'full':''}">${here}/${list.length}</span></div>
+    <div class="bgrid">${list.map(p=>`<button class="badge ${p.arrived?'on':''}" onclick="toggleArr('${p.id}')"
+      aria-pressed="${p.arrived}"><span class="bn">${p.n}</span>
+      <span class="bl">${p.arrived?esc(p.name.slice(0,3)):'未到'}</span>${p.arrived?'<span class="dot"></span>':''}</button>`).join('')}</div></div>`;
+}
+function ticketInfo(e){
+  const t=[];allMoneyChips(e).forEach(x=>{const c=x.c;
+    if(c.kind==='in'&&c.unit&&c.name.indexOf('门票')>=0)t.push(c);});
+  return t;
+}
+function dayBoard(e){
+  const tickets=ticketInfo(e);
+  let bar='';
+  if(tickets.length){
+    const due=tickets.reduce((s,c)=>s+c.unit*arrCount(e,c.name.indexOf('男')>=0?'男':'女'),0);
+    const done=tickets.every(c=>c.actual!=null)&&tickets.reduce((s,c)=>s+(c.actual||0),0)===due;
+    bar=`<div class="ticketbar"><span>门票实收（按到场）</span>
+      <span class="num" style="font-size:14px">${yen(due)}</span>
+      ${done?'<span class="lbl" style="color:var(--ok)">✓ 已入账</span>'
+        :`<button class="btn sm" onclick="confirmTickets()">确认入账</button>`}</div>`;
+  }
+  return `<div class="cols">${colHtml(e,'男')}<div class="colsep"></div>${colHtml(e,'女')}</div>
+    ${bar}
+    <div class="boardops">
+      <label class="btn ghost sm" style="cursor:pointer">📷 报名表
+        <input type="file" accept="image/*" capture="environment" style="display:none" onchange="formPhoto(this)"></label>
+      <button class="btn ghost sm" onclick="addP()">＋ 手动添加</button>
+    </div>
+    ${S.formDraft?formDraftCard():''}
+    <p class="note9">点号牌即签到，再点一次撤销。不弹确认框。<br>门票入账需按「确认入账」——先核对再入档。</p>`;
+}
+function toggleArr(pid){const e=ev();const p=e.participants.find(x=>x.id===pid);if(!p)return;
+  p.arrived=!p.arrived;p.at=p.arrived?nowHM():null;save();render();}
+function confirmTickets(){const e=ev();
+  ticketInfo(e).forEach(c=>{c.actual=c.unit*arrCount(e,c.name.indexOf('男')>=0?'男':'女');});
+  save();render();toast('门票已入账（可在收支牌上修改）');}
+function addP(){const e=ev();
+  const g=prompt('性别（男/女）','女');if(g!=='男'&&g!=='女')return;
+  const name=prompt('姓名');if(!name)return;
+  const n=Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;
+  e.participants.push({id:uid(),gender:g,n,name:name.trim(),job:'',arrived:false,at:null,evals:[],profile:null});
+  save();render();toast(g+n+' 已加入名册');}
+/* ---- 台本 run ---- */
+function dayRun(e){
+  const rows=e.rows;
+  const nextIdx=rows.findIndex(r=>!r.actual);
+  let lastDone=-1;rows.forEach((r,i)=>{if(r.actual)lastDone=i;});
+  return rows.map((r,i)=>{
+    const cls=r.actual?(i===lastDone?'now':'done'):(i===nextIdx?'next':'');
+    return `<button class="runrow ${cls}" onclick="tapRun('${r.id}')">
+      <span class="rt">${esc(r.time||'--:--')}</span>
+      <span class="rs">${esc(r.seg||'（未命名）')}${r.owner?` <span class="ow">· ${esc(r.owner)}</span>`:''}</span>
+      ${i===lastDone&&r.actual?'<span class="tag9">进行中</span>':''}
+      ${i===nextIdx?'<span class="tag9" style="color:var(--brass-dim)">下一项</span>':''}
+      <span class="ra">${r.actual?'实际 '+esc(r.actual):''}</span></button>`;
+  }).join('')+`<p class="note9">点一行＝记下实际开始时间（再点撤销）。计划时间不变，复盘看差距。</p>`;
+}
+function tapRun(id){const r=ev().rows.find(x=>x.id===id);if(!r)return;
+  r.actual=r.actual?null:nowHM();save();render();}
+/* ---- 记录 rec (voice → confirm; 未确认不入档) ---- */
+let REC={mr:null,chunks:[],timer:null,secs:0};
+function ymRoster(){const e=ev();
+  return {mode:'ym',today:todayStr(),
+    participants:e.participants.map(p=>({id:p.id,n:p.gender+p.n,name:p.name})),
+    resources:allResChips(e).map(x=>({id:x.c.id,name:x.c.name,role:x.c.role||x.c.type,status:RES_ST[x.c.status||0]})),
+    money:allMoneyChips(e).map(x=>({id:x.c.id,name:x.c.name,kind:x.c.kind,plan:x.c.plan})),
+    states:RES_ST};
+}
+function dayRec(e){
+  const arrived=e.participants.filter(p=>p.arrived);
+  if(!arrived.length&&!S.draft)
+    return `<div class="empty">还没有人签到。<br><span class="muted">先去看板点几个号牌，再回来记录。</span></div>`;
+  const chips=`<div class="lbl" style="margin-bottom:10px">记录对象</div><div class="whochips">
+    ${arrived.map(p=>`<button class="whochip ${S.recWho===p.id?'on':''}"
+      onclick="S.recWho='${p.id}';render()">${p.gender}${p.n}${p.evals.length?' ✓'+p.evals.length:''}</button>`).join('')}</div>`;
+  if(S.draft)return chips+draftCard(e);
+  const phase=S.recPhase||'idle';
+  return chips+`
+    <button id="recbtn" class="recbtn ${phase==='rec'?'rec':''}" ${!S.recWho?'disabled':''}
+      onmousedown="recStart()" onmouseup="recStop()" onmouseleave="recStop()"
+      ontouchstart="event.preventDefault();recStart()" ontouchend="recStop()">
+      <div id="recline" class="recline"></div>
+      <div id="recsec" class="reclbl">${phase==='think'?'整理中…':(S.recWho?'按住说话':'先选号牌')}</div>
+    </button>
+    <div style="display:flex;justify-content:center;margin-top:12px">
+      <button class="btn ghost sm" ${!S.recWho?'disabled':''} onclick="manualEval()">✍️ 手动填写</button></div>
+    <p class="note9" style="text-align:center">屏幕不会亮红点，对方看见的只有一条线。<br>说号码最稳：例「女7，沟通积极，建议多主动」。也可以说签到、翻状态、记收支。</p>`;
+}
+function recStart(){
+  if(!S.recWho||S.recPhase==='rec')return;
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+    REC.chunks=[];REC.mr=new MediaRecorder(stream);REC.secs=0;
+    REC.mr.ondataavailable=ev2=>REC.chunks.push(ev2.data);
+    REC.mr.onstop=()=>{stream.getTracks().forEach(t=>t.stop());recSend();};
+    REC.mr.start();S.recPhase='rec';
+    const b=$('recbtn');if(b)b.classList.add('rec');
+    const s=$('recsec');if(s)s.textContent='0s · 松开结束';
+    REC.timer=setInterval(()=>{REC.secs++;
+      const el=$('recsec');if(el)el.textContent=REC.secs+'s · 松开结束';
+      const ln=$('recline');if(ln)ln.style.width=Math.min(REC.secs*8+12,88)+'%';},1000);
+  }).catch(err=>toast('无法使用麦克风：'+err.message));
+}
+function recStop(){
+  if(S.recPhase!=='rec')return;
+  clearInterval(REC.timer);S.recPhase='think';
+  try{REC.mr.stop();}catch(e2){S.recPhase='idle';}
+  render();
+}
+function recSend(){
+  const type=(REC.mr&&REC.mr.mimeType)||'audio/webm';
+  const blob=new Blob(REC.chunks,{type});
+  const fr=new FileReader();
+  fr.onload=()=>{
+    fetch(API+'/api/voice',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({audio_b64:String(fr.result).split(',')[1],media_type:type.split(';')[0],roster:ymRoster()})})
+    .then(r=>r.json()).then(res=>{S.recPhase='idle';S.draft=res;render();})
+    .catch(e2=>{S.recPhase='idle';toast('识别失败：'+e2.message);render();});
+  };
+  fr.readAsDataURL(blob);
+}
+function manualEval(){
+  S.draft={action:'eval_note',participant_id:S.recWho,manual:true,
+    eval:{strengths:'',improvements:'',follow_up:''},
+    eval_conf:{strengths:1,improvements:1,follow_up:1},transcript:'',say:''};
+  render();
+}
+/* draft cards — AI proposes, the organizer confirms (convention #4) */
+function draftCard(e){
+  const d=S.draft;
+  const pOf=id=>e.participants.find(p=>p.id===id);
+  if(d.action==='eval_note'){
+    const p=pOf(d.participant_id);if(!p){S.draft=null;return '';}
+    const F=(key,label)=>{const txt=d.eval[key]||'';const conf=(d.eval_conf||{})[key]||0;
+      const blank=!txt||conf<0.6;
+      return `<div class="sfield ${blank?'blank':''}"><div class="fl">${label}</div>
+        <input id="ev_${key}" value="${esc(txt)}" placeholder="">
+        ${blank&&!d.manual?`<span class="hint9">${txt?'不太确定—请核对':'没听清—请补'}</span>`:''}</div>`;};
+    return `<div class="stockcard">
+      <div class="schd"><span class="who">${p.gender}${p.n}</span><span class="sub">${esc(p.name)}${p.job?' · '+esc(p.job):''}</span></div>
+      ${F('strengths','优点')}${F('improvements','建议改进')}${F('follow_up','后续跟进')}
+      <div class="scbtns">
+        <button class="ok" onclick="confirmEval()">确认存档</button>
+        <button class="alt" onclick="S.draft=null;render()">${d.manual?'取消':'重录'}</button></div>
+      ${d.transcript?`<div class="transcript9">听到：${esc(d.transcript)}</div>`:''}
+      <p class="transcript9">未确认不入档。原始转写一并保留。</p></div>`;
+  }
+  if(d.action==='check_in'){
+    const p=pOf(d.participant_id);if(!p){S.draft=null;return '';}
+    return simpleDraft(`识别为：<b>${p.gender}${p.n} ${esc(p.name)}</b> ${d.undo?'取消签到':'签到'}`,
+      `execCheckin('${p.id}',${d.undo?'true':'false'})`,d.transcript);
+  }
+  if(d.action==='flip_status'){
+    const hit=allResChips(e).find(x=>x.c.id===d.resource_id);if(!hit){S.draft=null;return '';}
+    return simpleDraft(`识别为：<b>${esc(hit.c.name)}</b> → <b>${esc(d.status)}</b>`,
+      `execFlip('${d.resource_id}','${esc(d.status)}')`,d.transcript);
+  }
+  if(d.action==='add_cost'){
+    const hit=d.money_id?allMoneyChips(e).find(x=>x.c.id===d.money_id):null;
+    const label=hit?esc(hit.c.name):esc(d.name);
+    return simpleDraft(`识别为：<b>${label}</b> ${d.kind==='in'?'收入':'支出'} 实际 <b>${yen(d.amount)}</b>`,
+      `execCost('${d.money_id||''}','${esc(d.name)}','${d.kind}',${Number(d.amount)||0})`,d.transcript);
+  }
+  return `<div class="stockcard"><div class="draftline">${esc(d.say||'没听懂')}</div>
+    ${d.transcript?`<div class="transcript9">听到：${esc(d.transcript)}</div>`:''}
+    <div class="scbtns"><button class="alt" onclick="S.draft=null;render()">重录</button></div></div>`;
+}
+function simpleDraft(html,exec,transcript){
+  return `<div class="stockcard"><div class="draftline">${html}</div>
+    ${transcript?`<div class="transcript9">听到：${esc(transcript)}</div>`:''}
+    <div class="scbtns"><button class="ok" onclick="${exec}">执行</button>
+      <button class="alt" onclick="S.draft=null;render()">取消</button></div></div>`;
+}
+function confirmEval(){
+  const e=ev();const d=S.draft;const p=e.participants.find(x=>x.id===d.participant_id);if(!p)return;
+  const v=k=>{const el=$('ev_'+k);return el?el.value.trim():'';};
+  const rec={id:uid(),strengths:v('strengths'),improvements:v('improvements'),follow_up:v('follow_up'),
+    transcript:d.transcript||'',source:d.manual?'manual':'voice',at:new Date().toISOString()};
+  if(!rec.strengths&&!rec.improvements&&!rec.follow_up){toast('至少填一项再存档');return;}
+  p.evals.push(rec);S.draft=null;save();render();toast(p.gender+p.n+' 的评价已存档');
+}
+function execCheckin(pid,undo){const p=ev().participants.find(x=>x.id===pid);if(!p)return;
+  p.arrived=!undo;p.at=p.arrived?nowHM():null;S.draft=null;save();render();
+  toast(p.gender+p.n+(undo?' 已取消签到':' 已签到'));}
+function execFlip(cid,status){const e=ev();const hit=allResChips(e).find(x=>x.c.id===cid);if(!hit)return;
+  const i=RES_ST.indexOf(status);if(i>=0)hit.c.status=i;S.draft=null;save();render();toast(hit.c.name+' → '+status);}
+function execCost(cid,name,kind,amount){const e=ev();
+  if(cid){const hit=allMoneyChips(e).find(x=>x.c.id===cid);if(hit)hit.c.actual=amount;}
+  else e.header.money.push({id:uid(),refId:null,name:name||'语音记账',kind:kind==='in'?'in':'out',plan:0,actual:amount});
+  S.draft=null;save();render();toast('已入账 '+yen(amount));}
+/* ---- 📷 photo → parse → confirm ---- */
+function costPhoto(inp){
+  const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+  toast('识别票据中…');
+  shrink(f,b64=>{
+    fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({image:b64,media_type:'image/jpeg'})})
+    .then(r=>r.json()).then(res=>{
+      if(res.is_receipt===false){toast('这张不像票据，请重拍');return;}
+      S.costDraft=res;render();})
+    .catch(e2=>toast('识别失败：'+e2.message));
+  });
+}
+function costDraftCard(){
+  const d=S.costDraft;
+  const blank=d.confidence==='low';
+  return `<div class="stockcard">
+    <div class="schd"><span class="who" style="font-size:15px">📷 票据</span>
+      <span class="sub">${d.source==='mock'?'示例解析':'AI识别 · '+esc(d.confidence||'')}</span></div>
+    <div class="sgrid2">
+      <div class="sfield ${blank?'blank':''}"><div class="fl">名目 / 店名</div><input id="cd_vendor" value="${esc(d.vendor||'')}"></div>
+      <div class="sfield ${blank?'blank':''}"><div class="fl">金额（税込）</div><input id="cd_amount" inputmode="numeric" value="${esc(d.total_incl_tax||'')}"></div>
+      <div class="sfield"><div class="fl">日期</div><input id="cd_date" value="${esc(d.issue_date||'')}"></div>
+      <div class="sfield"><div class="fl">收/支</div><input id="cd_dir" value="${d.direction==='in'?'收入':'支出'}"></div></div>
+    <div class="scbtns"><button class="ok" onclick="confirmCost()">确认入账</button>
+      <button class="alt" onclick="S.costDraft=null;render()">取消</button></div>
+    <p class="transcript9">核对后入账 — AI只提议，不入档。</p></div>`;
+}
+function confirmCost(){
+  const e=ev();const name=($('cd_vendor').value||'票据').trim();
+  const amount=parseInt(($('cd_amount').value||'').replace(/[^\d]/g,''),10)||0;
+  if(!amount){toast('金额不能为空');return;}
+  const kind=($('cd_dir').value||'').indexOf('收')>=0?'in':'out';
+  e.header.money.push({id:uid(),refId:null,name,kind,plan:0,actual:amount});
+  S.costDraft=null;save();render();toast('已入账 '+yen(amount));
+}
+function formPhoto(inp){
+  const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+  toast('识别报名表中…');
+  shrink(f,b64=>{
+    fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({image:b64,media_type:'image/jpeg',mode:'ym_form'})})
+    .then(r=>r.json()).then(res=>{
+      if(res.is_form===false){toast('这张不像报名表，请重拍');return;}
+      S.formDraft=res;render();})
+    .catch(e2=>toast('识别失败：'+e2.message));
+  });
+}
+function formDraftCard(){
+  const d=S.formDraft;const conf=d.conf||{};
+  const F=(key,label,val)=>{const v2=val==null?'':String(val==='0'||val===0?'':val);
+    const blank=!v2||(conf[key]||0)<0.6;
+    return `<div class="sfield ${blank?'blank':''}"><div class="fl">${label}</div>
+      <input id="fp_${key}" value="${esc(v2)}">
+      ${blank?`<span class="hint9">${v2?'不太确定—请核对':'没看清—请补'}</span>`:''}</div>`;};
+  return `<div class="stockcard">
+    <div class="schd"><span class="who" style="font-size:15px">📷 报名表</span>
+      <span class="sub">${d.source==='mock'?'示例解析':'AI识别'}</span></div>
+    <div class="sgrid2">
+      ${F('name','姓名',d.name)}${F('gender','性别',d.gender)}
+      ${F('age','年龄',d.age)}${F('occupation','职业',d.occupation)}
+      ${F('contact','联系方式',d.contact)}${F('area','居住地区',d.area)}
+      ${F('hobbies','兴趣爱好',d.hobbies)}${F('personality','性格特点',d.personality)}
+      ${F('pref_age','择偶·年龄',d.pref_age)}${F('pref_other','择偶·其他',d.pref_other)}</div>
+    <div class="scbtns"><button class="ok" onclick="confirmForm()">确认加入名册</button>
+      <button class="alt" onclick="S.formDraft=null;render()">取消</button></div>
+    <p class="transcript9">虚线格＝AI没看清，需要人来补。未确认不入档。</p></div>`;
+}
+function confirmForm(){
+  const e=ev();const v=k=>{const el=$('fp_'+k);return el?el.value.trim():'';};
+  const name=v('name');const g=v('gender')==='男'?'男':'女';
+  if(!name){toast('姓名不能为空');return;}
+  const n=Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;
+  e.participants.push({id:uid(),gender:g,n,name,job:v('occupation'),arrived:false,at:null,evals:[],
+    profile:{age:v('age'),contact:v('contact'),area:v('area'),hobbies:v('hobbies'),
+      personality:v('personality'),pref_age:v('pref_age'),pref_other:v('pref_other')}});
+  S.formDraft=null;save();render();toast(g+n+' '+name+' 已加入名册');
+}
+
 /* ================= boot ================= */
 STORE=load();
 if(!STORE||!STORE.library){STORE=seed();save();}
+ensureY2();
 S.evId=STORE.events[0]?STORE.events[0].id:null;
 render();
 </script>
