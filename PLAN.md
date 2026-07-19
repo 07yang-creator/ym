@@ -85,6 +85,19 @@ library is the organizer's compounding 资产库; pass ② is structural, not a 
 
 ## 4. Data
 
+**Decision (owner, 2026-07-19): ym SHARES the JJcashflow Supabase project + auth** — traffic
+is small, speed wins. Guardrails that keep a later split cheap: every ym table prefixed
+`ym_` with RLS from day one (exit = one `pg_dump` of `ym_*`); **no FKs from `ym_` tables
+into cashflow tables** (`c_record`, `link`, …) — only into `auth.users`/`profiles`; ym media
+gets its **own storage bucket** (`ym-media`), never the receipts bucket; organizers are a new
+区分 主办方 in the existing profile/approve flow. Revisit-point is NOT traffic: it's the
+first REAL participant roster (income/婚姻/photos) — before that upload, APPI 委託契約 signed
+and re-confirm shared vs own project.
+
+Salon requirements source: 缘满沙龙系统需求 (owner-shared Google Doc, Drive folder 缘满沙龙) —
+our evaluation fields (优点/建议改进/后续跟进), the job list, and the V2.0 deferrals
+(matching / QR / online signup / AI) align with it.
+
 Test stage: **per-user localStorage** (`jjym_*_v1:<uid>`). Two stores:
 - `event`: header + `rows[] {time, segment, owner, resources[], money[]}` + attendance + evals
 - `library`: `templates[] · ideas[] · resources[] · money_items[]`
