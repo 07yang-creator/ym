@@ -129,15 +129,15 @@ real upload; all testing on seeded data.
 - [x] `scripts/check-ym.mjs` regression checks (sheet ops, apply ops, strip math)
 
 ### Y2 — event day
-- [ ] Run mode on the same page: now/next highlight, tap = actual time logged
-- [ ] Check-in board per design spec: badge grid + ratio alarm; check-in drafts a ticket
+- [x] Run mode on the same page: now/next highlight, tap = actual time logged
+- [x] Check-in board per design spec: badge grid + ratio alarm; check-in drafts a ticket
       revenue row into 收支 (confirm, not auto-post)
-- [ ] 📷 cost receipt → `/api/parse` (existing receipt prompt) → confirmed 收支 record
-- [ ] 📷 participant paper form → `/api/parse` (new form prompt: 姓名/年龄/职业/择偶需求;
+- [x] 📷 cost receipt → `/api/parse` (existing receipt prompt) → confirmed 收支 record
+- [x] 📷 participant paper form → `/api/parse` (new form prompt: 姓名/年龄/职业/择偶需求;
       low-confidence → dotted blanks) → confirmed profile
-- [ ] 🎤 `/api/voice` ym roster + intents `check_in / flip_status / eval_note / add_cost`;
+- [x] 🎤 `/api/voice` ym roster + intents `check_in / flip_status / eval_note / add_cost`;
       **gate: one mixed zh/ja sample tested before building UI on it**
-- [ ] Evaluations: voice/manual note per participant, confirm-first
+- [x] Evaluations: voice/manual note per participant, confirm-first
 
 ### Y3 — the round trip + rehearsal
 - [ ] After-event view: planned vs actual times; 预算 vs 实际; attendance summary
