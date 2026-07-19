@@ -88,9 +88,15 @@ library is the organizer's compounding 资产库; pass ② is structural, not a 
 **Decision (owner, 2026-07-19): ym SHARES the JJcashflow Supabase project + auth** — traffic
 is small, speed wins. Guardrails that keep a later split cheap: every ym table prefixed
 `ym_` with RLS from day one (exit = one `pg_dump` of `ym_*`); **no FKs from `ym_` tables
-into cashflow tables** (`c_record`, `link`, …) — only into `auth.users`/`profiles`; ym media
-gets its **own storage bucket** (`ym-media`), never the receipts bucket; organizers are a new
-区分 主办方 in the existing profile/approve flow. Revisit-point is NOT traffic: it's the
+into cashflow tables** (`c_record`, `link`, …) — only into `auth.users`/`profiles`; organizers
+are a new 区分 主办方 in the existing profile/approve flow.
+
+**Media (owner, 2026-07-19): photos/videos live in the salon's own Google Drive folder**
+(缘满沙龙, owned by the salon) — NOT in Supabase storage, and never the receipts bucket.
+Upload via the repo's Apps-Script-proxy convention (CLAUDE.md #2 — script runs as the Drive
+owner; on redeploy edit the existing deployment to keep the `/exec` URL). Supabase keeps only
+metadata + Drive file IDs. Why: the salon keeps custody of participant photos (APPI-friendly),
+videos are too heavy for Supabase, storage costs land on the data's owner. Revisit-point is NOT traffic: it's the
 first REAL participant roster (income/婚姻/photos) — before that upload, APPI 委託契約 signed
 and re-confirm shared vs own project.
 
