@@ -329,10 +329,10 @@ function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e)
   if(!S._quota){S._quota=1;toast('⚠ 本机存储已满');}}
   if(canCloud()){clearTimeout(_pushT);_pushT=setTimeout(cloudPushAll,800);}}
 /* ---------- cloud mirror (Y4 alive; 0008_ym.sql) ---------- */
-// mirrors ym_ok() server-side: approved AND 主办方/admin. An approved cashflow client is NOT
-// an organizer, and telling them "☁ 云同步已开启" while every write 403s is a lie.
-function canCloud(){return !!(sb&&SESSION&&PROFILE&&PROFILE.status==='approved'
-  &&(PROFILE.role==='organizer'||PROFILE.is_admin));}
+// mirrors ym_ok() server-side: an APPROVED ym_member row, or platform admin. A cashflow
+// client/accountant with no ym membership is not an organizer here.
+function canCloud(){return !!(sb&&SESSION&&PROFILE
+  &&(PROFILE.status==='approved'||PROFILE.is_admin));}
 function cloudPushAll(){
   if(!canCloud())return;
   const rows=STORE.events.map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
@@ -383,15 +383,19 @@ function grantAccount(pid){
 }
 async function cloudLoad(){
   if(!sb||!SESSION){PROFILE=null;render();return;}
-  const cols='role,status,is_admin,email';
-  let {data:prof}=await sb.from('profile').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
-  if(!prof){ // first login after confirm: create the organizer profile (server sets status)
-    const ins=await sb.from('profile').insert({user_id:SESSION.user.id,role:'organizer'}).select(cols).maybeSingle();
-    prof=ins.data||null;
-    if(ins.error&&ins.error.code!=='23505')toast('资料创建失败：'+ins.error.message);
-    if(!prof){const re=await sb.from('profile').select(cols).eq('user_id',SESSION.user.id).maybeSingle();prof=re.data||null;}
+  // ym membership is its OWN row (0012), orthogonal to the cashflow 区分 — so one account can
+  // be a 会計士 in jjcashflow AND a 主办方 here. We never write profile.role from this app.
+  const cols='role,status,email';
+  let {data:mem}=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
+  if(!mem){ // first visit: register for ym (the server forces status='pending')
+    const ins=await sb.from('ym_member').insert({user_id:SESSION.user.id}).select(cols).maybeSingle();
+    mem=ins.data||null;
+    if(ins.error&&ins.error.code!=='23505')toast('注册失败：'+ins.error.message);
+    if(!mem){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();mem=re.data||null;}
   }
-  PROFILE=prof;
+  // is_admin still lives on the shared profile (it spans both products); absent row = not admin
+  const {data:pr}=await sb.from('profile').select('is_admin').eq('user_id',SESSION.user.id).maybeSingle();
+  PROFILE=mem?Object.assign({},mem,{is_admin:!!(pr&&pr.is_admin)}):(pr&&pr.is_admin?{status:'none',role:'',is_admin:true}:null);
   // An invite code entered at signup is redeemed on the first real session. It is bound to the
   // address that typed it and expires, so signing in as somebody else on a shared device can
   // never spend their seat on the wrong account.
@@ -399,8 +403,8 @@ async function cloudLoad(){
   if(pend&&PROFILE&&PROFILE.status!=='approved'
      &&(pend.email||'').toLowerCase()===String(SESSION.user.email||'').toLowerCase()){
     const r=await redeemInvite(pend.code,true);
-    if(r==='ok'){const re=await sb.from('profile').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
-      PROFILE=re.data||PROFILE;}
+    if(r==='ok'){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
+      if(re.data)PROFILE=Object.assign({},re.data,{is_admin:PROFILE.is_admin});}
   }
   if(!canCloud()){render();return;}
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
@@ -1660,8 +1664,10 @@ function syncEventPost(e,announce){
 let ADMIN=null;
 function adminLoad(){
   if(!canCloud()||!PROFILE||!PROFILE.is_admin){ADMIN={people:[],codes:[]};return;}
+  // ym registrations only — cashflow client/accountant sign-ups stay in the 会计工作台 admin
+  // screen. Which table a row is in IS the answer to "where did this registration come from".
   Promise.all([
-    sb.from('profile').select('user_id,email,role,status,is_admin,created_at').order('created_at',{ascending:false}),
+    sb.from('ym_member').select('user_id,email,role,status,created_at').order('created_at',{ascending:false}),
     sb.from('ym_invite').select('*').order('created_at',{ascending:false})
   ]).then(([p,c])=>{
     if(p.error)toast('读取用户失败：'+p.error.message);
@@ -1676,17 +1682,16 @@ function viewAdmin(){
   const others=ADMIN.people.filter(p=>p.status!=='pending');
   const pRow=p=>`<div class="rvrow" style="flex-wrap:wrap;gap:8px">
     <span class="c2">${esc(p.email||p.user_id.slice(0,8))}
-      <span class="lbl"> ${esc(p.role)}${p.is_admin?' · 管理员':''}</span></span>
+      <span class="lbl"> 来自 ym 注册 · 主办方</span></span>
     <span class="st ${p.status==='approved'?'on':'off'}" style="font-size:10.5px">${
-      p.status==='approved'?'● 已批准':p.status==='pending'?'○ 待批准':'✕ 已拒绝'}</span>
+      p.status==='approved'?'● 已批准':p.status==='pending'?'○ 待批准':'✕ 已停用'}</span>
     <span style="display:flex;gap:6px;flex:none">
-      ${p.status!=='approved'?`<button class="btn sm" onclick="adminSet('${p.user_id}','approved','organizer')">批准为主办方</button>`:''}
-      ${p.status==='approved'&&p.role!=='organizer'&&!p.is_admin?`<button class="btn ghost sm" onclick="adminSet('${p.user_id}',null,'organizer')">改为主办方</button>`:''}
-      ${p.status!=='rejected'&&!p.is_admin&&p.user_id!==SESSION.user.id?`<button class="btn danger sm" onclick="adminSet('${p.user_id}','rejected',null)">停用</button>`:''}
+      ${p.status!=='approved'?`<button class="btn sm" onclick="adminSet('${p.user_id}','approved')">批准为主办方</button>`:''}
+      ${p.status!=='rejected'&&p.user_id!==SESSION.user.id?`<button class="btn danger sm" onclick="adminSet('${p.user_id}','rejected')">停用</button>`:''}
     </span></div>`;
   const cRow=c=>`<div class="rvrow" style="flex-wrap:wrap;gap:8px">
     <span class="c2 num" style="letter-spacing:.06em">${esc(c.code)}</span>
-    <span class="lbl">${esc(c.role)}${c.note?' · '+esc(c.note):''}</span>
+    <span class="lbl">主办方${c.note?' · '+esc(c.note):''}</span>
     <span class="st ${c.uses_left>0?'on':'off'}" style="font-size:10.5px">${c.uses_left>0?'可用 '+c.uses_left:'已用完'}</span>
     <span style="display:flex;gap:6px;flex:none">
       <button class="btn ghost sm" onclick="adminCopyCode('${esc(c.code)}')">复制</button>
@@ -1709,18 +1714,16 @@ function viewAdmin(){
     <p class="note9">管理员不能在这里被创建或撤销 — is_admin 只能在数据库里改（0012 的硬规则）。</p>
   </div>`;
 }
-function adminSet(uid,status,role){
-  const patch={};if(status)patch.status=status;if(role)patch.role=role;
-  if(!Object.keys(patch).length)return;
-  // assert on the returned ROW, not merely on the absence of an error: the profile trigger
-  // silently reverts status/role for a non-admin caller, which would otherwise "succeed"
-  sb.from('profile').update(patch).eq('user_id',uid).select('user_id,status,role').then(({data,error})=>{
+function adminSet(uid,status){
+  if(!status)return;
+  // assert on the returned ROW, not merely on the absence of an error: the ym_member trigger
+  // silently reverts status for a non-admin caller, which would otherwise "succeed"
+  sb.from('ym_member').update({status}).eq('user_id',uid).select('user_id,status').then(({data,error})=>{
     if(error){toast('操作失败：'+error.message);return;}
     const row=data&&data[0];
     if(!row){toast('没有更新任何账号');return;}
-    const applied=(!status||row.status===status)&&(!role||row.role===role);
     ADMIN=null;render();
-    toast(applied?(status==='rejected'?'已停用':'已更新'):'服务器未接受该修改（权限不足）');
+    toast(row.status===status?(status==='rejected'?'已停用':'已批准'):'服务器未接受该修改（权限不足）');
   });
 }
 function adminNewCode(){
@@ -1730,7 +1733,7 @@ function adminNewCode(){
   const buf=new Uint32Array(12);crypto.getRandomValues(buf);
   const body=[...buf].map(x=>A[x%A.length]).join('');
   const code='YM-'+body.slice(0,4)+'-'+body.slice(4,8)+'-'+body.slice(8,12);
-  sb.from('ym_invite').insert({code,role:'organizer',note,uses_left:uses,
+  sb.from('ym_invite').insert({code,note,uses_left:uses,
     created_by:SESSION.user.id}).select('code').then(({error})=>{
       if(error){toast('生成失败：'+error.message);return;}
       ADMIN=null;render();adminCopyCode(code);
