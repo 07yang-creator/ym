@@ -312,6 +312,44 @@ function cloudPushAll(){
   const rows=STORE.events.map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
     .concat([{owner:SESSION.user.id,kind:'library',doc_id:'lib',payload:STORE.library}]);
   sb.from('ym_doc').upsert(rows).then(r=>{if(r.error)toast('云同步失败：'+r.error.message);});
+  pushShares();
+}
+/* hub-and-spoke: publish each linked member's own view (0009 ym_share) */
+function shareDataFor(p){
+  const jobs=[];
+  STORE.events.forEach(e=>{
+    const duties=[];
+    const scan=(holder,where,time)=>holder.resources.forEach(c=>{
+      if(c.refId===p.id)duties.push({where,time,status:RES_ST[c.status||0]});});
+    scan(e.header,'活动全场','');
+    e.rows.forEach(r=>scan(r,r.seg||'',r.time||''));
+    if(!duties.length)return;
+    const log=(e.volLog||{})[p.id]||{};
+    jobs.push({event:e.name,date:e.date,start:e.start||'',venue:e.venue||'',
+      duties,hours:log.hours||'',review:log.review||''});
+  });
+  return {name:p.name,role:p.role||'',jobs,at:new Date().toISOString()};
+}
+function pushShares(){
+  if(!canCloud())return;
+  const linked=STORE.library.resources.filter(p=>(p.type||'人')==='人'&&p.shareEmail);
+  if(!linked.length)return;
+  const rows=linked.map(p=>({host:SESSION.user.id,member_email:p.shareEmail.toLowerCase(),
+    payload:shareDataFor(p)}));
+  sb.from('ym_share').upsert(rows,{onConflict:'host,member_email'})
+    .then(r=>{if(r.error)toast('成员发布失败：'+r.error.message);});
+}
+function grantAccount(pid){
+  const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
+  if(!canCloud()){toast('先登录并通过批准，才能授权成员账号');return;}
+  const cur=p.shareEmail||((p.contact||'').indexOf('@')>0?p.contact:'');
+  const em=prompt('成员邮箱 — TA 用此邮箱注册后，只能看到你发布给TA的内容（本人岗位/信息）。留空=取消授权',cur);
+  if(em===null)return;
+  const v=em.trim().toLowerCase();
+  if(!v){ if(p.shareEmail){sb.from('ym_share').delete().match({member_email:p.shareEmail.toLowerCase()}).then(()=>{});}
+    delete p.shareEmail;save();render();toast('已取消授权');return;}
+  if(v.indexOf('@')<1){toast('邮箱格式不对');return;}
+  p.shareEmail=v;save();render();toast('已授权 '+v+' — 保存时自动发布TA的岗位');
 }
 async function cloudLoad(){
   if(!sb||!SESSION){PROFILE=null;render();return;}
@@ -782,9 +820,20 @@ function viewLib(){
       <button class="btn sm" onclick="libAddIdea()">加入资产库</button></div>`;
   }else if(S.libTab==='people'||S.libTab==='goods'){
     const t2=S.libTab==='people'?'人':'物';
-    list=L.resources.filter(x=>(x.type||'人')===t2).map(x=>`<div class="libitem"><div class="t">${t2==='人'?'👤':'📦'} ${esc(x.name)}</div>
+    list=L.resources.filter(x=>(x.type||'人')===t2).map(x=>`<div class="libitem"><div class="t">${t2==='人'?'👤':'📦'} ${esc(x.name)}
+        ${x.shareEmail?`<span class="lbl" style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span>`:''}</div>
       <div class="m">${esc(x.role)}${x.contact?' · '+esc(x.contact):''}
-      <button class="btn danger sm" style="float:right" onclick="libDel('resources','${x.id}')">删除</button></div></div>`).join('');
+      <span style="float:right">
+        ${t2==='人'?`<button class="btn ghost sm" onclick="grantAccount('${x.id}')">${x.shareEmail?'账号✓':'授权账号'}</button> `:''}
+        <button class="btn danger sm" onclick="libDel('resources','${x.id}')">删除</button></span></div></div>`).join('');
+    if(t2==='人'){
+      const seen={},guests=[];
+      STORE.events.forEach(e2=>(e2.participants||[]).forEach(p=>{const k=p.gender+p.name;
+        if(seen[k])seen[k].n++;else{seen[k]={g:p.gender,name:p.name,job:p.job,n:1};guests.push(seen[k]);}}));
+      if(guests.length)list+=`<div class="sbsec" style="grid-column:1/-1">嘉宾（来自各活动名册 · 主办方创建 · 只读汇总）</div>`+
+        guests.map(g=>`<div class="libitem" style="opacity:.75"><div class="t">${g.g==='男'?'♂':'♀'} ${esc(g.name)}</div>
+          <div class="m">${esc(g.job||'')} · 参加 ${g.n} 场</div></div>`).join('');
+    }
     form=t2==='人'
       ?`<div class="addform"><div class="lbl" style="margin-bottom:8px">新人员（志愿者/工作人员 — 嘉宾在活动名册里）</div>
         <div class="frow"><input id="nr_name" placeholder="姓名"><input id="nr_role" style="width:110px" placeholder="角色，如：摄影"></div>
@@ -1188,6 +1237,7 @@ function viewReview(){
     <div class="rvsec"><div class="hd"><span class="lbl">到场</span>
       <span class="num" style="font-size:15px">${am+aw}/${total}</span></div>
       <div style="font-size:12.5px">男 ${am} · 女 ${aw} · 评价 ${evals} 条${noshow.length?`<br><span class="muted">未到：${noshow.map(p=>esc(p.gender+p.n+' '+p.name)).join('、')}</span>`:''}</div></div>
+    ${volSection(e)}
     <div class="exports">
       <button class="btn sm" onclick="startSaveBack()">💾 保存回资产库</button>
       <button class="btn ghost sm" onclick="shareRundown()">📤 分享台本</button>
@@ -1198,6 +1248,26 @@ function viewReview(){
     <p class="note9">保存回资产库＝这场活动变成下一场的起点：台本成模板、新环节成灵感、帮过忙的人进资源、实际价格更新收支项。</p>
   </div>`;
 }
+/* ---- 志愿者 per-event 服务时长/工作评价 (V1.0; feeds the member share) ---- */
+function volSection(e){
+  const seen={},people=[];
+  allResChips(e).forEach(x=>{const c=x.c;
+    if((c.type||'人')!=='人'||!c.refId||seen[c.refId])return;
+    seen[c.refId]=1;people.push(c);});
+  if(!people.length)return '';
+  e.volLog=e.volLog||{};
+  const rows=people.map(c=>{const log=e.volLog[c.refId]||{};
+    return `<div class="rvrow"><span class="c2">👤 ${esc(c.name)}<span class="muted" style="font-size:11px"> ${esc(c.role||'')}</span></span>
+      <input style="width:74px;padding:5px 8px" placeholder="时长h" inputmode="decimal" value="${esc(log.hours||'')}"
+        onchange="volLog('${c.refId}','hours',this.value)">
+      <input style="flex:1.4;padding:5px 8px" placeholder="工作评价" value="${esc(log.review||'')}"
+        onchange="volLog('${c.refId}','review',this.value)"></div>`;}).join('');
+  return `<div class="rvsec"><div class="hd"><span class="lbl">志愿者 · 服务时长 / 工作评价</span></div>${rows}
+    <p class="note9" style="margin:8px 0 0">已授权账号的成员会在自己的页面看到这里的时长与评价。</p></div>`;
+}
+function volLog(refId,k,v){const e=ev();e.volLog=e.volLog||{};
+  e.volLog[refId]=e.volLog[refId]||{};e.volLog[refId][k]=v.trim();save();}
+
 /* ---- save-back builder: what this event can teach the library ---- */
 function startSaveBack(){S.saveBack=buildSaveBack(ev());render();}
 function buildSaveBack(e){

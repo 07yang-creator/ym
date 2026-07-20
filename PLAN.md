@@ -117,12 +117,16 @@ and re-confirm shared vs own project.
   we remain the 委託先. Guest accounts, if ever granted, see only their own record via a
   host-published share.
 
-### Y5 — people & member accounts (next, on request)
-- [ ] `0009_ym_people.sql`: `ym_share` per the sketch above; member role value
-- [ ] Registry: 人员 first-class (嘉宾/志愿者 categories), 物资 separate
-- [ ] Host grants an account: invite by email → member registers → host links person↔user
-- [ ] Member view: my jobs / my info only (published by host, hub-and-spoke)
-- [ ] Volunteer job flow: assignment + 服务时长/工作评价 per V1.0
+### Y5 — people & member accounts · shipped 2026-07-20
+- [x] `0009_ym_people.sql`: `ym_share` (host CRUD · member SELECT own claimed rows ·
+      claim-by-verified-email RPC, no enumeration). **Refinement: members need NO profile
+      and NO admin approval — the host's published row IS the grant** (host is the gate).
+- [x] Registry: 人员/物资 tabs; 人员 shows 志愿者(库) + derived read-only 嘉宾 roster
+- [x] Host grants/revokes per person: 授权账号 by email; shares republish on every save
+- [x] Member page `ym/member/`: login/register → claim → my info + my duties/hours/review
+      only; 志愿者入口 linked from the landing footer
+- [x] Volunteer 服务时长/工作评价 per event in 复盘 (feeds the member share)
+- [ ] OWNER: apply `supabase/migrations/0009_ym_people.sql` (needs 0008)
 
 Salon requirements source: 缘满沙龙系统需求 (owner-shared Google Doc, Drive folder 缘满沙龙) —
 our evaluation fields (优点/建议改进/后续跟进), the job list, and the V2.0 deferrals

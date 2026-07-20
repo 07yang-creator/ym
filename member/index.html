@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>成员页 · ym</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{--felt:#16241E;--felt-up:#1E3129;--stock:#E8E0CD;--stock-dim:#8E9A90;
+    --brass:#C9A356;--brass-dim:#6E5F36;--ink:#0E1512;--muted:#7C8F85;--line:#2C4238;--ok:#7FA98A}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{background:#0E1713;color:var(--stock);
+    font:14px/1.7 "Noto Sans JP",-apple-system,"PingFang SC","Hiragino Sans",sans-serif}
+  .num{font-family:Oswald,sans-serif;font-variant-numeric:tabular-nums}
+  .app{max-width:560px;margin:0 auto;min-height:100vh;background:var(--felt);padding:0 16px 40px}
+  .top{display:flex;align-items:center;gap:10px;height:50px;border-bottom:1px solid var(--line)}
+  .top .logo{font-family:Oswald,sans-serif;font-size:17px;color:var(--brass)}
+  .top .t{font-size:12px;color:var(--muted);letter-spacing:.18em}
+  .top .sp{flex:1}
+  .lbl{font-size:10px;letter-spacing:.2em;color:var(--muted)}
+  .muted{color:var(--muted)}
+  input{font:inherit;color:var(--stock);background:var(--felt-up);border:1px solid var(--line);
+    border-radius:4px;padding:10px 12px;width:100%}
+  input:focus{outline:1px solid var(--brass);border-color:var(--brass)}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+  .btn{background:var(--brass);color:var(--ink);border-radius:4px;padding:10px 16px;
+    font-size:12.5px;font-weight:700;letter-spacing:.06em}
+  .btn.ghost{background:none;color:var(--brass);border:1px solid var(--brass-dim)}
+  .card{background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:13px 14px;margin:12px 0}
+  .job .ev{font-size:14.5px;font-weight:700}
+  .job .meta{font-size:11px;color:var(--muted);letter-spacing:.06em;margin-top:2px}
+  .duty{display:flex;gap:9px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .duty:last-child{border-bottom:0}
+  .duty .tm{font-family:Oswald,sans-serif;width:48px;flex:none;color:var(--stock-dim)}
+  .duty .st{margin-left:auto;font-size:10.5px;color:var(--brass);flex:none}
+  .rv{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px}
+  .rv b{color:var(--brass)}
+  .note{font-size:10.5px;color:var(--muted);line-height:1.8;margin-top:18px}
+  .empty{color:var(--muted);text-align:center;padding:40px 10px;line-height:2}
+  .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:60;background:var(--stock);
+    color:var(--ink);font-size:12.5px;padding:9px 16px;border-radius:4px;box-shadow:0 8px 20px -4px rgba(0,0,0,.6)}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script>
+'use strict';
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;
+  document.body.appendChild(t);setTimeout(()=>t.remove(),2200);}
+function fmtDate(s){if(!s)return '';const d=new Date(s+'T00:00:00');if(isNaN(d))return s;
+  return (d.getMonth()+1)+'/'+d.getDate()+'('+'日一二三四五六'[d.getDay()]+')';}
+const SB_URL='https://ugkopxmeqsbtjeimultz.supabase.co', SB_KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
+const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
+let SESSION=null,SHARES=null,_busy=false;
+const $=id=>document.getElementById(id);
+
+function render(){
+  let body='';
+  if(!SESSION)body=loginHtml();
+  else if(SHARES===null)body=`<div class="empty">读取中…</div>`;
+  else if(!SHARES.length)body=`<div class="empty">还没有主办方发布给你的内容。<br>
+    <span class="muted">请确认主办方已用这个邮箱给你授权。</span></div>`;
+  else body=SHARES.map(shareHtml).join('');
+  document.getElementById('app').innerHTML=`
+    <div class="top"><span class="logo">ym</span><span class="t">成员页</span><span class="sp"></span>
+      ${SESSION?`<button class="btn ghost" style="padding:6px 12px;font-size:11.5px" onclick="signOut()">退出</button>`:''}</div>
+    ${body}
+    <p class="note">此页只显示主办方发布给你本人的内容（你的岗位与记录）。成员之间互不可见 —
+      有任何问题请直接联系主办方。</p>`;
+}
+function loginHtml(){
+  return `<div class="card" style="margin-top:28px">
+    <div class="lbl" style="margin-bottom:10px">登录 — 志愿者 / 工作人员</div>
+    <input id="em" type="email" placeholder="邮箱（主办方授权用的那个）" style="margin-bottom:8px">
+    <input id="pw" type="password" placeholder="密码" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')signIn()">
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1" onclick="signIn()">登录</button>
+      <button class="btn ghost" style="flex:1" onclick="signUp()">首次注册</button></div>
+    <p class="note">注册用主办方给你授权的邮箱；确认邮件后回来登录即可，无需等待审批。</p></div>`;
+}
+function shareHtml(row){
+  const d=row.payload||{};
+  const jobs=(d.jobs||[]).map(j=>`<div class="card job">
+    <div class="ev">${esc(j.event)}</div>
+    <div class="meta">${fmtDate(j.date)}${j.start?' '+esc(j.start):''}${j.venue?' · '+esc(j.venue):''}</div>
+    <div style="margin-top:8px">${(j.duties||[]).map(x=>`<div class="duty">
+      <span class="tm">${esc(x.time||'--')}</span><span>${esc(x.where)}</span>
+      <span class="st">${esc(x.status||'')}</span></div>`).join('')}</div>
+    ${(j.hours||j.review)?`<div class="rv">${j.hours?`服务时长 <b class="num">${esc(j.hours)}h</b>`:''}
+      ${j.review?`${j.hours?' · ':''}评价：${esc(j.review)}`:''}</div>`:''}</div>`).join('');
+  return `<div style="margin-top:18px">
+    <div class="lbl">你好，${esc(d.name||'')}${d.role?' · '+esc(d.role):''}</div>
+    ${jobs||'<div class="empty">暂无岗位安排</div>'}</div>`;
+}
+async function load(){
+  SHARES=null;render();
+  try{await sb.rpc('ym_claim_shares');}catch(e){}
+  const {data,error}=await sb.from('ym_share').select('payload,updated_at');
+  if(error){toast('读取失败：'+error.message);SHARES=[];}
+  else SHARES=data||[];
+  render();
+}
+function signIn(){
+  if(_busy||!sb)return;_busy=true;
+  const email=($('em').value||'').trim(),pw=$('pw').value||'';
+  if(!email||!pw){toast('请输入邮箱和密码');_busy=false;return;}
+  sb.auth.signInWithPassword({email,password:pw}).then(({error})=>{_busy=false;
+    if(error){toast('登录失败：'+error.message);return;}});
+}
+function signUp(){
+  if(_busy||!sb)return;_busy=true;
+  const email=($('em').value||'').trim(),pw=$('pw').value||'';
+  if(!email||pw.length<6){toast('请输入邮箱和至少6位密码');_busy=false;return;}
+  sb.auth.signUp({email,password:pw}).then(({data,error})=>{_busy=false;
+    if(error){toast('注册失败：'+error.message);return;}
+    toast(data.session?'注册成功':'确认邮件已发送，请查收后回来登录');});
+}
+function signOut(){sb.auth.signOut().then(()=>{SHARES=null;render();});}
+if(sb){
+  sb.auth.getSession().then(({data})=>{SESSION=data.session;if(SESSION)load();else render();});
+  sb.auth.onAuthStateChange((ev2,s2)=>{
+    const was=SESSION&&SESSION.user.id,now=s2&&s2.user.id;
+    SESSION=s2;if(was!==now){if(s2)load();else render();}});
+}else{document.getElementById('app').innerHTML='<div class="empty">加载失败，请刷新</div>';}
+render();
+</script>
+</body>
+</html>
