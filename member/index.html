@@ -116,7 +116,7 @@ function signUp(){
   if(_busy||!sb)return;_busy=true;
   const email=($('em').value||'').trim(),pw=$('pw').value||'';
   if(!email||pw.length<6){toast('请输入邮箱和至少6位密码');_busy=false;return;}
-  sb.auth.signUp({email,password:pw}).then(({data,error})=>{_busy=false;
+  sb.auth.signUp({email,password:pw,options:{emailRedirectTo:'https://ym.jjconnect.tokyo/member/'}}).then(({data,error})=>{_busy=false;
     if(error){toast('注册失败：'+error.message);return;}
     toast(data.session?'注册成功':'确认邮件已发送，请查收后回来登录');});
 }

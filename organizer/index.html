@@ -583,7 +583,7 @@ function doSignUp(){
   if(_authBusy||!sb)return;_authBusy=true;
   const email=($('au_email').value||'').trim(),pw=$('au_pw').value||'';
   if(!email||pw.length<6){toast('请输入邮箱和至少6位密码');_authBusy=false;return;}
-  sb.auth.signUp({email,password:pw}).then(({data,error})=>{
+  sb.auth.signUp({email,password:pw,options:{emailRedirectTo:'https://ym.jjconnect.tokyo/organizer/'}}).then(({data,error})=>{
     _authBusy=false;
     if(error){toast('注册失败：'+error.message);return;}
     toast(data.session?'注册成功':'确认邮件已发送，请查收后回来登录');
