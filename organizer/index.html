@@ -335,7 +335,10 @@ function canCloud(){return !!(sb&&SESSION&&PROFILE
   &&(PROFILE.status==='approved'||PROFILE.is_admin));}
 function cloudPushAll(){
   if(!canCloud())return;
-  const rows=STORE.events.map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
+  // the 教学示例 tutorial event is seeded locally in every browser — never upload it as if it
+  // were the salon's real data
+  const rows=STORE.events.filter(e=>!e.demo)
+    .map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
     .concat([{owner:SESSION.user.id,kind:'library',doc_id:'lib',payload:STORE.library}]);
   sb.from('ym_doc').upsert(rows).then(r=>{if(r.error)toast('云同步失败：'+r.error.message);});
   pushShares();
@@ -343,7 +346,8 @@ function cloudPushAll(){
 /* hub-and-spoke: publish each linked member's own view (0009 ym_share) */
 function shareDataFor(p){
   const jobs=[];
-  STORE.events.forEach(e=>{
+  // never publish 教学示例 duties to a real volunteer's page — the tutorial invites practice
+  STORE.events.filter(e=>!e.demo).forEach(e=>{
     const duties=[];
     const scan=(holder,where,time)=>holder.resources.forEach(c=>{
       if(c.refId===p.id)duties.push({where,time,status:RES_ST[c.status||0]});});
@@ -356,14 +360,34 @@ function shareDataFor(p){
   });
   return {name:p.name,role:p.role||'',jobs,at:new Date().toISOString()};
 }
+// must match 0013's ym_share_email_shape CHECK exactly, or a save silently 500s server-side
+const EMAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 function pushShares(){
   if(!canCloud())return;
   const linked=STORE.library.resources.filter(p=>catOf(p)==='volunteer'&&p.shareEmail);
   if(!linked.length)return;
-  const rows=linked.map(p=>({host:SESSION.user.id,member_email:p.shareEmail.toLowerCase(),
-    payload:shareDataFor(p)}));
+  // De-duplicate by address: ym_share's PK is (host, member_email), and two rows with the
+  // same key in ONE upsert makes Postgres abort the whole statement ("cannot affect row a
+  // second time") — which would silently freeze publishing for every other volunteer too.
+  const byEmail={};
+  linked.forEach(p=>{
+    const em=String(p.shareEmail||'').trim().toLowerCase();
+    if(!EMAIL_RE.test(em)||em.length>320)return;      // never send what the CHECK will reject
+    byEmail[em]=p;                                     // last record wins
+  });
+  const rows=Object.keys(byEmail).map(em=>({host:SESSION.user.id,member_email:em,
+    payload:shareDataFor(byEmail[em])}));
+  const bad=linked.length-rows.length;
+  if(!rows.length){if(bad)toast('成员邮箱格式有误，未发布');return;}
   sb.from('ym_share').upsert(rows,{onConflict:'host,member_email'})
-    .then(r=>{if(r.error)toast('成员发布失败：'+r.error.message);});
+    .then(r=>{if(r.error)toast('成员发布失败：'+r.error.message);
+      else if(bad)toast('已发布 '+rows.length+' 位（'+bad+' 位邮箱重复或有误，已跳过）');});
+}
+// revoking or re-addressing must actually take the old row away
+function dropShare(email){
+  if(!canCloud()||!email)return;
+  sb.from('ym_share').delete().match({host:SESSION.user.id,
+    member_email:String(email).trim().toLowerCase()}).then(()=>{});
 }
 function grantAccount(pid){
   const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
@@ -376,26 +400,33 @@ function grantAccount(pid){
   const em=prompt('成员邮箱 — TA 用此邮箱注册后，只能看到你发布给TA的内容（本人岗位/信息）。留空=取消授权',cur);
   if(em===null)return;
   const v=em.trim().toLowerCase();
-  if(!v){ if(p.shareEmail){sb.from('ym_share').delete().match({member_email:p.shareEmail.toLowerCase()}).then(()=>{});}
+  const old=p.shareEmail;
+  if(!v){ if(old)dropShare(old);
     delete p.shareEmail;save();render();toast('已取消授权');return;}
-  if(v.indexOf('@')<1){toast('邮箱格式不对');return;}
+  if(!EMAIL_RE.test(v)||v.length>320){toast('邮箱格式不对（需要 name@example.com 这样的完整地址）');return;}
+  const clash=STORE.library.resources.find(x=>x.id!==p.id&&String(x.shareEmail||'').toLowerCase()===v);
+  if(clash){toast('这个邮箱已授权给「'+clash.name+'」，请先取消那边');return;}
+  if(old&&old.toLowerCase()!==v)dropShare(old);      // don't leave the old address readable
   p.shareEmail=v;save();render();toast('已授权 '+v+' — 保存时自动发布TA的岗位');
 }
 async function cloudLoad(){
-  if(!sb||!SESSION){PROFILE=null;render();return;}
+  if(!sb||!SESSION){PROFILE=null;stopPoll();render();return;}
+  // is_admin lives on the shared profile (it spans both products); absent row = not admin.
+  // Read it FIRST: an admin reaches ym through is_admin and must not auto-register as a
+  // pending 主办方, which would put them in their own 待批准 list.
+  const {data:pr}=await sb.from('profile').select('is_admin').eq('user_id',SESSION.user.id).maybeSingle();
+  const admin=!!(pr&&pr.is_admin);
   // ym membership is its OWN row (0012), orthogonal to the cashflow 区分 — so one account can
   // be a 会計士 in jjcashflow AND a 主办方 here. We never write profile.role from this app.
   const cols='role,status,email';
   let {data:mem}=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
-  if(!mem){ // first visit: register for ym (the server forces status='pending')
+  if(!mem&&!admin){ // first visit: register for ym (the server forces status='pending')
     const ins=await sb.from('ym_member').insert({user_id:SESSION.user.id}).select(cols).maybeSingle();
     mem=ins.data||null;
     if(ins.error&&ins.error.code!=='23505')toast('注册失败：'+ins.error.message);
     if(!mem){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();mem=re.data||null;}
   }
-  // is_admin still lives on the shared profile (it spans both products); absent row = not admin
-  const {data:pr}=await sb.from('profile').select('is_admin').eq('user_id',SESSION.user.id).maybeSingle();
-  PROFILE=mem?Object.assign({},mem,{is_admin:!!(pr&&pr.is_admin)}):(pr&&pr.is_admin?{status:'none',role:'',is_admin:true}:null);
+  PROFILE=mem?Object.assign({},mem,{is_admin:admin}):(admin?{status:'none',role:'',is_admin:true}:null);
   // An invite code entered at signup is redeemed on the first real session. It is bound to the
   // address that typed it and expires, so signing in as somebody else on a shared device can
   // never spend their seat on the wrong account.
@@ -406,18 +437,51 @@ async function cloudLoad(){
     if(r==='ok'){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
       if(re.data)PROFILE=Object.assign({},re.data,{is_admin:PROFILE.is_admin});}
   }
-  if(!canCloud()){render();return;}
+  if(!canCloud()){startPoll();render();return;}   // pending → watch for the admin's approval
+  stopPoll();
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
   if(error){toast('云端读取失败：'+error.message);render();return;}
   if(rows&&rows.length){
-    const evs=rows.filter(r=>r.kind==='event').map(r=>r.payload);
+    // MERGE, never replace. Two devices practising before approval must not delete each
+    // other's work: cloud wins per event id, and anything only this device has is kept.
+    const cloudEvs=rows.filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
+    const have={};cloudEvs.forEach(e=>{if(e&&e.id)have[e.id]=1;});
+    const localOnly=(STORE.events||[]).filter(e=>e&&e.id&&!have[e.id]&&!e.demo);
     const lib=rows.find(r=>r.kind==='library');
-    STORE={events:evs,library:lib?lib.payload:STORE.library,y2:1};
+    STORE={events:cloudEvs.concat(localOnly),
+           library:mergeLibrary(lib?lib.payload:null,STORE.library),
+           y2:1,y6:1,y7:1};
     ensureY2();
     S.evId=STORE.events[0]?STORE.events[0].id:null;S.sel='header';
-  }else{cloudPushAll();}
-  render();toast('☁ 云同步已开启');
+    if(localOnly.length)toast('☁ 已同步（本机 '+localOnly.length+' 场活动已合并上传）');
+    else toast('☁ 云同步已开启');
+    if(localOnly.length)cloudPushAll();
+  }else{cloudPushAll();toast('☁ 云同步已开启');}
+  render();
 }
+// union by id; cloud entries win, local-only entries survive
+function mergeLibrary(cloud,local){
+  if(!cloud)return local;
+  if(!local)return cloud;
+  const out=JSON.parse(JSON.stringify(cloud));
+  ['templates','ideas','resources','money'].forEach(k=>{
+    out[k]=out[k]||[];
+    const seen={};out[k].forEach(x=>{if(x&&x.id)seen[x.id]=1;});
+    (local[k]||[]).forEach(x=>{if(x&&x.id&&!seen[x.id])out[k].push(x);});
+  });
+  return out;
+}
+/* An admin's approval writes to the DB and produces NO auth event, so an open pending
+   session would sit on ⏳ forever. Poll while pending; stop the moment we're in. */
+let _pollT=null;
+function startPoll(){
+  if(_pollT||!SESSION)return;
+  _pollT=setInterval(()=>{
+    if(!SESSION||canCloud()){stopPoll();return;}
+    cloudLoad();
+  },15000);
+}
+function stopPoll(){if(_pollT){clearInterval(_pollT);_pollT=null;}}
 const INV_KEY='jjym_invite';
 function readPendingCode(){
   try{
@@ -437,7 +501,7 @@ async function redeemInvite(code,quiet){
     if(data==='ok')toast('邀请码有效 — 已开通');
     else if(data==='already')toast('这个账号已经开通了');
     else if(data==='invalid')toast('邀请码无效或已用完');
-    else if(data==='no-profile')toast('请先完成登录，再输入邀请码');
+    else if(data==='no-profile')toast('请先刷新页面（本机还没登记 ym 账号），再试一次');
   }
   return data;
 }
@@ -642,11 +706,14 @@ function authSheet(){
     inner=`<div style="font-size:13px;line-height:2">${rejected?'⛔':'⏳'} <b>${esc(SESSION.user.email||'')}</b><br>
       <span class="muted">${rejected?'此账号已被管理员停用。数据仍在本机，请联系管理员。'
         :'已注册，等待管理员批准（区分：主办方）。批准前数据仅存本机，不会丢。'}</span></div>
-      ${rejected?'':`<div class="addform" style="margin-top:12px">
+      ${rejected?'':`<button class="btn" style="width:100%;margin-top:12px" onclick="recheck()">
+          🔄 管理员已批准？点这里刷新</button>
+        <div class="addform" style="margin-top:10px">
         <div class="lbl" style="margin-bottom:8px">有邀请码？立即开通</div>
         <input id="au_code2" placeholder="邀请码" style="margin-bottom:8px"
           onkeydown="if(event.key==='Enter')useCode()">
-        <button class="btn sm" onclick="useCode()">使用邀请码</button></div>`}
+        <button class="btn sm" onclick="useCode()">使用邀请码</button></div>
+        <p class="note9">批准后本页会自动开通（每15秒检查一次），也可以点上面的按钮立即刷新。</p>`}
       <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
   }
   else
@@ -655,12 +722,13 @@ function authSheet(){
         value="${esc(S.authEmail||'')}" onchange="S.authEmail=this.value">
       <input id="au_pw" type="password" placeholder="密码" style="margin-bottom:8px"
         onkeydown="if(event.key==='Enter')doSignIn()">
-      <input id="au_code" placeholder="邀请码（注册用；没有则等待管理员批准）" style="margin-bottom:10px">
-      <div style="display:flex;gap:8px">
-        <button class="btn sm" style="flex:1" onclick="doSignIn()">登录</button>
-        <button class="btn ghost sm" style="flex:1" onclick="doSignUp()">注册（主办方）</button></div>
-      <p class="note9">未登录也可以用 — 数据存在本机浏览器。<br>
-        注册须有<b>邀请码</b>（立即开通）或<b>等待管理员批准</b>；两者都没有时，云同步不会打开。</p>`;
+      <input id="au_code" placeholder="邀请码（可选 · 登录或注册都能用）" style="margin-bottom:10px">
+      <button class="btn" style="width:100%" onclick="doSignIn()">登录</button>
+      <p class="note9" style="margin:10px 0 4px"><b style="color:var(--brass)">已经有 jjconnect / 记账账号？直接用它登录</b>
+        —— 同一个账号可以同时是会计和主办方，不用重新注册。</p>
+      <button class="btn ghost sm" style="width:100%" onclick="doSignUp()">我是新用户，注册主办方账号</button>
+      <p class="note9">未登录也能用 — 数据存在本机浏览器，登录后会合并上云，不会丢。<br>
+        开通方式：<b>邀请码</b>（立即）或<b>等待管理员批准</b>。</p>`;
   return `<div class="drawerbg" onclick="S.auth=false;render()"></div>
     <div class="drawer" style="left:auto;right:0;animation:none">${inner}</div>`;
 }
@@ -668,11 +736,15 @@ let _authBusy=false;
 function doSignIn(){
   if(_authBusy||!sb)return;_authBusy=true;
   const email=($('au_email').value||'').trim(),pw=$('au_pw').value||'';
+  const code=(($('au_code')||{}).value||'').trim();
   if(!email||!pw){toast('请输入邮箱和密码');_authBusy=false;return;}
+  // a code typed on the LOGIN form must count too — the host logs in, they don't register
+  try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+30*60*1000}));}catch(e){}
+  toast('登录中…');
   sb.auth.signInWithPassword({email,password:pw}).then(({error})=>{
     _authBusy=false;
     if(error){toast('登录失败：'+error.message);return;}
-    S.auth=false;render();
+    S.auth=false;render();toast('已登录，正在检查开通状态…');
   });
 }
 function doSignUp(){
@@ -686,6 +758,10 @@ function doSignUp(){
   sb.auth.signUp({email,password:pw,options:{emailRedirectTo:'https://ym.jjconnect.tokyo/organizer/'}}).then(({data,error})=>{
     _authBusy=false;
     if(error){toast('注册失败：'+error.message);return;}
+    // Supabase returns an obfuscated user with NO identities when the address already exists —
+    // without this the host would wait forever for a confirmation mail that never comes.
+    const dup=data&&data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0;
+    if(dup){toast('这个邮箱已经注册过了 — 请直接用它「登录」');return;}
     toast(data.session?(code?'注册成功，正在校验邀请码':'注册成功 — 等待管理员批准')
                       :'确认邮件已发送，请查收后回来登录');
     S.auth=false;render();
@@ -695,6 +771,11 @@ function useCode(){
   const el=$('au_code2');const c=(el&&el.value||'').trim();
   if(!c){toast('请输入邀请码');return;}
   redeemInvite(c,false).then(r=>{if(r==='ok')cloudLoad();});
+}
+function recheck(){
+  if(!SESSION){toast('请先登录');return;}
+  toast('正在检查…');
+  cloudLoad().then(()=>{if(!canCloud())toast('还没有被批准 — 请稍后再试');});
 }
 function doSignOut(){clearPendingCode();   // never carry a code across identities
   if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
@@ -833,8 +914,9 @@ function viewSheet(){
   return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main">
     ${sw}
     ${e.demo?`<div class="hintbar" style="border:1px dashed var(--brass-dim);border-radius:5px;padding:9px 11px">
-      <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不能公开到官网。
-      练熟了就按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。</div>`:''}
+      <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不会上云或公开到官网。
+      练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
+      <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧/📚 资产库点选应用。</div>
     ${strips}${S.costDraft?costDraftCard():''}${hd}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
@@ -873,6 +955,10 @@ function editMoney(loc,cid){const h=holderOf(loc);const c=h&&h.money.find(x=>x.i
   const v=prompt((c.kind==='in'?'收入':'支出')+'「'+c.name+'」实际金额（计划 '+yen(c.plan)+'；留空=未发生）',
     c.actual!=null?c.actual:'');
   if(v===null)return;c.actual=v===''?null:(parseInt(v.replace(/[^\d]/g,''),10)||0);save();render();}
+// the host may well rename the tutorial into their real event — give that an exit
+function promoteDemo(){const e=ev();if(!e||!e.demo)return;
+  if(!confirm('把「'+e.name+'」转为正式活动？转正后会上云备份，也可以公开到官网。'))return;
+  delete e.demo;save();render();toast('已转为正式活动');}
 function newEvent(){const e=instantiate(null);e.name='新活动';STORE.events.push(e);
   S.evId=e.id;S.sel='header';save();render();toast('从资产库点一个模板铺台本');}
 function delEvent(){const e=ev();if(!e)return;
@@ -1007,7 +1093,10 @@ function viewLib(){
     ${S.libEdit?libEditCard():''}`;
 }
 function libDel(k,id){const L=STORE.library;
-  if(!confirm('从资产库删除？（已挂到活动上的不受影响）'))return;
+  const rec=L[k].find(x=>x.id===id);
+  if(rec&&rec.shareEmail&&!confirm('「'+rec.name+'」有成员账号（'+rec.shareEmail+'）。删除会同时收回TA的查看权限，继续？'))return;
+  if(!rec||!rec.shareEmail){if(!confirm('从资产库删除？（已挂到活动上的不受影响）'))return;}
+  if(rec&&rec.shareEmail)dropShare(rec.shareEmail);   // otherwise they keep reading forever
   L[k]=L[k].filter(x=>x.id!==id);save();render();}
 /* ---- item detail editor — full information fields per 缘满沙龙 V1.0 ---- */
 const LIB_FIELDS={
@@ -1652,7 +1741,12 @@ function syncEventPost(e,announce){
     title:e.name||'活动',summary:e.theme||'',post_date:e.date||null,published:true,
     meta:{start:e.start||'',venue:e.venue||'',signup:e.signup||''}},
     {onConflict:'author,source_id'}).select('id').then(({data,error})=>{
-      if(error){e.publicOn=false;save();render();toast('公开失败：'+error.message);return;}
+      if(error){
+        // don't just untick locally — that would leave a stale card live on the website
+        e.publicOn=false;save();
+        sb.from('ym_post').delete().match({author:SESSION.user.id,source_id:e.id})
+          .then(()=>{POSTS=null;render();});
+        render();toast('公开失败，已从官网撤下：'+error.message);return;}
       if(announce)toast(data&&data.length?'已公开到官网':'已提交');
       POSTS=null;
     });
