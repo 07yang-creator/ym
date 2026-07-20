@@ -364,6 +364,10 @@ function pushShares(){
 }
 function grantAccount(pid){
   const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
+  // Guest data is host-only (owner rule 2026-07-20): the 嘉宾 themselves must never be able
+  // to read their own record, so a guest can never be granted an account. Hard guard, not
+  // just a hidden button — pushShares() filters on the same rule.
+  if(catOf(p)!=='volunteer'){toast('只有志愿者/工作人员可以授权账号（嘉宾资料仅主办方可见）');return;}
   if(!canCloud()){toast('先登录并通过批准，才能授权成员账号');return;}
   const cur=p.shareEmail||((p.contact||'').indexOf('@')>0?p.contact:'');
   const em=prompt('成员邮箱 — TA 用此邮箱注册后，只能看到你发布给TA的内容（本人岗位/信息）。留空=取消授权',cur);
@@ -902,7 +906,8 @@ function viewLib(){
         <div class="frow"><input id="nr_contact" placeholder="联系方式（可选）"></div>
         <button class="btn sm" onclick="libAddRes('guest')">加入名册</button>
         <p class="note9">嘉宾通常在活动当天由 📷 报名表 / ⬆名单CSV / 看板添加，会自动进入这里；
-          也可以先建档，之后在看板「＋ 名册添加」直接选。</p></div>`;
+          也可以先建档，之后在看板「＋ 名册添加」直接选。<br>
+          <b style="color:var(--brass)">🔒 嘉宾资料由主办方填写与保管：嘉宾本人、志愿者、其他任何人都看不到。</b></p></div>`;
     else if(cat==='donor')
       form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新捐赠人</div>
         <div class="frow"><input id="nr_name" placeholder="捐赠人名称">
@@ -1027,7 +1032,8 @@ function libEditCard(){
       ${kind==='guest'?guestHistoryHtml(id):''}
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn" style="flex:1" onclick="libEditSave()">保存</button></div>
-      ${(kind==='volunteer'||kind==='guest')?'<p class="note9">照片随 Drive 媒体通道上线（Apps Script 部署后）。</p>':''}
+      ${kind==='guest'?'<p class="note9">🔒 这份资料只有主办方看得到 — 嘉宾本人也看不到。照片随 Drive 媒体通道上线。</p>'
+        :kind==='volunteer'?'<p class="note9">授权账号后，TA 只能看到自己的岗位与评价。照片随 Drive 媒体通道上线。</p>':''}
     </div></div>`;
 }
 // 一个嘉宾参加多场活动，每场有独立评价记录 (V1.0 §三)

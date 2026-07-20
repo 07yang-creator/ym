@@ -114,8 +114,13 @@ and re-confirm shared vs own project.
 - **嘉宾 data is created by the initiator** — no guest self-service (在线报名 stays V2.0, and
   even then it lands as a *proposal* the host accepts into a host-owned record). Privacy
   responsibility therefore sits with the host: the salon is the APPI controller of guest PII,
-  we remain the 委託先. Guest accounts, if ever granted, see only their own record via a
-  host-published share.
+  we remain the 委託先.
+- **嘉宾 data is host-eyes-only (owner, 2026-07-20).** The host fills it in and the host is the
+  only reader — **not the guest themselves**, not volunteers, not other members. So a 嘉宾 is
+  never granted an account: `grantAccount()` refuses any non-volunteer and `pushShares()`
+  publishes volunteer duties only, so no guest field can reach `ym_share` at all. Guest records
+  live solely in the host's own `ym_doc` (owner-only RLS). This supersedes the earlier note that
+  guests might one day read their own record — they may not.
 
 ### Y5 — people & member accounts · shipped 2026-07-20
 - [x] `0009_ym_people.sql`: `ym_share` (host CRUD · member SELECT own claimed rows ·
