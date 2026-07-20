@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../sanitize.js"></script>
 <style>
   /* ym identity — the reception table (see ym/design/ym-event-day.jsx) */
   :root{
@@ -36,7 +37,7 @@
   .topbar .ttl{font-size:12px;color:var(--muted);letter-spacing:.18em}
   .topbar .sp{flex:1}
   .navlinks{display:flex;gap:2px}
-  .navlinks button{color:var(--muted);font-size:12.5px;letter-spacing:.14em;padding:7px 12px;border-radius:4px}
+  .navlinks button{color:var(--muted);font-size:12.5px;letter-spacing:.08em;padding:7px 9px;border-radius:4px}
   .navlinks button.on{color:var(--brass);border-bottom:2px solid var(--brass);border-radius:0}
   .avatar{width:28px;height:28px;border-radius:50%;background:var(--brass);color:var(--ink);
     font-weight:700;display:grid;place-items:center;font-size:12px;flex:none}
@@ -73,6 +74,28 @@
     font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px -6px rgba(0,0,0,.7)}
   .modal-g{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:50;
     width:min(94vw,520px);max-height:80vh;overflow:auto}
+  /* ===== 发布 (Y6) ===== */
+  .petool{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 7px}
+  .petool button{border:1px solid var(--line);border-radius:3px;padding:6px 9px;font-size:12px;color:var(--stock-dim)}
+  .petool button:hover{border-color:var(--brass);color:var(--brass)}
+  .pe{background:var(--felt-up);border:1px solid var(--line);border-radius:4px;min-height:260px;
+    padding:13px 15px;font-size:14px;line-height:1.9;overflow-wrap:break-word;overflow:auto;max-height:52vh}
+  .pe:focus{outline:1px solid var(--brass);border-color:var(--brass)}
+  .pe h2{font-size:16.5px;margin:14px 0 6px}.pe h3{font-size:14.5px;margin:12px 0 5px}
+  .pe p{margin:8px 0}.pe ul,.pe ol{margin:8px 0;padding-left:22px}
+  .pe img{max-width:100%;height:auto;border-radius:3px;display:block;margin:8px 0}
+  .pe a{color:var(--brass);text-decoration:underline}
+  .pe blockquote{border-left:2px solid var(--brass-dim);margin:8px 0;padding-left:11px;color:var(--stock-dim)}
+  .pe table{border-collapse:collapse;width:100%;margin:8px 0}
+  .pe td,.pe th{border:1px solid var(--line);padding:5px 8px;font-size:13px;text-align:left}
+  .pe:empty:before{content:attr(data-ph);color:var(--brass-dim)}
+  .postrow{display:flex;gap:10px;align-items:baseline;background:var(--felt-up);border:1px solid var(--line);
+    border-radius:5px;padding:11px 13px;margin-bottom:7px;width:100%;text-align:left}
+  .postrow .k{font-size:10px;letter-spacing:.14em;color:var(--muted);flex:none;width:34px}
+  .postrow .tt{flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .postrow .st{font-size:10.5px;flex:none;letter-spacing:.1em}
+  .postrow .st.on{color:var(--brass)}.postrow .st.off{color:var(--muted)}
+  .postrow.ev{border-style:dashed}
   /* library */
   .libtabs{display:flex;gap:3px;margin-bottom:12px}
   .libtabs button{flex:1;font-size:11px;letter-spacing:.04em;padding:7px 0;color:var(--muted);
@@ -439,6 +462,7 @@ function seed(){
   ev.rows[2].resources.forEach(c=>c.status=1);
   const hm=ev.header.money.find(c=>c.name==='场地费');if(hm)hm.actual=40000;
   ev.participants=seedParticipants();
+  ev.demo=true;                      // tutorial case — kept on purpose (owner 2026-07-20)
   return {events:[ev],library:lib};
 }
 // Fabricated demo roster (design: ym/design/ym-event-day.jsx). No real people.
@@ -465,6 +489,10 @@ function ensureY2(){
     setU(STORE.library.money);
     STORE.events.forEach(e=>{setU(e.header.money);e.rows.forEach(r=>setU(r.money));});
     STORE.y2=1;
+  }
+  if(!STORE.y6){                     // the seeded event becomes the tutorial case
+    STORE.events.forEach(e=>{if((e.name||'').indexOf('夏日茶会')>=0&&e.participants.length)e.demo=true;});
+    STORE.y6=1;
   }
   save();
 }
@@ -501,13 +529,14 @@ function followUps(e){const f=[];
 /* ================= render ================= */
 const $=id=>document.getElementById(id);
 function render(){
-  const nav=[['today','今日'],['sheet','活动'],['lib','资产库']].map(([k,l])=>
+  const nav=[['today','今日'],['sheet','活动'],['lib','资产库'],['post','发布']].map(([k,l])=>
     `<button class="${S.view===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
   let body='';
   if(S.view==='sheet')body=viewSheet();
   else if(S.view==='today')body=viewToday();
   else if(S.view==='day')body=viewDay();
   else if(S.view==='review')body=viewReview();
+  else if(S.view==='post')body=viewPost();
   else body=viewLib();
   $('app').innerHTML=`
     <div class="topbar">
@@ -520,6 +549,9 @@ function render(){
     ${S.auth?authSheet():''}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
       <div class="drawer">${libPanel()}</div>`:''}`;
+  // editor body is filled with sanitized NODES (never innerHTML) — no re-parse window
+  if(S.postEdit&&$('po_body')&&window.ymSanitize)
+    window.ymSanitize.into($('po_body'),S.postEdit.body_html||'');
 }
 function go(v){S.view=v;S.drawer=false;render();}
 
@@ -650,7 +682,7 @@ function viewSheet(){
   const e=ev();
   const sw=`<div class="evsw">
     <select onchange="S.evId=this.value;S.sel='header';render()">
-      ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
+      ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${x.demo?'【教学】':''}${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
     </select>
     ${e?`<button class="btn sm" onclick="goDay()">▶ 当天</button>
     <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
@@ -693,6 +725,16 @@ function viewSheet(){
         onclick="event.stopPropagation();selRow('header')" onchange="e_upd('venue',this.value)"></div>
     <div class="chips">${chipsHtml(e.header,'header')}</div>
     <div class="lbl" style="margin-top:8px">活动全场 — 点选此卡后，从资产库挂「全场」资源/收支</div>
+    <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:flex;
+      gap:9px;align-items:center;flex-wrap:wrap" onclick="event.stopPropagation()">
+      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer">
+        <input type="checkbox" style="width:auto" ${e.publicOn?'checked':''}
+          onchange="pubEvent(this.checked)"> 公开到官网
+      </label>
+      ${e.publicOn?`<input style="flex:1;min-width:130px;padding:6px 9px;font-size:12.5px"
+        placeholder="对外报名状态，如：报名中 · 女生余3" value="${esc(e.signup||'')}"
+        onchange="e_upd('signup',this.value)">`:'<span class="lbl">勾选后活动卡出现在官网</span>'}
+    </div>
   </div>`;
   const rows=e.rows.map((r,i)=>`<div class="rowcard ${S.sel===r.id?'sel':''}" onclick="selRow('${r.id}',event)">
     <div class="tm"><input value="${esc(r.time)}" placeholder="--:--"
@@ -713,6 +755,9 @@ function viewSheet(){
     </div></div>`).join('');
   return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main">
     ${sw}
+    ${e.demo?`<div class="hintbar" style="border:1px dashed var(--brass-dim);border-radius:5px;padding:9px 11px">
+      <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不能公开到官网。
+      练熟了就按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。</div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧/📚 资产库点选应用。</div>
     ${strips}${S.costDraft?costDraftCard():''}${hd}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
@@ -734,7 +779,7 @@ function chipsHtml(holder,loc){
 }
 function holderOf(loc){const e=ev();return loc==='header'?e.header:e.rows.find(r=>r.id===loc);}
 function selRow(id,evt){S.sel=id;render();}
-function e_upd(f,v){ev()[f]=v;save();render();}
+function e_upd(f,v){const e=ev();e[f]=v;save();if(e.publicOn)syncEventPost(e);render();}
 function r_upd(id,f,v){const r=ev().rows.find(x=>x.id===id);if(r){r[f]=v;save();render();}}
 function addRow(){const e=ev();e.rows.push({id:uid(),time:'',seg:'',owner:'',resources:[],money:[]});
   S.sel=e.rows[e.rows.length-1].id;save();render();}
@@ -1262,6 +1307,164 @@ function confirmForm(){
       pref_edu:d2.pref_edu||'',pref_occupation:d2.pref_occupation||'',
       pref_income:d2.pref_income||'',pref_area:d2.pref_area||'',pref_personality:d2.pref_personality||''}});
   S.formDraft=null;save();render();toast(g+n+' '+name+' 已加入名册');
+}
+
+/* ================= 发布 Y6 — in-house publisher (no external CMS) =================
+   Posts live only in the cloud: publishing implies a signed-in host by definition.
+   The editor accepts rich paste from anywhere (Notion/Word/公众号) but sanitizes it;
+   the public landing sanitizes AGAIN on render — see ym/sanitize.js. */
+let POSTS=null;
+function postsLoad(){
+  if(!canCloud()){POSTS=[];return;}
+  // scope to our own rows in the query too, not only in RLS (tenancy belt AND braces)
+  sb.from('ym_post').select('*').eq('author',SESSION.user.id).order('updated_at',{ascending:false})
+    .then(({data,error})=>{if(error)toast('读取失败：'+error.message);POSTS=data||[];render();});
+}
+function viewPost(){
+  if(!canCloud())return `<div class="main" style="max-width:620px;margin:0 auto">
+    <div class="empty">发布功能需要登录（主办方账号）。<br>
+      <span class="muted">点右上角头像登录；通过批准后即可发文章 / 新闻，并把活动公开到官网。</span></div></div>`;
+  if(POSTS===null){postsLoad();return `<div class="main"><div class="empty">读取中…</div></div>`;}
+  if(S.postEdit)return postEditor();
+  const grp=k=>POSTS.filter(p=>p.kind===k);
+  const row=p=>`<button class="postrow ${p.kind==='event'?'ev':''}" onclick="postOpen('${p.id}')">
+    <span class="k">${p.kind==='article'?'文章':p.kind==='news'?'新闻':'活动'}</span>
+    <span class="tt">${esc(p.title)}</span>
+    <span class="st ${p.published?'on':'off'}">${p.published?'● 已发布':'○ 草稿'}</span></button>`;
+  const sec=(t,k,hint)=>{const l=grp(k);return `<div class="sec">${t}</div>`+
+    (l.length?l.map(row).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);};
+  return `<div class="main" style="max-width:620px;margin:0 auto">
+    <div class="evsw" style="margin-bottom:6px">
+      <button class="btn sm" onclick="postNew('article')">＋ 文章</button>
+      <button class="btn sm" onclick="postNew('news')">＋ 新闻</button>
+      <a class="btn ghost sm" href="../" target="_blank" style="text-decoration:none">看官网 ↗</a></div>
+    <div class="hintbar">在任何地方写好（Notion / Word / 公众号草稿都行），<b>粘贴进来即可</b> —
+      格式保留，危险内容自动清除。发布后立即出现在官网。</div>
+    ${sec('文章','article','还没有文章。')}
+    ${sec('新闻','news','还没有新闻。')}
+    ${sec('活动（来自「活动」页的「公开到官网」）','event','在活动页勾选「公开到官网」，活动卡就会出现在官网。')}
+  </div>`;
+}
+function postNew(kind){
+  S.postEdit={kind,id:null,title:'',summary:'',body_html:'',post_date:todayStr(),published:false};
+  render();
+}
+function postOpen(id){
+  const p=POSTS.find(x=>x.id===id);if(!p)return;
+  if(p.kind==='event'){toast('活动卡在「活动」页编辑（内容跟着活动走）');return;}
+  S.postEdit=Object.assign({},p);render();
+}
+function postEditor(){
+  const p=S.postEdit;
+  const isNews=p.kind==='news';
+  return `<div class="main" style="max-width:680px;margin:0 auto">
+    <div class="dayhead"><div><div class="d"><span class="bk" onclick="postClose()">← 发布列表</span>
+      · ${isNews?'新闻':'文章'}${p.published?' · 已发布':' · 草稿'}</div></div></div>
+    <label class="fld" style="display:block;margin:9px 0"><span class="lbl">标题</span>
+      <input id="po_title" value="${esc(p.title||'')}" placeholder="${isNews?'一句话新闻标题':'文章标题'}"></label>
+    <div style="display:flex;gap:8px">
+      <label class="fld" style="flex:1;margin:9px 0"><span class="lbl">日期</span>
+        <input id="po_date" type="date" value="${esc(p.post_date||'')}"></label>
+      <label class="fld" style="flex:2;margin:9px 0"><span class="lbl">摘要（官网卡片上显示）</span>
+        <input id="po_summary" value="${esc(p.summary||'')}" placeholder="一两句话"></label></div>
+    <div class="petool">
+      <button onclick="peCmd('formatBlock','h2')">标题</button>
+      <button onclick="peCmd('bold')"><b>B</b></button>
+      <button onclick="peCmd('italic')"><i>I</i></button>
+      <button onclick="peCmd('insertUnorderedList')">• 列表</button>
+      <button onclick="peCmd('insertOrderedList')">1. 列表</button>
+      <button onclick="peCmd('formatBlock','blockquote')">引用</button>
+      <button onclick="peLink()">链接</button>
+      <button onclick="peImg()">图片</button>
+      <button onclick="peCmd('removeFormat')">清格式</button></div>
+    <div id="po_body" class="pe" contenteditable="true" data-ph="正文 — 也可以从别处直接粘贴过来"
+      onpaste="pePaste(event)" ondrop="return false"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn" style="flex:1;min-width:120px" onclick="postSave(true)">
+        ${p.published?'更新并保持发布':'发布到官网'}</button>
+      <button class="btn ghost sm" onclick="postSave(false)">${p.published?'下架为草稿':'存草稿'}</button>
+      ${p.id?`<button class="btn danger sm" onclick="postDel()">删除</button>`:''}</div>
+    <p class="note9">粘贴的内容会自动净化（脚本、样式、可疑链接一律清除）；官网渲染时再净化一次。</p>
+  </div>`;
+}
+function postClose(){S.postEdit=null;render();}
+function peFocusBody(){const el=$('po_body');if(el)el.focus();}
+function peCmd(cmd,arg){peFocusBody();try{document.execCommand(cmd,false,arg||null);}catch(e){}}
+function peLink(){
+  const u=prompt('链接地址（https://…）');if(!u)return;
+  const safe=window.ymSanitize?window.ymSanitize.safeUrl(u,false):'';
+  if(!safe){toast('只支持 https:// 或 mailto: 链接');return;}
+  peFocusBody();try{document.execCommand('createLink',false,safe);}catch(e){}
+}
+function peImg(){
+  const u=prompt('图片地址（https://… — 相册图片随 Drive 通道上线）');if(!u)return;
+  const safe=window.ymSanitize?window.ymSanitize.safeUrl(u,true):'';
+  if(!safe){toast('图片只支持 https:// 地址');return;}
+  peFocusBody();try{document.execCommand('insertImage',false,safe);}catch(e){}
+}
+function pePaste(e){
+  e.preventDefault();
+  const cd=e.clipboardData||window.clipboardData;if(!cd)return;
+  const html=cd.getData('text/html'),txt=cd.getData('text/plain')||'';
+  if(html&&window.ymSanitize){
+    const frag=window.ymSanitize.frag(html);
+    const sel=window.getSelection();
+    if(!sel||!sel.rangeCount){$('po_body').appendChild(frag);return;}
+    const r=sel.getRangeAt(0);r.deleteContents();
+    const last=frag.lastChild;r.insertNode(frag);
+    if(last){r.setStartAfter(last);r.collapse(true);sel.removeAllRanges();sel.addRange(r);}
+  }else{
+    try{document.execCommand('insertText',false,txt);}catch(e2){}
+  }
+}
+function postSave(publish){
+  const p=S.postEdit;if(!canCloud())return;
+  const title=($('po_title').value||'').trim();
+  if(!title){toast('标题不能为空');return;}
+  // never save with the sanitizer missing — that would silently blank a published article
+  if(!window.ymSanitize){toast('净化组件未加载，请刷新页面后再保存');return;}
+  const body=window.ymSanitize.html($('po_body').innerHTML);
+  const row={author:SESSION.user.id,kind:p.kind,title,
+    summary:($('po_summary').value||'').trim(),body_html:body,
+    post_date:($('po_date').value||null),published:!!publish};
+  if(p.id)row.id=p.id;
+  sb.from('ym_post').upsert(row).select().then(({data,error})=>{
+    if(error){toast('保存失败：'+error.message);return;}
+    S.postEdit=null;POSTS=null;render();
+    toast(publish?'已发布到官网':'已存草稿');
+  });
+}
+function postDel(){
+  const p=S.postEdit;if(!p.id)return;
+  if(!confirm('删除「'+p.title+'」？'))return;
+  // .select() so a 0-row delete (not ours / already gone) can't report false success
+  sb.from('ym_post').delete().eq('id',p.id).select('id').then(({data,error})=>{
+    if(error){toast('删除失败：'+error.message);return;}
+    if(!data||!data.length){toast('没有删除任何内容（可能已被删除）');POSTS=null;render();return;}
+    S.postEdit=null;POSTS=null;render();toast('已删除');
+  });
+}
+/* 活动 → 官网卡片：内容跟着活动走，勾选即发布 */
+function pubEvent(on){
+  const e=ev();if(!e)return;
+  if(!canCloud()){toast('登录后才能公开到官网');render();return;}
+  if(on&&e.demo){toast('教学示例不能公开到官网');render();return;}
+  e.publicOn=!!on;save();
+  if(!on){sb.from('ym_post').delete().match({author:SESSION.user.id,source_id:e.id}).select('id')
+      .then(({error})=>{if(error)toast('下架失败：'+error.message);POSTS=null;render();});
+    toast('已从官网下架');return;}
+  syncEventPost(e,true);render();
+}
+function syncEventPost(e,announce){
+  if(!canCloud()||!e.publicOn||e.demo)return;
+  sb.from('ym_post').upsert({author:SESSION.user.id,kind:'event',source_id:e.id,
+    title:e.name||'活动',summary:e.theme||'',post_date:e.date||null,published:true,
+    meta:{start:e.start||'',venue:e.venue||'',signup:e.signup||''}},
+    {onConflict:'author,source_id'}).select('id').then(({data,error})=>{
+      if(error){e.publicOn=false;save();render();toast('公开失败：'+error.message);return;}
+      if(announce)toast(data&&data.length?'已公开到官网':'已提交');
+      POSTS=null;
+    });
 }
 
 /* ================= 复盘 review + 保存回资产库 (pass ②) ================= */

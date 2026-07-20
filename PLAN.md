@@ -211,13 +211,14 @@ participant self-service / online signup · i18n · AI matching · general ledge
 2. **Event-day hardware** — staff phones or one laptop (day-screen sizing).
 3. **`0008_ym.sql` timing** — post-test by default; earlier only if multi-device is day-one.
 4. **Rundown share format** — print view vs image card for LINE (decide in Y3).
-5. **News-page content workflow — DECIDED (owner, 2026-07-20): keep simple, no external
-   CMS.** Hand-edited static stays for now. When publishing is needed (its own stage, on
-   request): in-house `ym_post` (owner-CRUD RLS + anon read of `published=true`) + a 发布
-   tab with a **rich-paste editor** (contenteditable, whitelist-sanitized paste from
-   Notion/Word/公众号 — drafting happens anywhere, publishing stays with the host) + the
-   landing fetching live posts, 活动 cards derived from real events via 「公开到官网」.
-   Article images ride the Drive media path. Notion only ever as a drafting tool or a
-   linked public page — never as infrastructure.
+5. **News-page content workflow — SHIPPED 2026-07-20 (Y6).** In-house, no external CMS,
+   exactly as decided: `ym_post` (author CRUD gated on approved organizer; anon SELECT of
+   `published=true` only) + a 发布 tab with a **rich-paste editor** (paste from Notion / Word /
+   公众号 keeps formatting, everything dangerous is dropped) + the landing rendering live posts
+   with a static fallback + 「公开到官网」 on an event publishing a derived 活动 card.
+   **Security posture:** `ym/sanitize.js` is allowlist-CONSTRUCT and runs on BOTH sides —
+   the database is *not* a trust boundary, so the public page re-sanitizes at render and
+   degrades to plain text if the sanitizer fails to load. Notion remains usable purely as a
+   drafting tool (paste), never as infrastructure. Article images ride the Drive media path.
 
 *(Apply gesture is tap, not drag — phone-first; drag can be a desktop nicety later.)*

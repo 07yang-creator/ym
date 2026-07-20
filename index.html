@@ -62,6 +62,29 @@
   footer a{color:#B8C4BC}
   .demo-note{background:#F1E8D2;border:1px solid #E0D2AC;color:#6E5F36;font-size:12px;
     border-radius:6px;padding:8px 14px;margin:14px 0 0}
+  /* reader overlay for a published 文章/新闻 */
+  .rdbg{position:fixed;inset:0;background:rgba(22,36,30,.55);z-index:60}
+  .rd{position:fixed;inset:auto 0 0 0;top:0;z-index:61;overflow:auto;padding:0 0 60px}
+  .rd .inner{max-width:720px;margin:0 auto;background:var(--paper);min-height:100%;
+    padding:26px 22px 50px;box-shadow:0 0 40px rgba(0,0,0,.25)}
+  .rd .x{position:sticky;top:10px;float:right;background:var(--felt);color:var(--stock);
+    border:0;border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer}
+  .rd h1{font-size:22px;margin:6px 0 4px;letter-spacing:.02em}
+  .rd .m{color:var(--muted);font-size:12px;margin-bottom:18px}
+  .rd .body{font-size:15px;line-height:1.95}
+  .rd .body h2{font-size:17px;margin:22px 0 8px}
+  .rd .body h3{font-size:15px;margin:18px 0 6px}
+  .rd .body p{margin:11px 0}
+  .rd .body ul,.rd .body ol{padding-left:22px;margin:11px 0}
+  .rd .body img{max-width:100%;height:auto;border-radius:5px;margin:12px 0;display:block}
+  .rd .body a{color:var(--brass);text-decoration:underline}
+  .rd .body blockquote{border-left:3px solid var(--line);margin:12px 0;padding-left:14px;color:var(--muted)}
+  .rd .body table{border-collapse:collapse;width:100%;margin:12px 0}
+  .rd .body td,.rd .body th{border:1px solid var(--line);padding:6px 9px;font-size:13.5px;text-align:left}
+  .card.tap{cursor:pointer}
+  .card.tap:hover{border-color:var(--brass-l)}
+  .newslist .n-item.tap{cursor:pointer}
+  .newslist .n-item.tap:hover{color:var(--brass)}
 </style>
 </head>
 <body>
@@ -100,7 +123,7 @@
   <div class="wrap">
     <div class="sec-k">EVENTS</div>
     <h2>近期活动</h2>
-    <div class="grid">
+    <div class="grid" id="evGrid">
       <div class="card ev">
         <div class="date">7/25 (六) 14:00</div>
         <h3>夏日茶会 · 十对十</h3>
@@ -129,7 +152,7 @@
   <div class="wrap">
     <div class="sec-k">ARTICLES</div>
     <h2>文章</h2>
-    <div class="grid">
+    <div class="grid" id="artGrid">
       <div class="card">
         <div class="date">7/10</div>
         <h3>第一次参加十对十，怎么准备？</h3>
@@ -154,7 +177,7 @@
   <div class="wrap">
     <div class="sec-k">NEWS</div>
     <h2>新闻</h2>
-    <div class="newslist">
+    <div class="newslist" id="newsList">
       <div class="n-item"><span class="date num">2026-07-12</span><span>7月「夏日茶会」报名开启，两天内女生名额过半，请尽早报名。</span></div>
       <div class="n-item"><span class="date num">2026-07-01</span><span>6月「初夏烧烤局」圆满结束，42位朋友参加，促成3对牵手。</span></div>
       <div class="n-item"><span class="date num">2026-06-20</span><span>沙龙志愿者招募：摄影、签到、后勤岗位，参加活动免门票。</span></div>
@@ -167,9 +190,108 @@
   <div class="wrap">
     <div class="brand">ym · 缘满沙龙</div>
     <div>用心经营的相遇。 · <a href="organizer/">主办方入口</a> · <a href="member/">志愿者入口</a></div>
-    <div style="margin-top:6px;opacity:.7">© 2026 ym.jjconnect.tokyo — 示例演示页</div>
+    <div style="margin-top:6px;opacity:.7">© 2026 ym.jjconnect.tokyo</div>
   </div>
 </footer>
 
+<script src="sanitize.js"></script>
+<script>
+/* Live content from the host's 发布 tab. Anon read of published rows only (0010 RLS).
+   The static markup above stays as the fallback: if the fetch fails or nothing is
+   published yet, the page still looks finished rather than empty. */
+(function(){
+  'use strict';
+  var SB='https://ugkopxmeqsbtjeimultz.supabase.co',
+      KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
+  var POSTS=[];
+  function esc(s){return String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function fmt(d){if(!d)return '';var x=new Date(d+'T00:00:00');
+    return isNaN(x)?esc(d):(x.getMonth()+1)+'/'+x.getDate()+' ('+'日一二三四五六'[x.getDay()]+')';}
+  function el(id){return document.getElementById(id);}
+
+  function evCard(p){
+    var m=p.meta||{},full=/满|结束/.test(m.signup||'');
+    return '<div class="card ev'+(full?' full':'')+'">'+
+      '<div class="date">'+fmt(p.post_date)+(m.start?' '+esc(m.start):'')+'</div>'+
+      '<h3>'+esc(p.title)+'</h3>'+
+      '<p>'+esc(p.summary||'')+(m.venue?'<br>📍 '+esc(m.venue):'')+'</p>'+
+      (m.signup?'<span class="tag">'+esc(m.signup)+'</span>':'')+'</div>';
+  }
+  function artCard(p,i){
+    return '<div class="card tap" data-i="'+i+'">'+
+      '<div class="date">'+fmt(p.post_date)+'</div><h3>'+esc(p.title)+'</h3>'+
+      '<p>'+esc(p.summary||'')+'</p></div>';
+  }
+  function newsRow(p,i){
+    var has=(p.body_html||'').length>0;
+    return '<div class="n-item'+(has?' tap':'')+'"'+(has?' data-i="'+i+'"':'')+'>'+
+      '<span class="date num">'+esc(p.post_date||'')+'</span><span>'+esc(p.title)+
+      (has?' <span style="color:var(--brass)">›</span>':'')+'</span></div>';
+  }
+  function bind(root){
+    Array.prototype.forEach.call(root.querySelectorAll('[data-i]'),function(n){
+      n.addEventListener('click',function(){open(+n.getAttribute('data-i'));});});
+  }
+  function open(i){
+    var p=POSTS[i];if(!p)return;
+    close();
+    var bg=document.createElement('div');bg.className='rdbg';bg.onclick=close;
+    var rd=document.createElement('div');rd.className='rd';
+    var inner=document.createElement('div');inner.className='inner';
+    var x=document.createElement('button');x.className='x';x.textContent='✕';x.onclick=close;
+    var h=document.createElement('h1');h.textContent=p.title||'';
+    var m=document.createElement('div');m.className='m';
+    m.textContent=(p.post_date?fmt(p.post_date):'')+(p.kind==='news'?' · 新闻':' · 文章');
+    var body=document.createElement('div');body.className='body';
+    /* re-sanitize at render: the DB is not a trust boundary (see sanitize.js header).
+       If the sanitizer failed to load, degrade to TEXT rather than risk raw HTML. */
+    if(window.ymSanitize)window.ymSanitize.into(body,p.body_html||'');
+    else body.textContent=String(p.body_html||'').replace(/<[^>]*>/g,' ');
+    inner.appendChild(x);inner.appendChild(h);inner.appendChild(m);inner.appendChild(body);
+    rd.appendChild(inner);document.body.appendChild(bg);document.body.appendChild(rd);
+    document.body.style.overflow='hidden';
+    if(p.id)try{history.replaceState(null,'','#p-'+p.id);}catch(e){}
+  }
+  function close(){
+    ['.rdbg','.rd'].forEach(function(s){var n=document.querySelector(s);if(n)n.remove();});
+    document.body.style.overflow='';
+    if(location.hash.indexOf('#p-')===0)try{history.replaceState(null,'',location.pathname);}catch(e){}
+  }
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
+
+  fetch(SB+'/rest/v1/ym_post?select=id,kind,title,summary,body_html,meta,post_date'+
+        '&published=eq.true&order=post_date.desc.nullslast&limit=60',
+        {headers:{apikey:KEY,Authorization:'Bearer '+KEY}})
+  .then(function(r){return r.ok?r.json():[];})
+  .then(function(rows){
+    if(!rows||!rows.length)return;                 // keep the static fallback
+    POSTS=rows;
+    var evs=[],arts=[],news=[];
+    rows.forEach(function(p,i){
+      if(p.kind==='event')evs.push(evCard(p));
+      else if(p.kind==='article')arts.push(artCard(p,i));
+      else news.push(newsRow(p,i));});
+    /* Replace each section independently — and only drop the 示例 disclaimer when NO
+       fabricated content is left anywhere. Dropping it while placeholder events and
+       invented statistics are still on screen would present fiction as fact. */
+    if(evs.length)el('evGrid').innerHTML=evs.join('');
+    if(arts.length){el('artGrid').innerHTML=arts.join('');bind(el('artGrid'));}
+    if(news.length){el('newsList').innerHTML=news.join('');bind(el('newsList'));}
+    var allReal=evs.length&&arts.length&&news.length;
+    var dn=document.querySelector('.demo-note');
+    if(dn){
+      if(allReal)dn.remove();
+      else dn.textContent='部分内容为示例占位，正在逐步更新为真实内容。';
+    }
+    var stats=document.querySelector('.hero .stats');
+    if(stats&&!allReal)stats.remove();   // invented counts have no data source — never show them as live
+    if(location.hash.indexOf('#p-')===0){
+      var id=location.hash.slice(3);
+      for(var i=0;i<POSTS.length;i++)if(POSTS[i].id===id){open(i);break;}}
+  })
+  .catch(function(){/* offline / blocked → static fallback stands */});
+})();
+</script>
 </body>
 </html>
