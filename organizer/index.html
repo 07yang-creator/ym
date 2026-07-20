@@ -55,10 +55,28 @@
   .fab{position:fixed;bottom:20px;left:16px;z-index:30;background:var(--brass);color:var(--ink);
     border-radius:6px;padding:11px 16px;font-size:13px;font-weight:700;letter-spacing:.08em;
     box-shadow:0 8px 20px -6px rgba(0,0,0,.7)}
+  /* round corner fabs (📷/🎤) — jjcashflow accountant pattern, ym palette.
+     position:fixed directly (iOS absolute-in-fixed bug); right hugs app edge on desktop */
+  .rfab{position:fixed;z-index:38;width:52px;height:52px;border-radius:50%;
+    right:max(16px,calc(50vw - var(--w)/2 + 16px));
+    background:var(--felt-up);border:1.5px solid var(--brass-dim);color:var(--brass);
+    display:grid;place-items:center;font-size:22px;cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.45);transition:transform .12s;
+    -webkit-user-select:none;user-select:none}
+  .rfab:active{transform:scale(.92)}
+  .rfab.rec{background:var(--alarm);border-color:var(--alarm);color:#fff;animation:rfabpulse 1.1s infinite}
+  @keyframes rfabpulse{0%,100%{box-shadow:0 0 0 0 rgba(210,96,74,.5),0 4px 14px rgba(0,0,0,.45)}
+    50%{box-shadow:0 0 0 10px rgba(210,96,74,0),0 4px 14px rgba(0,0,0,.45)}}
+  .fabmenu{position:fixed;z-index:39;right:max(16px,calc(50vw - var(--w)/2 + 16px));
+    display:flex;flex-direction:column;gap:7px;align-items:flex-end}
+  .fabmenu label{background:var(--stock);color:var(--ink);border-radius:4px;padding:10px 14px;
+    font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px -6px rgba(0,0,0,.7)}
+  .modal-g{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:50;
+    width:min(94vw,520px);max-height:80vh;overflow:auto}
   /* library */
-  .libtabs{display:flex;gap:4px;margin-bottom:12px}
-  .libtabs button{flex:1;font-size:11.5px;letter-spacing:.08em;padding:7px 2px;color:var(--muted);
-    border:1px solid var(--line);border-radius:4px}
+  .libtabs{display:flex;gap:3px;margin-bottom:12px}
+  .libtabs button{flex:1;font-size:11px;letter-spacing:.04em;padding:7px 0;color:var(--muted);
+    border:1px solid var(--line);border-radius:4px;white-space:nowrap}
   .libtabs button.on{color:var(--ink);background:var(--stock);border-color:var(--stock);font-weight:700}
   .libitem{display:block;width:100%;text-align:left;background:var(--felt-up);border:1px solid var(--line);
     border-radius:4px;padding:9px 11px;margin-bottom:7px;transition:transform .12s ease}
@@ -460,11 +478,32 @@ function render(){
       <div class="navlinks">${nav}</div>
       <span class="avatar" onclick="S.auth=!S.auth;render()" title="${canCloud()?'云同步已开启':(SESSION?'等待管理员批准':'演示模式 — 点击登录')}">${canCloud()?esc((SESSION.user.email||'C')[0].toUpperCase()):(SESSION?'⏳':'演')}</span>
     </div>${body}
+    ${fabsHtml()}
     ${S.auth?authSheet():''}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
       <div class="drawer">${libPanel()}</div>`:''}`;
 }
 function go(v){S.view=v;S.drawer=false;render();}
+
+/* ---------- round corner fabs: 📷 photo + 🎤 hold-to-talk (jjcashflow pattern) ---------- */
+function fabsHtml(){
+  if(!ev())return '';
+  const base=S.view==='day'?84:20;   // clear the day tab bar
+  const recTab=S.view==='day'&&S.dayTab==='rec';
+  const menu=S.fabMenu?`<div class="fabmenu" style="bottom:${base+124}px">
+      <label>📷 票据 → 收支<input type="file" accept="image/*" capture="environment"
+        style="display:none" onchange="S.fabMenu=false;costPhoto(this)"></label>
+      <label>📷 报名表 → 名册<input type="file" accept="image/*" capture="environment"
+        style="display:none" onchange="S.fabMenu=false;formPhoto(this)"></label></div>`:'';
+  return `${menu}
+    <button class="rfab" style="bottom:${base+62}px" title="拍照（票据/报名表）"
+      onclick="S.fabMenu=!S.fabMenu;render()">📷</button>
+    ${recTab?'':`<button class="rfab" id="micfab" style="bottom:${base}px" title="按住说话（签到/翻状态/评价/记账）"
+      onmousedown="recStart()" onmouseup="recStop()" onmouseleave="recStop()"
+      ontouchstart="event.preventDefault();recStart()" ontouchend="recStop()">🎤</button>`}
+    ${S.draft&&!recTab?`<div class="drawerbg" onclick="S.draft=null;render()"></div>
+      <div class="modal-g">${draftCard(ev())}</div>`:''}`;
+}
 
 /* ---------- auth sheet ---------- */
 function authSheet(){
@@ -518,7 +557,7 @@ function doSignOut(){if(sb)sb.auth.signOut().then(()=>{PROFILE=null;S.auth=false
 /* ---------- library panel (pick & apply) ---------- */
 function libPanel(){
   const L=STORE.library;
-  const tabs=[['tpl','模板'],['idea','灵感'],['res','资源'],['money','收支']].map(([k,l])=>
+  const tabs=[['tpl','模板'],['idea','灵感'],['people','人员'],['goods','物资'],['money','收支']].map(([k,l])=>
     `<button class="${S.libTab===k?'on':''}" onclick="S.libTab='${k}';render()">${l}</button>`).join('');
   let items='',hint='';
   if(S.libTab==='tpl'){
@@ -529,10 +568,12 @@ function libPanel(){
     items=L.ideas.map(i=>`<button class="libitem" onclick="applyIdea('${i.id}')">
       <div class="t">${esc(i.seg)}</div><div class="m">约${i.dur}分${i.res&&i.res.length?' · 需要：'+esc(i.res.join('/')):''}</div></button>`).join('');
     hint='点一下 → 在台本末尾加一个环节（所需资源自动挂上）。';
-  }else if(S.libTab==='res'){
-    items=L.resources.map(r=>`<button class="libitem" onclick="applyRes('${r.id}')">
-      <div class="t">${r.type==='人'?'👤':'📦'} ${esc(r.name)}</div><div class="m">${esc(r.role)}</div></button>`).join('');
-    hint='先在台本里点选一行（或活动卡），再点这里 → 资源挂到该行。';
+  }else if(S.libTab==='people'||S.libTab==='goods'){
+    const t2=S.libTab==='people'?'人':'物';
+    items=L.resources.filter(r=>(r.type||'人')===t2).map(r=>`<button class="libitem" onclick="applyRes('${r.id}')">
+      <div class="t">${t2==='人'?'👤':'📦'} ${esc(r.name)}</div><div class="m">${esc(r.role)}${r.contact?' · '+esc(r.contact):''}</div></button>`).join('');
+    hint=t2==='人'?'先点选一行（或活动卡），再点这里 → 人挂到该行。'
+                 :'先点选一行（或活动卡），再点这里 → 物资/场地挂到该行。';
   }else{
     items=L.money.map(m=>`<button class="libitem" onclick="applyMoney('${m.id}')">
       <div class="t">${m.kind==='in'?'⊕':'⊖'} ${esc(m.name)}</div><div class="m num">${yen(m.amount)} · ${m.kind==='in'?'收入':'支出'}</div></button>`).join('');
@@ -724,7 +765,7 @@ function calHtml(){
 /* ---------- library manage view ---------- */
 function viewLib(){
   const L=STORE.library;
-  const tabs=[['tpl','模板'],['idea','灵感'],['res','资源'],['money','收支项']].map(([k,l])=>
+  const tabs=[['tpl','模板'],['idea','灵感'],['people','人员'],['goods','物资'],['money','收支项']].map(([k,l])=>
     `<button class="${S.libTab===k?'on':''}" onclick="S.libTab='${k}';render()">${l}</button>`).join('');
   let list='',form='';
   if(S.libTab==='tpl'){
@@ -739,14 +780,19 @@ function viewLib(){
     form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新灵感（环节）</div>
       <div class="frow"><input id="ni_seg" placeholder="环节名，如：桌游破冰"><input id="ni_dur" style="width:90px" placeholder="分钟" inputmode="numeric"></div>
       <button class="btn sm" onclick="libAddIdea()">加入资产库</button></div>`;
-  }else if(S.libTab==='res'){
-    list=L.resources.map(x=>`<div class="libitem"><div class="t">${x.type==='人'?'👤':'📦'} ${esc(x.name)}</div>
-      <div class="m">${esc(x.role)}
+  }else if(S.libTab==='people'||S.libTab==='goods'){
+    const t2=S.libTab==='people'?'人':'物';
+    list=L.resources.filter(x=>(x.type||'人')===t2).map(x=>`<div class="libitem"><div class="t">${t2==='人'?'👤':'📦'} ${esc(x.name)}</div>
+      <div class="m">${esc(x.role)}${x.contact?' · '+esc(x.contact):''}
       <button class="btn danger sm" style="float:right" onclick="libDel('resources','${x.id}')">删除</button></div></div>`).join('');
-    form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新资源</div>
-      <div class="frow"><select id="nr_type" style="width:90px"><option value="人">👤 人</option><option value="物">📦 物</option></select>
-      <input id="nr_name" placeholder="姓名 / 物品"><input id="nr_role" style="width:110px" placeholder="角色，如：摄影"></div>
-      <button class="btn sm" onclick="libAddRes()">加入资产库</button></div>`;
+    form=t2==='人'
+      ?`<div class="addform"><div class="lbl" style="margin-bottom:8px">新人员（志愿者/工作人员 — 嘉宾在活动名册里）</div>
+        <div class="frow"><input id="nr_name" placeholder="姓名"><input id="nr_role" style="width:110px" placeholder="角色，如：摄影"></div>
+        <div class="frow"><input id="nr_contact" placeholder="联系方式（可选）"></div>
+        <button class="btn sm" onclick="libAddRes('人')">加入资产库</button></div>`
+      :`<div class="addform"><div class="lbl" style="margin-bottom:8px">新物资 / 场地</div>
+        <div class="frow"><input id="nr_name" placeholder="物品 / 场地"><input id="nr_role" style="width:110px" placeholder="用途，如：茶歇"></div>
+        <button class="btn sm" onclick="libAddRes('物')">加入资产库</button></div>`;
   }else{
     list=L.money.map(x=>`<div class="libitem"><div class="t">${x.kind==='in'?'⊕':'⊖'} ${esc(x.name)}</div>
       <div class="m num">${yen(x.amount)} · ${x.kind==='in'?'收入':'支出'}
@@ -766,8 +812,10 @@ function libDel(k,id){const L=STORE.library;
   L[k]=L[k].filter(x=>x.id!==id);save();render();}
 function libAddIdea(){const seg=$('ni_seg').value.trim();if(!seg){toast('环节名必填');return;}
   STORE.library.ideas.push({id:uid(),seg,dur:parseInt($('ni_dur').value,10)||15,res:[]});save();render();}
-function libAddRes(){const name=$('nr_name').value.trim();if(!name){toast('名称必填');return;}
-  STORE.library.resources.push({id:uid(),name,type:$('nr_type').value,role:$('nr_role').value.trim()});save();render();}
+function libAddRes(type){const name=$('nr_name').value.trim();if(!name){toast('名称必填');return;}
+  const c=$('nr_contact');
+  STORE.library.resources.push({id:uid(),name,type:type||'人',role:$('nr_role').value.trim(),
+    contact:c?c.value.trim():''});save();render();}
 function libAddMoney(){const name=$('nm_name').value.trim();if(!name){toast('名目必填');return;}
   STORE.library.money.push({id:uid(),name,kind:$('nm_kind').value,
     amount:parseInt(($('nm_amt').value||'').replace(/[^\d]/g,''),10)||0});save();render();}
@@ -888,13 +936,14 @@ function dayRec(e){
     <p class="note9" style="text-align:center">屏幕不会亮红点，对方看见的只有一条线。<br>说号码最稳：例「女7，沟通积极，建议多主动」。也可以说签到、翻状态、记收支。</p>`;
 }
 function recStart(){
-  if(!S.recWho||S.recPhase==='rec')return;
+  if(S.recPhase==='rec')return;   // works from the 记录 tab (with 号牌 selected) or the 🎤 fab anywhere
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     REC.chunks=[];REC.mr=new MediaRecorder(stream);REC.secs=0;
     REC.mr.ondataavailable=ev2=>REC.chunks.push(ev2.data);
     REC.mr.onstop=()=>{stream.getTracks().forEach(t=>t.stop());recSend();};
     REC.mr.start();S.recPhase='rec';
     const b=$('recbtn');if(b)b.classList.add('rec');
+    const mf=$('micfab');if(mf)mf.classList.add('rec');
     const s=$('recsec');if(s)s.textContent='0s · 松开结束';
     REC.timer=setInterval(()=>{REC.secs++;
       const el=$('recsec');if(el)el.textContent=REC.secs+'s · 松开结束';
@@ -906,6 +955,7 @@ function recStop(){
   clearInterval(REC.timer);S.recPhase='think';
   try{REC.mr.stop();}catch(e2){S.recPhase='idle';}
   render();
+  if(!(S.view==='day'&&S.dayTab==='rec'))toast('🎤 整理中…');
 }
 function recSend(){
   const type=(REC.mr&&REC.mr.mimeType)||'audio/webm';
