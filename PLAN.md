@@ -100,6 +100,30 @@ videos are too heavy for Supabase, storage costs land on the data's owner. Revis
 first REAL participant roster (income/婚姻/photos) — before that upload, APPI 委託契約 signed
 and re-confirm shared vs own project.
 
+**People & accounts (owner, 2026-07-20) — person ≠ account, hub-and-spoke:**
+- **人 is its own category**, separate from 物资/场地: 嘉宾 · 志愿者/工作人员 · (later) 捐赠人.
+  A person is a **host-created record**; an account is an **optional grant** the host makes so
+  that person can be involved. Linked by an opaque `user_id` — a record never depends on a
+  login existing.
+- **Everyone interacts only with the host.** No member ever reads another member's data. The
+  mechanism IS the boundary: the host *publishes* to each member exactly what they may see
+  (their own jobs / own record) into a per-member share row; the member's RLS reaches only
+  that row. Sketch for `0009_ym_people.sql`: `ym_share (host uuid, member uuid, payload
+  jsonb, updated_at)` — host full CRUD on own rows, member SELECT where `member = auth.uid()`.
+  Least privilege by construction, mirroring the client↔accountant link pattern.
+- **嘉宾 data is created by the initiator** — no guest self-service (在线报名 stays V2.0, and
+  even then it lands as a *proposal* the host accepts into a host-owned record). Privacy
+  responsibility therefore sits with the host: the salon is the APPI controller of guest PII,
+  we remain the 委託先. Guest accounts, if ever granted, see only their own record via a
+  host-published share.
+
+### Y5 — people & member accounts (next, on request)
+- [ ] `0009_ym_people.sql`: `ym_share` per the sketch above; member role value
+- [ ] Registry: 人员 first-class (嘉宾/志愿者 categories), 物资 separate
+- [ ] Host grants an account: invite by email → member registers → host links person↔user
+- [ ] Member view: my jobs / my info only (published by host, hub-and-spoke)
+- [ ] Volunteer job flow: assignment + 服务时长/工作评价 per V1.0
+
 Salon requirements source: 缘满沙龙系统需求 (owner-shared Google Doc, Drive folder 缘满沙龙) —
 our evaluation fields (优点/建议改进/后续跟进), the job list, and the V2.0 deferrals
 (matching / QR / online signup / AI) align with it.
