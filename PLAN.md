@@ -207,7 +207,13 @@ participant self-service / online signup · i18n · AI matching · general ledge
 2. **Event-day hardware** — staff phones or one laptop (day-screen sizing).
 3. **`0008_ym.sql` timing** — post-test by default; earlier only if multi-device is day-one.
 4. **Rundown share format** — print view vs image card for LINE (decide in Y3).
-5. **News-page content workflow** — hand-edited static now; whether the salon gets a
-   small edit screen later (post-test, with `0008_ym.sql`).
+5. **News-page content workflow — DECIDED (owner, 2026-07-20): keep simple, no external
+   CMS.** Hand-edited static stays for now. When publishing is needed (its own stage, on
+   request): in-house `ym_post` (owner-CRUD RLS + anon read of `published=true`) + a 发布
+   tab with a **rich-paste editor** (contenteditable, whitelist-sanitized paste from
+   Notion/Word/公众号 — drafting happens anywhere, publishing stays with the host) + the
+   landing fetching live posts, 活动 cards derived from real events via 「公开到官网」.
+   Article images ride the Drive media path. Notion only ever as a drafting tool or a
+   linked public page — never as infrastructure.
 
 *(Apply gesture is tap, not drag — phone-first; drag can be a desktop nicety later.)*
