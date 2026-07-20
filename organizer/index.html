@@ -807,25 +807,26 @@ function viewLib(){
     `<button class="${S.libTab===k?'on':''}" onclick="S.libTab='${k}';render()">${l}</button>`).join('');
   let list='',form='';
   if(S.libTab==='tpl'){
-    list=L.templates.map(x=>`<div class="libitem"><div class="t">${esc(x.name)}</div>
+    list=L.templates.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('templates','${x.id}')"><div class="t">${esc(x.name)}</div>
       <div class="m">${esc(x.note||'')} · ${x.rows.length}环节
-      <button class="btn danger sm" style="float:right" onclick="libDel('templates','${x.id}')">删除</button></div></div>`).join('');
+      <button class="btn danger sm" style="float:right" onclick="event.stopPropagation();libDel('templates','${x.id}')">删除</button></div></div>`).join('');
     form=`<div class="libhint">模板来自活动：Y3 的「保存回资产库」把办完的活动一键存为模板。现阶段由种子提供。</div>`;
   }else if(S.libTab==='idea'){
-    list=L.ideas.map(x=>`<div class="libitem"><div class="t">${esc(x.seg)}</div>
-      <div class="m">约${x.dur}分 · ${esc((x.res||[]).join('/'))||'无需资源'}
-      <button class="btn danger sm" style="float:right" onclick="libDel('ideas','${x.id}')">删除</button></div></div>`).join('');
+    list=L.ideas.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('ideas','${x.id}')"><div class="t">${esc(x.seg)}</div>
+      <div class="m">约${x.dur}分 · ${esc((x.res||[]).join('/'))||'无需资源'}${x.desc?' · '+esc(x.desc.slice(0,12)):''}
+      <button class="btn danger sm" style="float:right" onclick="event.stopPropagation();libDel('ideas','${x.id}')">删除</button></div></div>`).join('');
     form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新灵感（环节）</div>
       <div class="frow"><input id="ni_seg" placeholder="环节名，如：桌游破冰"><input id="ni_dur" style="width:90px" placeholder="分钟" inputmode="numeric"></div>
       <button class="btn sm" onclick="libAddIdea()">加入资产库</button></div>`;
   }else if(S.libTab==='people'||S.libTab==='goods'){
     const t2=S.libTab==='people'?'人':'物';
-    list=L.resources.filter(x=>(x.type||'人')===t2).map(x=>`<div class="libitem"><div class="t">${t2==='人'?'👤':'📦'} ${esc(x.name)}
+    list=L.resources.filter(x=>(x.type||'人')===t2).map(x=>`<div class="libitem" style="cursor:pointer"
+        onclick="libEditOpen('${S.libTab}','${x.id}')"><div class="t">${t2==='人'?'👤':'📦'} ${esc(x.name)}
         ${x.shareEmail?`<span class="lbl" style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span>`:''}</div>
-      <div class="m">${esc(x.role)}${x.contact?' · '+esc(x.contact):''}
+      <div class="m">${esc(x.role)}${x.contact?' · '+esc(x.contact):''}${t2==='人'&&x.avail?' · '+esc(x.avail):''}${t2==='物'&&x.category?' · '+esc(x.category):''}
       <span style="float:right">
-        ${t2==='人'?`<button class="btn ghost sm" onclick="grantAccount('${x.id}')">${x.shareEmail?'账号✓':'授权账号'}</button> `:''}
-        <button class="btn danger sm" onclick="libDel('resources','${x.id}')">删除</button></span></div></div>`).join('');
+        ${t2==='人'?`<button class="btn ghost sm" onclick="event.stopPropagation();grantAccount('${x.id}')">${x.shareEmail?'账号✓':'授权账号'}</button> `:''}
+        <button class="btn danger sm" onclick="event.stopPropagation();libDel('resources','${x.id}')">删除</button></span></div></div>`).join('');
     if(t2==='人'){
       const seen={},guests=[];
       STORE.events.forEach(e2=>(e2.participants||[]).forEach(p=>{const k=p.gender+p.name;
@@ -843,9 +844,9 @@ function viewLib(){
         <div class="frow"><input id="nr_name" placeholder="物品 / 场地"><input id="nr_role" style="width:110px" placeholder="用途，如：茶歇"></div>
         <button class="btn sm" onclick="libAddRes('物')">加入资产库</button></div>`;
   }else{
-    list=L.money.map(x=>`<div class="libitem"><div class="t">${x.kind==='in'?'⊕':'⊖'} ${esc(x.name)}</div>
-      <div class="m num">${yen(x.amount)} · ${x.kind==='in'?'收入':'支出'}
-      <button class="btn danger sm" style="float:right" onclick="libDel('money','${x.id}')">删除</button></div></div>`).join('');
+    list=L.money.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('money','${x.id}')"><div class="t">${x.kind==='in'?'⊕':'⊖'} ${esc(x.name)}</div>
+      <div class="m num">${yen(x.amount)} · ${x.kind==='in'?'收入':'支出'}${x.unit?' · 单价'+yen(x.unit):''}
+      <button class="btn danger sm" style="float:right" onclick="event.stopPropagation();libDel('money','${x.id}')">删除</button></div></div>`).join('');
     form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新收支项</div>
       <div class="frow"><select id="nm_kind" style="width:90px"><option value="out">⊖ 支出</option><option value="in">⊕ 收入</option></select>
       <input id="nm_name" placeholder="名目，如：场地费"><input id="nm_amt" style="width:110px" placeholder="金额¥" inputmode="numeric"></div>
@@ -854,11 +855,70 @@ function viewLib(){
   return `<div class="main" style="max-width:720px;margin:0 auto">
     <div class="sec">资产库 — 每办一场活动，这里越攒越值钱</div>
     <div class="libtabs" style="max-width:360px">${tabs}</div>
-    <div class="libgrid">${list||'<div class="empty">空</div>'}</div>${form}</div>`;
+    <div class="libgrid">${list||'<div class="empty">空</div>'}</div>${form}
+    <p class="note9">点任一条目 → 打开资料卡（V1.0 完整字段）。</p></div>
+    ${S.libEdit?libEditCard():''}`;
 }
 function libDel(k,id){const L=STORE.library;
   if(!confirm('从资产库删除？（已挂到活动上的不受影响）'))return;
   L[k]=L[k].filter(x=>x.id!==id);save();render();}
+/* ---- item detail editor — full information fields per 缘满沙龙 V1.0 ---- */
+const LIB_FIELDS={
+  people:[['name','姓名'],['gender','性别','sel',['','男','女']],['age','年龄'],
+    ['role','角色 / 擅长工作'],['contact','联系方式'],['avail','可服务时间'],
+    ['talents','特长'],['intro','个人简介','ta'],['workExp','工作经历','ta'],
+    ['volExp','志愿服务经历','ta']],
+  goods:[['name','名称'],['category','类别'],['qty','数量'],['unit2','单位'],
+    ['role','用途'],['source','来源 / 供应商'],['keep','保存条件'],['desc','说明','ta']],
+  money:[['name','名目'],['kind','类型','sel',[['out','支出'],['in','收入']]],
+    ['amount','金额（计划）'],['unit','单价（按人数×，如门票）'],['note','备注','ta']],
+  ideas:[['seg','环节名'],['dur','时长（分）'],['resStr','需要资源（逗号分隔角色）'],['desc','说明 / 玩法','ta']],
+  templates:[['name','名称'],['note','备注']]
+};
+function libColl(kind){return kind==='money'?'money':kind==='ideas'?'ideas':kind==='templates'?'templates':'resources';}
+function libEditOpen(kind,id){S.libEdit={kind,id};render();}
+function libEditCard(){
+  const {kind,id}=S.libEdit;
+  const rec=STORE.library[libColl(kind)].find(x=>x.id===id);
+  if(!rec){S.libEdit=null;return '';}
+  const val=k=>k==='resStr'?((rec.res||[]).join('、')):(rec[k]==null?'':rec[k]);
+  const fields=LIB_FIELDS[kind].map(f=>{
+    const [k,label,type,opts]=f;
+    if(type==='sel'){
+      const os=opts.map(o=>{const [v,l]=Array.isArray(o)?o:[o,o||'—'];
+        return `<option value="${esc(v)}" ${String(val(k))===v?'selected':''}>${esc(l)}</option>`;}).join('');
+      return `<label class="fld" style="display:block;margin:9px 0"><span class="lbl">${label}</span>
+        <select id="le_${k}">${os}</select></label>`;
+    }
+    if(type==='ta')return `<label class="fld" style="display:block;margin:9px 0"><span class="lbl">${label}</span>
+      <textarea id="le_${k}" rows="2">${esc(val(k))}</textarea></label>`;
+    return `<label class="fld" style="display:block;margin:9px 0"><span class="lbl">${label}</span>
+      <input id="le_${k}" value="${esc(val(k))}"></label>`;
+  }).join('');
+  return `<div class="drawerbg" onclick="S.libEdit=null;render()"></div>
+    <div class="modal-g"><div class="rvsec" style="margin:0;max-height:80vh;overflow:auto">
+      <div class="hd"><span class="lbl">资料卡 — 按 V1.0 需求字段</span>
+        <button class="btn ghost sm" onclick="S.libEdit=null;render()">✕</button></div>
+      ${fields}
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn" style="flex:1" onclick="libEditSave()">保存</button></div>
+      ${kind==='people'?'<p class="note9">照片随 Drive 媒体通道上线（Apps Script 部署后）。</p>':''}
+    </div></div>`;
+}
+function libEditSave(){
+  const {kind,id}=S.libEdit;
+  const rec=STORE.library[libColl(kind)].find(x=>x.id===id);if(!rec)return;
+  const nameKey=kind==='ideas'?'seg':'name';
+  LIB_FIELDS[kind].forEach(f=>{
+    const k=f[0];const el=$('le_'+k);if(!el)return;
+    let v=el.value.trim();
+    if(k==='resStr'){rec.res=v?v.split(/[,，、/]+/).map(x=>x.trim()).filter(Boolean):[];return;}
+    if(k==='dur'||k==='amount'||k==='unit'){rec[k]=parseInt(v.replace(/[^\d]/g,''),10)||0;return;}
+    rec[k]=v;
+  });
+  if(!rec[nameKey]){toast('名称不能为空');return;}
+  S.libEdit=null;save();render();toast('资料卡已保存');
+}
 function libAddIdea(){const seg=$('ni_seg').value.trim();if(!seg){toast('环节名必填');return;}
   STORE.library.ideas.push({id:uid(),seg,dur:parseInt($('ni_dur').value,10)||15,res:[]});save();render();}
 function libAddRes(type){const name=$('nr_name').value.trim();if(!name){toast('名称必填');return;}
