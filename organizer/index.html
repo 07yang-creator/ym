@@ -6,6 +6,7 @@
 <title>主办台 · ym</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   /* ym identity — the reception table (see ym/design/ym-event-day.jsx) */
   :root{
@@ -264,6 +265,10 @@ function share(text){
 }
 // AI endpoints live on the main product (CORS-allowed for this origin) — ym/PLAN.md §3
 const API='https://www.jjconnect.tokyo';
+// Shared Supabase with JJcashflow (owner decision 2026-07-19; publishable key = public)
+const SB_URL='https://ugkopxmeqsbtjeimultz.supabase.co', SB_KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
+const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
+let SESSION=null,PROFILE=null,_pushT=null,_authKey=null;
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 function shrink(file,cb){ // photos → ≤1600px jpeg before upload
   const img=new Image();
@@ -280,7 +285,50 @@ const LS_KEY='jjym_v1';
 const RES_ST=['未联系','已联系','已确认','到位'];
 let STORE=null;
 function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){
-  if(!S._quota){S._quota=1;toast('⚠ 本机存储已满');}}}
+  if(!S._quota){S._quota=1;toast('⚠ 本机存储已满');}}
+  if(canCloud()){clearTimeout(_pushT);_pushT=setTimeout(cloudPushAll,800);}}
+/* ---------- cloud mirror (Y4 alive; 0008_ym.sql) ---------- */
+function canCloud(){return !!(sb&&SESSION&&PROFILE&&PROFILE.status==='approved');}
+function cloudPushAll(){
+  if(!canCloud())return;
+  const rows=STORE.events.map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
+    .concat([{owner:SESSION.user.id,kind:'library',doc_id:'lib',payload:STORE.library}]);
+  sb.from('ym_doc').upsert(rows).then(r=>{if(r.error)toast('云同步失败：'+r.error.message);});
+}
+async function cloudLoad(){
+  if(!sb||!SESSION){PROFILE=null;render();return;}
+  let {data:prof}=await sb.from('profile').select('role,status').eq('user_id',SESSION.user.id).maybeSingle();
+  if(!prof){ // first login after confirm: create the organizer profile (server sets status)
+    const ins=await sb.from('profile').insert({user_id:SESSION.user.id,role:'organizer'}).select('role,status').maybeSingle();
+    prof=ins.data||null;
+    if(ins.error&&ins.error.code!=='23505')toast('资料创建失败：'+ins.error.message);
+  }
+  PROFILE=prof;
+  if(!canCloud()){render();return;}
+  const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
+  if(error){toast('云端读取失败：'+error.message);render();return;}
+  if(rows&&rows.length){
+    const evs=rows.filter(r=>r.kind==='event').map(r=>r.payload);
+    const lib=rows.find(r=>r.kind==='library');
+    STORE={events:evs,library:lib?lib.payload:STORE.library,y2:1};
+    ensureY2();
+    S.evId=STORE.events[0]?STORE.events[0].id:null;S.sel='header';
+  }else{cloudPushAll();}
+  render();toast('☁ 云同步已开启');
+}
+function authInit(){
+  if(!sb)return;
+  sb.auth.getSession().then(({data})=>{
+    SESSION=data.session;_authKey=SESSION?SESSION.user.id:null;
+    if(SESSION)cloudLoad();
+  });
+  sb.auth.onAuthStateChange((ev2,s2)=>{
+    const key=s2?s2.user.id:null;
+    SESSION=s2;
+    if(key===_authKey)return;   // token refresh etc — never re-render over user input
+    _authKey=key;cloudLoad();
+  });
+}
 function load(){try{return JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){return null;}}
 
 /* --- seeded demo library + event (all fabricated data) --- */
@@ -410,12 +458,62 @@ function render(){
       <span class="logo">ym</span><span class="ttl">主办台</span>
       <span class="sp"></span>
       <div class="navlinks">${nav}</div>
-      <span class="avatar" title="演示模式 — 正式登录随 0008 上线">演</span>
+      <span class="avatar" onclick="S.auth=!S.auth;render()" title="${canCloud()?'云同步已开启':(SESSION?'等待管理员批准':'演示模式 — 点击登录')}">${canCloud()?esc((SESSION.user.email||'C')[0].toUpperCase()):(SESSION?'⏳':'演')}</span>
     </div>${body}
+    ${S.auth?authSheet():''}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
       <div class="drawer">${libPanel()}</div>`:''}`;
 }
 function go(v){S.view=v;S.drawer=false;render();}
+
+/* ---------- auth sheet ---------- */
+function authSheet(){
+  let inner='';
+  if(!sb)inner=`<div class="empty">登录组件加载失败，请刷新</div>`;
+  else if(canCloud())
+    inner=`<div style="font-size:13px;line-height:2">☁ <b>${esc(SESSION.user.email||'')}</b><br>
+      <span class="muted">云同步已开启 — 活动与资产库自动备份，多设备可用。</span></div>
+      <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
+  else if(SESSION)
+    inner=`<div style="font-size:13px;line-height:2">⏳ <b>${esc(SESSION.user.email||'')}</b><br>
+      <span class="muted">已注册，等待管理员批准（区分：主办方）。批准前数据仅存本机。</span></div>
+      <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
+  else
+    inner=`<div class="lbl" style="margin-bottom:10px">登录主办台 — 开启云备份/多设备</div>
+      <input id="au_email" type="email" placeholder="邮箱" style="margin-bottom:8px"
+        value="${esc(S.authEmail||'')}" onchange="S.authEmail=this.value">
+      <input id="au_pw" type="password" placeholder="密码" style="margin-bottom:10px"
+        onkeydown="if(event.key==='Enter')doSignIn()">
+      <div style="display:flex;gap:8px">
+        <button class="btn sm" style="flex:1" onclick="doSignIn()">登录</button>
+        <button class="btn ghost sm" style="flex:1" onclick="doSignUp()">注册（主办方）</button></div>
+      <p class="note9">未登录也可以用 — 数据存在本机浏览器。注册后需管理员批准才开启云同步。</p>`;
+  return `<div class="drawerbg" onclick="S.auth=false;render()"></div>
+    <div class="drawer" style="left:auto;right:0;animation:none">${inner}</div>`;
+}
+let _authBusy=false;
+function doSignIn(){
+  if(_authBusy||!sb)return;_authBusy=true;
+  const email=($('au_email').value||'').trim(),pw=$('au_pw').value||'';
+  if(!email||!pw){toast('请输入邮箱和密码');_authBusy=false;return;}
+  sb.auth.signInWithPassword({email,password:pw}).then(({error})=>{
+    _authBusy=false;
+    if(error){toast('登录失败：'+error.message);return;}
+    S.auth=false;render();
+  });
+}
+function doSignUp(){
+  if(_authBusy||!sb)return;_authBusy=true;
+  const email=($('au_email').value||'').trim(),pw=$('au_pw').value||'';
+  if(!email||pw.length<6){toast('请输入邮箱和至少6位密码');_authBusy=false;return;}
+  sb.auth.signUp({email,password:pw}).then(({data,error})=>{
+    _authBusy=false;
+    if(error){toast('注册失败：'+error.message);return;}
+    toast(data.session?'注册成功':'确认邮件已发送，请查收后回来登录');
+    S.auth=false;render();
+  });
+}
+function doSignOut(){if(sb)sb.auth.signOut().then(()=>{PROFILE=null;S.auth=false;render();});}
 
 /* ---------- library panel (pick & apply) ---------- */
 function libPanel(){
@@ -579,6 +677,7 @@ function newEvent(){const e=instantiate(null);e.name='新活动';STORE.events.pu
 function delEvent(){const e=ev();if(!e)return;
   if(!confirm('删除活动「'+e.name+'」？此操作不可恢复'))return;
   STORE.events=STORE.events.filter(x=>x.id!==e.id);S.evId=STORE.events[0]?STORE.events[0].id:null;
+  if(canCloud())sb.from('ym_doc').delete().match({kind:'event',doc_id:e.id}).then(()=>{});
   S.sel='header';save();render();}
 function remindAll(){const e=ev();const un=allResChips(e).filter(x=>(x.c.status||0)<2);
   if(!un.length){toast('资源都已确认，无需催');return;}
@@ -724,6 +823,8 @@ function dayBoard(e){
     <div class="boardops">
       <label class="btn ghost sm" style="cursor:pointer">📷 报名表
         <input type="file" accept="image/*" capture="environment" style="display:none" onchange="formPhoto(this)"></label>
+      <label class="btn ghost sm" style="cursor:pointer">⬆ 名单CSV
+        <input type="file" accept=".csv,text/csv" style="display:none" onchange="csvImport(this)"></label>
       <button class="btn ghost sm" onclick="addP()">＋ 手动添加</button>
     </div>
     ${S.formDraft?formDraftCard():''}
@@ -887,6 +988,40 @@ function execCost(cid,name,kind,amount){const e=ev();
   if(cid){const hit=allMoneyChips(e).find(x=>x.c.id===cid);if(hit)hit.c.actual=amount;}
   else e.header.money.push({id:uid(),refId:null,name:name||'语音记账',kind:kind==='in'?'in':'out',plan:0,actual:amount});
   S.draft=null;save();render();toast('已入账 '+yen(amount));}
+/* ---- ⬆ roster CSV import (嘉宾名册 导入 — Excel 另存为 CSV) ---- */
+function csvImport(inp){
+  const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+  const fr=new FileReader();fr.onload=()=>importRoster(String(fr.result));fr.readAsText(f);
+}
+function csvParseLine(l){
+  const out=[];let cur='',q=false;
+  for(let i=0;i<l.length;i++){const ch=l[i];
+    if(q){if(ch==='"'){if(l[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=ch;}
+    else if(ch==='"')q=true;
+    else if(ch===','){out.push(cur);cur='';}
+    else cur+=ch;}
+  out.push(cur);return out;
+}
+function importRoster(txt){
+  const e=ev();if(!e)return;
+  const lines=txt.replace(/^﻿/,'').split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2){toast('CSV 至少要有表头和一行数据');return;}
+  const head=csvParseLine(lines[0]);
+  const idx=n=>head.findIndex(h=>h.trim().indexOf(n)>=0);
+  const iName=idx('姓名'),iG=idx('性别'),iAge=idx('年龄'),iJob=idx('职业'),
+        iTel=idx('联系'),iInc=idx('收入'),iMar=idx('婚姻'),iArea=idx('居住')<0?idx('地区'):idx('居住');
+  if(iName<0){toast('没找到「姓名」列 — 第一行需是表头');return;}
+  let added=0;
+  lines.slice(1).forEach(l=>{
+    const c=csvParseLine(l);const name=(c[iName]||'').trim();if(!name)return;
+    const g=(iG>=0&&(c[iG]||'').indexOf('男')>=0)?'男':'女';
+    const n=Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;
+    const gv=i=>i>=0?(c[i]||'').trim():'';
+    e.participants.push({id:uid(),gender:g,n,name,job:gv(iJob),arrived:false,at:null,evals:[],
+      profile:{age:gv(iAge),contact:gv(iTel),income:gv(iInc),marital:gv(iMar),area:gv(iArea)}});
+    added++;});
+  save();render();toast('已导入 '+added+' 人（Excel 名单另存为 CSV 即可）');
+}
 /* ---- 📷 photo → parse → confirm ---- */
 function costPhoto(inp){
   const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
@@ -960,9 +1095,13 @@ function confirmForm(){
   const name=v('name');const g=v('gender')==='男'?'男':'女';
   if(!name){toast('姓名不能为空');return;}
   const n=Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;
+  const d2=S.formDraft||{};   // keep the full V1.0 field set even when not shown on the card
   e.participants.push({id:uid(),gender:g,n,name,job:v('occupation'),arrived:false,at:null,evals:[],
     profile:{age:v('age'),contact:v('contact'),area:v('area'),hobbies:v('hobbies'),
-      personality:v('personality'),pref_age:v('pref_age'),pref_other:v('pref_other')}});
+      personality:v('personality'),pref_age:v('pref_age'),pref_other:v('pref_other'),
+      income:d2.income||'',marital:d2.marital||'',talents:d2.talents||'',
+      pref_edu:d2.pref_edu||'',pref_occupation:d2.pref_occupation||'',
+      pref_income:d2.pref_income||'',pref_area:d2.pref_area||'',pref_personality:d2.pref_personality||''}});
   S.formDraft=null;save();render();toast(g+n+' '+name+' 已加入名册');
 }
 
@@ -1126,6 +1265,7 @@ if(!STORE||!STORE.library){STORE=seed();save();}
 ensureY2();
 S.evId=STORE.events[0]?STORE.events[0].id:null;
 render();
+authInit();
 </script>
 </body>
 </html>

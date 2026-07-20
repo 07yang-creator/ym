@@ -149,6 +149,28 @@ real upload; all testing on seeded data.
 - [ ] Rehearsal (with the organizer watching) — this is the owner's tasting run
 - [x] Fix only what blocks ① or ②
 
+### Y4 — alive (production) · shipped 2026-07-20
+Requirements source re-read in full: 缘满沙龙管理系统需求文档 V1.0.
+- [x] `0008_ym.sql`: 区分 主办方 (profile role check widened) + `ym_doc` jsonb store —
+      owner-only RLS gated on an APPROVED profile, server-forced `updated_at`, no FKs
+      into cashflow tables (§4 guardrail). jsonb now; normalized `ym_` tables when
+      统计/matching need them.
+- [x] Organizer auth: avatar → sheet with 登录 / 注册（主办方）/ 退出; approved → ☁ cloud
+      mirror (debounced push on save, delete propagation, cloud-wins on login), pending →
+      ⏳ local-only note; logged-out = demo mode unchanged (no hard redirect, convention #1).
+- [x] First-login bootstrap: profile row `role='organizer'`, status decided server-side.
+- [x] 嘉宾名册 V1.0 detail: full parsed field set retained (收入/婚姻/特长 + all 择偶);
+      ⬆ 名单CSV import (Excel 另存为 CSV; quoted fields OK) — pairs with the CSV exports.
+- [ ] OWNER: apply `supabase/migrations/0008_ym.sql` (after 0002–0007; then redeploy nothing —
+      the app detects it live).
+- [ ] OWNER: approve the salon's 主办方 registration in 管理 (or pre-whitelist the email).
+- [ ] OWNER + salon: deploy the Drive upload Apps Script from the folder-owner account
+      (media path, §4) — gates photo/video archiving, nothing else.
+
+**V1.0 coverage:** 活动管理+嘉宾评价+志愿者岗位 = live (Y1–Y3); 嘉宾名册 fields+导入导出 = live
+(Y4); 权限 basis (管理员/主办方) = live, 工作人员/志愿者 accounts later; 捐赠人/捐赠物 + 统计 +
+V2.0 items (matching/QR/在线报名/AI 总结) = post-test per §6/§7.
+
 ## 6. Cut
 
 Anything planner-grade (Gantt/dependencies/WBS) · CMS for the news page (hand-edited
