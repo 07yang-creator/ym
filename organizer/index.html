@@ -355,7 +355,7 @@ function shareDataFor(p){
 }
 function pushShares(){
   if(!canCloud())return;
-  const linked=STORE.library.resources.filter(p=>(p.type||'人')==='人'&&p.shareEmail);
+  const linked=STORE.library.resources.filter(p=>catOf(p)==='volunteer'&&p.shareEmail);
   if(!linked.length)return;
   const rows=linked.map(p=>({host:SESSION.user.id,member_email:p.shareEmail.toLowerCase(),
     payload:shareDataFor(p)}));
@@ -493,6 +493,11 @@ function ensureY2(){
   if(!STORE.y6){                     // the seeded event becomes the tutorial case
     STORE.events.forEach(e=>{if((e.name||'').indexOf('夏日茶会')>=0&&e.participants.length)e.demo=true;});
     STORE.y6=1;
+  }
+  if(!STORE.y7){                     // 人员 → three registries (志愿者/嘉宾/捐赠人)
+    STORE.library.resources.forEach(r=>{if(!r.cat)r.cat=(r.type==='物')?'goods':'volunteer';});
+    STORE.events.forEach(e=>(e.participants||[]).forEach(p=>{if(!p.libId)fileGuest(p);}));
+    STORE.y7=1;
   }
   save();
 }
@@ -639,10 +644,12 @@ function libPanel(){
       <div class="t">${esc(i.seg)}</div><div class="m">约${i.dur}分${i.res&&i.res.length?' · 需要：'+esc(i.res.join('/')):''}</div></button>`).join('');
     hint='点一下 → 在台本末尾加一个环节（所需资源自动挂上）。';
   }else if(S.libTab==='people'||S.libTab==='goods'){
-    const t2=S.libTab==='people'?'人':'物';
-    items=L.resources.filter(r=>(r.type||'人')===t2).map(r=>`<button class="libitem" onclick="applyRes('${r.id}')">
-      <div class="t">${t2==='人'?'👤':'📦'} ${esc(r.name)}</div><div class="m">${esc(r.role)}${r.contact?' · '+esc(r.contact):''}</div></button>`).join('');
-    hint=t2==='人'?'先点选一行（或活动卡），再点这里 → 人挂到该行。'
+    // the PANEL only offers what can be dropped on a rundown row: 志愿者 and 物资.
+    // 嘉宾 join through an event (board / 报名表 / CSV), 捐赠人 through donations — by design.
+    const cat=S.libTab==='people'?'volunteer':'goods';
+    items=peoList(cat).map(r=>`<button class="libitem" onclick="applyRes('${r.id}')">
+      <div class="t">${cat==='volunteer'?'👤':'📦'} ${esc(r.name)}</div><div class="m">${esc(r.role)}${r.contact?' · '+esc(r.contact):''}</div></button>`).join('');
+    hint=cat==='volunteer'?'先点选一行（或活动卡），再点这里 → 志愿者挂到该行。<br>嘉宾从活动看板加入，不挂在台本行上。'
                  :'先点选一行（或活动卡），再点这里 → 物资/场地挂到该行。';
   }else{
     items=L.money.map(m=>`<button class="libitem" onclick="applyMoney('${m.id}')">
@@ -864,30 +871,49 @@ function viewLib(){
       <div class="frow"><input id="ni_seg" placeholder="环节名，如：桌游破冰"><input id="ni_dur" style="width:90px" placeholder="分钟" inputmode="numeric"></div>
       <button class="btn sm" onclick="libAddIdea()">加入资产库</button></div>`;
   }else if(S.libTab==='people'||S.libTab==='goods'){
-    const t2=S.libTab==='people'?'人':'物';
-    list=L.resources.filter(x=>(x.type||'人')===t2).map(x=>`<div class="libitem" style="cursor:pointer"
-        onclick="libEditOpen('${S.libTab}','${x.id}')"><div class="t">${t2==='人'?'👤':'📦'} ${esc(x.name)}
-        ${x.shareEmail?`<span class="lbl" style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span>`:''}</div>
-      <div class="m">${esc(x.role)}${x.contact?' · '+esc(x.contact):''}${t2==='人'&&x.avail?' · '+esc(x.avail):''}${t2==='物'&&x.category?' · '+esc(x.category):''}
-      <span style="float:right">
-        ${t2==='人'?`<button class="btn ghost sm" onclick="event.stopPropagation();grantAccount('${x.id}')">${x.shareEmail?'账号✓':'授权账号'}</button> `:''}
-        <button class="btn danger sm" onclick="event.stopPropagation();libDel('resources','${x.id}')">删除</button></span></div></div>`).join('');
-    if(t2==='人'){
-      const seen={},guests=[];
-      STORE.events.forEach(e2=>(e2.participants||[]).forEach(p=>{const k=p.gender+p.name;
-        if(seen[k])seen[k].n++;else{seen[k]={g:p.gender,name:p.name,job:p.job,n:1};guests.push(seen[k]);}}));
-      if(guests.length)list+=`<div class="sbsec" style="grid-column:1/-1">嘉宾（来自各活动名册 · 主办方创建 · 只读汇总）</div>`+
-        guests.map(g=>`<div class="libitem" style="opacity:.75"><div class="t">${g.g==='男'?'♂':'♀'} ${esc(g.name)}</div>
-          <div class="m">${esc(g.job||'')} · 参加 ${g.n} 场</div></div>`).join('');
-    }
-    form=t2==='人'
-      ?`<div class="addform"><div class="lbl" style="margin-bottom:8px">新人员（志愿者/工作人员 — 嘉宾在活动名册里）</div>
+    const isPeople=S.libTab==='people';
+    const cat=isPeople?(S.peoCat||'volunteer'):'goods';
+    const icon=cat==='goods'?'📦':cat==='donor'?'🎁':'👤';
+    list=peoList(cat).map(x=>{
+      const hist=cat==='guest'?guestHistory(x.id):null;
+      const meta=cat==='guest'
+        ? `${esc(x.occupation||'')}${x.age?' · '+esc(x.age)+'岁':''} · 参加 ${hist.length} 场${hist.reduce((s,h)=>s+h.evals.length,0)?' · 评价 '+hist.reduce((s,h)=>s+h.evals.length,0)+' 条':''}`
+        : cat==='donor'
+        ? `${esc(x.dtype||'个人')}${x.company?' · '+esc(x.company):''}${x.totalAmount?' · 累计 '+esc(x.totalAmount):''}`
+        : `${esc(x.role||'')}${x.contact?' · '+esc(x.contact):''}${x.avail?' · '+esc(x.avail):''}`;
+      return `<div class="libitem" style="cursor:pointer" onclick="libEditOpen('${cat}','${x.id}')">
+        <div class="t">${icon} ${esc(x.name)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}
+          ${x.shareEmail?`<span class="lbl" style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span>`:''}</div>
+        <div class="m">${meta}
+        <span style="float:right">
+          ${cat==='volunteer'?`<button class="btn ghost sm" onclick="event.stopPropagation();grantAccount('${x.id}')">${x.shareEmail?'账号✓':'授权账号'}</button> `:''}
+          <button class="btn danger sm" onclick="event.stopPropagation();libDel('resources','${x.id}')">删除</button></span></div></div>`;
+    }).join('');
+    if(cat==='volunteer')
+      form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新志愿者 / 工作人员</div>
         <div class="frow"><input id="nr_name" placeholder="姓名"><input id="nr_role" style="width:110px" placeholder="角色，如：摄影"></div>
         <div class="frow"><input id="nr_contact" placeholder="联系方式（可选）"></div>
-        <button class="btn sm" onclick="libAddRes('人')">加入资产库</button></div>`
-      :`<div class="addform"><div class="lbl" style="margin-bottom:8px">新物资 / 场地</div>
+        <button class="btn sm" onclick="libAddRes('volunteer')">加入名册</button></div>`;
+    else if(cat==='guest')
+      form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新嘉宾</div>
+        <div class="frow"><input id="nr_name" placeholder="姓名">
+          <select id="nr_gender" style="width:80px"><option value="女">女</option><option value="男">男</option></select>
+          <input id="nr_role" style="width:110px" placeholder="职业"></div>
+        <div class="frow"><input id="nr_contact" placeholder="联系方式（可选）"></div>
+        <button class="btn sm" onclick="libAddRes('guest')">加入名册</button>
+        <p class="note9">嘉宾通常在活动当天由 📷 报名表 / ⬆名单CSV / 看板添加，会自动进入这里；
+          也可以先建档，之后在看板「＋ 名册添加」直接选。</p></div>`;
+    else if(cat==='donor')
+      form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新捐赠人</div>
+        <div class="frow"><input id="nr_name" placeholder="捐赠人名称">
+          <select id="nr_dtype" style="width:90px"><option value="个人">个人</option><option value="企业">企业</option></select></div>
+        <div class="frow"><input id="nr_role" placeholder="企业名称 / 联系人（可选）"><input id="nr_contact" style="width:140px" placeholder="联系电话"></div>
+        <button class="btn sm" onclick="libAddRes('donor')">加入名册</button>
+        <p class="note9">捐赠物管理模块（V1.0 模块二）尚未开启，累计金额等先手动填写。</p></div>`;
+    else
+      form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新物资 / 场地</div>
         <div class="frow"><input id="nr_name" placeholder="物品 / 场地"><input id="nr_role" style="width:110px" placeholder="用途，如：茶歇"></div>
-        <button class="btn sm" onclick="libAddRes('物')">加入资产库</button></div>`;
+        <button class="btn sm" onclick="libAddRes('goods')">加入资产库</button></div>`;
   }else{
     list=L.money.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('money','${x.id}')"><div class="t">${x.kind==='in'?'⊕':'⊖'} ${esc(x.name)}</div>
       <div class="m num">${yen(x.amount)} · ${x.kind==='in'?'收入':'支出'}${x.unit?' · 单价'+yen(x.unit):''}
@@ -897,9 +923,14 @@ function viewLib(){
       <input id="nm_name" placeholder="名目，如：场地费"><input id="nm_amt" style="width:110px" placeholder="金额¥" inputmode="numeric"></div>
       <button class="btn sm" onclick="libAddMoney()">加入资产库</button></div>`;
   }
+  const subtabs=S.libTab==='people'
+    ? `<div class="libtabs" style="max-width:300px;margin-top:-4px">${PEO_CATS.map(([k,l])=>
+        `<button class="${(S.peoCat||'volunteer')===k?'on':''}" onclick="S.peoCat='${k}';render()">${l}
+          <span class="lbl"> ${peoList(k).length}</span></button>`).join('')}</div>` : '';
   return `<div class="main" style="max-width:720px;margin:0 auto">
     <div class="sec">资产库 — 每办一场活动，这里越攒越值钱</div>
     <div class="libtabs" style="max-width:360px">${tabs}</div>
+    ${subtabs}
     <div class="libgrid">${list||'<div class="empty">空</div>'}</div>${form}
     <p class="note9">点任一条目 → 打开资料卡（V1.0 完整字段）。</p></div>
     ${S.libEdit?libEditCard():''}`;
@@ -909,10 +940,24 @@ function libDel(k,id){const L=STORE.library;
   L[k]=L[k].filter(x=>x.id!==id);save();render();}
 /* ---- item detail editor — full information fields per 缘满沙龙 V1.0 ---- */
 const LIB_FIELDS={
-  people:[['name','姓名'],['gender','性别','sel',['','男','女']],['age','年龄'],
+  // 志愿者名册 (V1.0)
+  volunteer:[['name','姓名'],['gender','性别','sel',['','男','女']],['age','年龄'],
     ['role','角色 / 擅长工作'],['contact','联系方式'],['avail','可服务时间'],
     ['talents','特长'],['intro','个人简介','ta'],['workExp','工作经历','ta'],
     ['volExp','志愿服务经历','ta']],
+  // 嘉宾名册 (V1.0): 基本信息 · 个人信息 · 择偶需求
+  guest:[['name','姓名'],['gender','性别','sel',['','男','女']],['age','年龄'],
+    ['contact','联系方式'],['occupation','职业'],['income','收入情况'],
+    ['marital','婚姻状态'],['area','居住地区'],
+    ['intro','个人介绍','ta'],['hobbies','兴趣爱好'],['personality','性格特点'],['talents','特长'],
+    ['pref_age','择偶·年龄要求'],['pref_edu','择偶·学历要求'],['pref_occupation','择偶·职业要求'],
+    ['pref_income','择偶·收入要求'],['pref_area','择偶·地区要求'],
+    ['pref_personality','择偶·性格要求'],['pref_other','择偶·其他要求']],
+  // 捐赠人名册 (V1.0)
+  donor:[['name','捐赠人名称'],['dtype','类型','sel',[['个人','个人'],['企业','企业']]],
+    ['company','企业名称（企业捐赠）'],['contactPerson','联系人'],['contact','联系电话'],
+    ['address','地址'],['totalAmount','累计捐赠金额'],['totalCount','累计捐赠次数'],
+    ['goodsCount','捐赠物资数量'],['lastDonation','最近捐赠时间'],['note','备注','ta']],
   goods:[['name','名称'],['category','类别'],['qty','数量'],['unit2','单位'],
     ['role','用途'],['source','来源 / 供应商'],['keep','保存条件'],['desc','说明','ta']],
   money:[['name','名目'],['kind','类型','sel',[['out','支出'],['in','收入']]],
@@ -921,6 +966,40 @@ const LIB_FIELDS={
   templates:[['name','名称'],['note','备注']]
 };
 function libColl(kind){return kind==='money'?'money':kind==='ideas'?'ideas':kind==='templates'?'templates':'resources';}
+// 人员 = three registries per 缘满沙龙 V1.0 (owner 2026-07-20). One store, one `cat` field,
+// so rundown chips keep resolving by refId and nothing existing has to be rewritten.
+const PEO_CATS=[['volunteer','志愿者'],['guest','嘉宾'],['donor','捐赠人']];
+function peoLabel(c){const f=PEO_CATS.find(x=>x[0]===c);return f?f[1]:c;}
+function peoList(cat){return STORE.library.resources.filter(r=>(r.cat||(r.type==='物'?'goods':'volunteer'))===cat);}
+function catOf(r){return r.cat||(r.type==='物'?'goods':'volunteer');}
+// A guest met at an event is filed in the registry, so the same person attending twice is
+// ONE record that accumulates history (V1.0: 一个嘉宾可以参加多个活动).
+function fileGuest(p){
+  if(p.libId&&STORE.library.resources.some(r=>r.id===p.libId))return p.libId;
+  const key=(p.name||'').trim();if(!key)return null;
+  let rec=peoList('guest').find(r=>(r.name||'').trim()===key&&(!r.gender||!p.gender||r.gender===p.gender));
+  if(!rec){
+    rec={id:uid(),cat:'guest',type:'人',name:key,gender:p.gender||'',
+      occupation:p.job||'',role:''};
+    Object.assign(rec,p.profile||{});
+    rec.name=key;                                  // profile fields must not clobber identity
+    STORE.library.resources.push(rec);
+  }else if(p.profile){
+    Object.keys(p.profile).forEach(k=>{if(p.profile[k]&&!rec[k])rec[k]=p.profile[k];});
+    if(p.job&&!rec.occupation)rec.occupation=p.job;
+  }
+  p.libId=rec.id;
+  return rec.id;
+}
+// everything this guest has done across events (drives their 资料卡)
+function guestHistory(libId){
+  const out=[];
+  STORE.events.forEach(e=>(e.participants||[]).forEach(p=>{
+    if(p.libId!==libId)return;
+    out.push({event:e.name,date:e.date,demo:!!e.demo,arrived:!!p.arrived,
+      badge:p.gender+p.n,evals:p.evals||[]});}));
+  return out;
+}
 function libEditOpen(kind,id){S.libEdit={kind,id};render();}
 function libEditCard(){
   const {kind,id}=S.libEdit;
@@ -945,10 +1024,25 @@ function libEditCard(){
       <div class="hd"><span class="lbl">资料卡 — 按 V1.0 需求字段</span>
         <button class="btn ghost sm" onclick="S.libEdit=null;render()">✕</button></div>
       ${fields}
+      ${kind==='guest'?guestHistoryHtml(id):''}
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn" style="flex:1" onclick="libEditSave()">保存</button></div>
-      ${kind==='people'?'<p class="note9">照片随 Drive 媒体通道上线（Apps Script 部署后）。</p>':''}
+      ${(kind==='volunteer'||kind==='guest')?'<p class="note9">照片随 Drive 媒体通道上线（Apps Script 部署后）。</p>':''}
     </div></div>`;
+}
+// 一个嘉宾参加多场活动，每场有独立评价记录 (V1.0 §三)
+function guestHistoryHtml(libId){
+  const h=guestHistory(libId);
+  if(!h.length)return `<div class="rv" style="margin-top:12px">还没有参加记录。</div>`;
+  return `<div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(14,21,18,.15)">
+    <div class="fl" style="font-size:9px;opacity:.5;letter-spacing:.18em;margin-bottom:6px">
+      参加记录 · ${h.length} 场</div>
+    ${h.map(x=>`<div style="font-size:12.5px;margin:6px 0;line-height:1.7">
+      <b>${esc(x.event)}</b>${x.demo?'（教学）':''} · ${fmtDate(x.date)} ·
+      ${x.arrived?'到场 '+esc(x.badge):'<span style="opacity:.6">未到</span>'}
+      ${x.evals.map(v2=>`<div style="opacity:.75;padding-left:10px">
+        ${v2.strengths?'优点：'+esc(v2.strengths):''}${v2.improvements?' ／ 建议：'+esc(v2.improvements):''}${v2.follow_up?' ／ 跟进：'+esc(v2.follow_up):''}</div>`).join('')}
+    </div>`).join('')}</div>`;
 }
 function libEditSave(){
   const {kind,id}=S.libEdit;
@@ -966,10 +1060,13 @@ function libEditSave(){
 }
 function libAddIdea(){const seg=$('ni_seg').value.trim();if(!seg){toast('环节名必填');return;}
   STORE.library.ideas.push({id:uid(),seg,dur:parseInt($('ni_dur').value,10)||15,res:[]});save();render();}
-function libAddRes(type){const name=$('nr_name').value.trim();if(!name){toast('名称必填');return;}
-  const c=$('nr_contact');
-  STORE.library.resources.push({id:uid(),name,type:type||'人',role:$('nr_role').value.trim(),
-    contact:c?c.value.trim():''});save();render();}
+function libAddRes(cat){const name=$('nr_name').value.trim();if(!name){toast('名称必填');return;}
+  const v=id=>{const el=$(id);return el?el.value.trim():'';};
+  const rec={id:uid(),cat:cat||'volunteer',type:cat==='goods'?'物':'人',name,
+    role:v('nr_role'),contact:v('nr_contact')};
+  if(cat==='guest'){rec.gender=v('nr_gender')||'女';rec.occupation=v('nr_role');rec.role='';}
+  if(cat==='donor'){rec.dtype=v('nr_dtype')||'个人';}
+  STORE.library.resources.push(rec);save();render();toast(name+' 已加入名册');}
 function libAddMoney(){const name=$('nm_name').value.trim();if(!name){toast('名目必填');return;}
   STORE.library.money.push({id:uid(),name,kind:$('nm_kind').value,
     amount:parseInt(($('nm_amt').value||'').replace(/[^\d]/g,''),10)||0});save();render();}
@@ -1027,8 +1124,10 @@ function dayBoard(e){
         <input type="file" accept="image/*" capture="environment" style="display:none" onchange="formPhoto(this)"></label>
       <label class="btn ghost sm" style="cursor:pointer">⬆ 名单CSV
         <input type="file" accept=".csv,text/csv" style="display:none" onchange="csvImport(this)"></label>
-      <button class="btn ghost sm" onclick="addP()">＋ 手动添加</button>
+      <button class="btn ghost sm" onclick="S.pickGuest=!S.pickGuest;render()">＋ 名册添加</button>
+      <button class="btn ghost sm" onclick="addP()">＋ 新建</button>
     </div>
+    ${S.pickGuest?pickGuestHtml(e):''}
     ${S.formDraft?formDraftCard():''}
     <p class="note9">点号牌即签到，再点一次撤销。不弹确认框。<br>门票入账需按「确认入账」——先核对再入档。</p>`;
 }
@@ -1040,9 +1139,27 @@ function confirmTickets(){const e=ev();
 function addP(){const e=ev();
   const g=prompt('性别（男/女）','女');if(g!=='男'&&g!=='女')return;
   const name=prompt('姓名');if(!name)return;
-  const n=Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;
-  e.participants.push({id:uid(),gender:g,n,name:name.trim(),job:'',arrived:false,at:null,evals:[],profile:null});
-  save();render();toast(g+n+' 已加入名册');}
+  const p={id:uid(),gender:g,n:nextBadge(e,g),name:name.trim(),job:'',arrived:false,at:null,evals:[],profile:null};
+  e.participants.push(p);fileGuest(p);save();render();toast(g+p.n+' 已加入');}
+function nextBadge(e,g){return Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;}
+// invite someone who already exists in the 嘉宾名册 — the repeat-guest path (pass ②)
+function pickGuestHtml(e){
+  const here={};(e.participants||[]).forEach(p=>{if(p.libId)here[p.libId]=1;});
+  const avail=peoList('guest').filter(g=>!here[g.id]);
+  return `<div class="rvsec" style="margin-top:10px"><div class="hd">
+      <span class="lbl">从嘉宾名册添加 · ${avail.length} 位可选</span>
+      <button class="btn ghost sm" onclick="S.pickGuest=false;render()">关闭</button></div>
+    ${avail.length?`<div class="chips">${avail.map(g=>`<span class="chip s1" onclick="addFromLib('${g.id}')">
+      ${g.gender==='男'?'♂':'♀'} ${esc(g.name)}${g.occupation?`<span class="lbl"> ${esc(g.occupation)}</span>`:''}</span>`).join('')}</div>`
+    :`<div class="note9">名册里的嘉宾都已在本场。新嘉宾用 📷 报名表 / ⬆名单CSV / ＋新建。</div>`}</div>`;
+}
+function addFromLib(libId){
+  const e=ev();const g=STORE.library.resources.find(r=>r.id===libId);if(!g)return;
+  const gender=g.gender==='男'?'男':'女';
+  e.participants.push({id:uid(),libId:g.id,gender,n:nextBadge(e,gender),name:g.name,
+    job:g.occupation||'',arrived:false,at:null,evals:[],profile:null});
+  save();render();toast(g.name+' 已加入本场');
+}
 /* ---- 台本 run ---- */
 function dayRun(e){
   const rows=e.rows;
@@ -1221,8 +1338,9 @@ function importRoster(txt){
     const g=(iG>=0&&(c[iG]||'').indexOf('男')>=0)?'男':'女';
     const n=Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;
     const gv=i=>i>=0?(c[i]||'').trim():'';
-    e.participants.push({id:uid(),gender:g,n,name,job:gv(iJob),arrived:false,at:null,evals:[],
-      profile:{age:gv(iAge),contact:gv(iTel),income:gv(iInc),marital:gv(iMar),area:gv(iArea)}});
+    const p={id:uid(),gender:g,n,name,job:gv(iJob),arrived:false,at:null,evals:[],
+      profile:{age:gv(iAge),contact:gv(iTel),income:gv(iInc),marital:gv(iMar),area:gv(iArea)}};
+    e.participants.push(p);fileGuest(p);      // also files into the 嘉宾名册
     added++;});
   save();render();toast('已导入 '+added+' 人（Excel 名单另存为 CSV 即可）');
 }
@@ -1300,12 +1418,13 @@ function confirmForm(){
   if(!name){toast('姓名不能为空');return;}
   const n=Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;
   const d2=S.formDraft||{};   // keep the full V1.0 field set even when not shown on the card
-  e.participants.push({id:uid(),gender:g,n,name,job:v('occupation'),arrived:false,at:null,evals:[],
+  const p={id:uid(),gender:g,n,name,job:v('occupation'),arrived:false,at:null,evals:[],
     profile:{age:v('age'),contact:v('contact'),area:v('area'),hobbies:v('hobbies'),
       personality:v('personality'),pref_age:v('pref_age'),pref_other:v('pref_other'),
       income:d2.income||'',marital:d2.marital||'',talents:d2.talents||'',
       pref_edu:d2.pref_edu||'',pref_occupation:d2.pref_occupation||'',
-      pref_income:d2.pref_income||'',pref_area:d2.pref_area||'',pref_personality:d2.pref_personality||''}});
+      pref_income:d2.pref_income||'',pref_area:d2.pref_area||'',pref_personality:d2.pref_personality||''}};
+  e.participants.push(p);fileGuest(p);        // also files into the 嘉宾名册
   S.formDraft=null;save();render();toast(g+n+' '+name+' 已加入名册');
 }
 
@@ -1543,7 +1662,8 @@ function buildSaveBack(e){
   const rseen={},res=[];
   allResChips(e).forEach(x=>{const c=x.c;
     if(rseen[c.name]||L.resources.some(y=>y.name===c.name))return;
-    rseen[c.name]=1;res.push({on:true,name:c.name,type:c.type||'人',role:c.role||''});});
+    rseen[c.name]=1;res.push({on:true,name:c.name,type:c.type||'人',role:c.role||'',
+      cat:(c.type==='物')?'goods':'volunteer'});});
   const mseen={},money=[];
   allMoneyChips(e).forEach(x=>{const c=x.c;
     if(c.actual==null||mseen[c.name])return;mseen[c.name]=1;
@@ -1588,7 +1708,8 @@ function applySaveBack(){
       resources:r.resources.map(cpR),money:r.money.map(cpM)})),
     header:{resources:e.header.resources.map(cpR),money:e.header.money.map(cpM)}});n++;}
   sb.ideas.filter(x=>x.on).forEach(x=>{L.ideas.push({id:uid(),seg:x.seg,dur:x.dur,res:x.res});n++;});
-  sb.res.filter(x=>x.on).forEach(x=>{L.resources.push({id:uid(),name:x.name,type:x.type,role:x.role});n++;});
+  sb.res.filter(x=>x.on).forEach(x=>{L.resources.push({id:uid(),name:x.name,type:x.type,
+    cat:x.cat||(x.type==='物'?'goods':'volunteer'),role:x.role});n++;});
   sb.money.filter(x=>x.on).forEach(x=>{
     if(x.refId){const it=L.money.find(y=>y.id===x.refId);if(it)it.amount=x.to;}
     else L.money.push({id:uid(),name:x.name,kind:x.kind,amount:x.to});n++;});
