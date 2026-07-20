@@ -329,7 +329,10 @@ function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e)
   if(!S._quota){S._quota=1;toast('⚠ 本机存储已满');}}
   if(canCloud()){clearTimeout(_pushT);_pushT=setTimeout(cloudPushAll,800);}}
 /* ---------- cloud mirror (Y4 alive; 0008_ym.sql) ---------- */
-function canCloud(){return !!(sb&&SESSION&&PROFILE&&PROFILE.status==='approved');}
+// mirrors ym_ok() server-side: approved AND 主办方/admin. An approved cashflow client is NOT
+// an organizer, and telling them "☁ 云同步已开启" while every write 403s is a lie.
+function canCloud(){return !!(sb&&SESSION&&PROFILE&&PROFILE.status==='approved'
+  &&(PROFILE.role==='organizer'||PROFILE.is_admin));}
 function cloudPushAll(){
   if(!canCloud())return;
   const rows=STORE.events.map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
@@ -380,13 +383,25 @@ function grantAccount(pid){
 }
 async function cloudLoad(){
   if(!sb||!SESSION){PROFILE=null;render();return;}
-  let {data:prof}=await sb.from('profile').select('role,status').eq('user_id',SESSION.user.id).maybeSingle();
+  const cols='role,status,is_admin,email';
+  let {data:prof}=await sb.from('profile').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
   if(!prof){ // first login after confirm: create the organizer profile (server sets status)
-    const ins=await sb.from('profile').insert({user_id:SESSION.user.id,role:'organizer'}).select('role,status').maybeSingle();
+    const ins=await sb.from('profile').insert({user_id:SESSION.user.id,role:'organizer'}).select(cols).maybeSingle();
     prof=ins.data||null;
     if(ins.error&&ins.error.code!=='23505')toast('资料创建失败：'+ins.error.message);
+    if(!prof){const re=await sb.from('profile').select(cols).eq('user_id',SESSION.user.id).maybeSingle();prof=re.data||null;}
   }
   PROFILE=prof;
+  // An invite code entered at signup is redeemed on the first real session. It is bound to the
+  // address that typed it and expires, so signing in as somebody else on a shared device can
+  // never spend their seat on the wrong account.
+  const pend=readPendingCode();
+  if(pend&&PROFILE&&PROFILE.status!=='approved'
+     &&(pend.email||'').toLowerCase()===String(SESSION.user.email||'').toLowerCase()){
+    const r=await redeemInvite(pend.code,true);
+    if(r==='ok'){const re=await sb.from('profile').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
+      PROFILE=re.data||PROFILE;}
+  }
   if(!canCloud()){render();return;}
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
   if(error){toast('云端读取失败：'+error.message);render();return;}
@@ -398,6 +413,29 @@ async function cloudLoad(){
     S.evId=STORE.events[0]?STORE.events[0].id:null;S.sel='header';
   }else{cloudPushAll();}
   render();toast('☁ 云同步已开启');
+}
+const INV_KEY='jjym_invite';
+function readPendingCode(){
+  try{
+    const raw=localStorage.getItem(INV_KEY);if(!raw)return null;
+    const o=JSON.parse(raw);
+    if(!o||!o.code||!o.exp||Date.now()>o.exp){localStorage.removeItem(INV_KEY);return null;}
+    return o;
+  }catch(e){try{localStorage.removeItem(INV_KEY);}catch(e2){}return null;}
+}
+function clearPendingCode(){try{localStorage.removeItem(INV_KEY);}catch(e){}}
+async function redeemInvite(code,quiet){
+  if(!sb||!SESSION)return 'no-session';
+  const {data,error}=await sb.rpc('ym_redeem_invite',{p_code:code});
+  if(error){if(!quiet)toast('邀请码校验失败：'+error.message);return 'error';}
+  if(data==='ok'||data==='already'||data==='invalid')clearPendingCode();  // never auto-retry
+  if(!quiet){
+    if(data==='ok')toast('邀请码有效 — 已开通');
+    else if(data==='already')toast('这个账号已经开通了');
+    else if(data==='invalid')toast('邀请码无效或已用完');
+    else if(data==='no-profile')toast('请先完成登录，再输入邀请码');
+  }
+  return data;
 }
 function authInit(){
   if(!sb)return;
@@ -538,7 +576,9 @@ function followUps(e){const f=[];
 /* ================= render ================= */
 const $=id=>document.getElementById(id);
 function render(){
-  const nav=[['today','今日'],['sheet','活动'],['lib','资产库'],['post','发布']].map(([k,l])=>
+  const navItems=[['today','今日'],['sheet','活动'],['lib','资产库'],['post','发布']];
+  if(PROFILE&&PROFILE.is_admin)navItems.push(['admin','管理']);
+  const nav=navItems.map(([k,l])=>
     `<button class="${S.view===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
   let body='';
   if(S.view==='sheet')body=viewSheet();
@@ -546,6 +586,7 @@ function render(){
   else if(S.view==='day')body=viewDay();
   else if(S.view==='review')body=viewReview();
   else if(S.view==='post')body=viewPost();
+  else if(S.view==='admin')body=viewAdmin();
   else body=viewLib();
   $('app').innerHTML=`
     <div class="topbar">
@@ -592,20 +633,30 @@ function authSheet(){
     inner=`<div style="font-size:13px;line-height:2">☁ <b>${esc(SESSION.user.email||'')}</b><br>
       <span class="muted">云同步已开启 — 活动与资产库自动备份，多设备可用。</span></div>
       <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
-  else if(SESSION)
-    inner=`<div style="font-size:13px;line-height:2">⏳ <b>${esc(SESSION.user.email||'')}</b><br>
-      <span class="muted">已注册，等待管理员批准（区分：主办方）。批准前数据仅存本机。</span></div>
+  else if(SESSION){
+    const rejected=PROFILE&&PROFILE.status==='rejected';
+    inner=`<div style="font-size:13px;line-height:2">${rejected?'⛔':'⏳'} <b>${esc(SESSION.user.email||'')}</b><br>
+      <span class="muted">${rejected?'此账号已被管理员停用。数据仍在本机，请联系管理员。'
+        :'已注册，等待管理员批准（区分：主办方）。批准前数据仅存本机，不会丢。'}</span></div>
+      ${rejected?'':`<div class="addform" style="margin-top:12px">
+        <div class="lbl" style="margin-bottom:8px">有邀请码？立即开通</div>
+        <input id="au_code2" placeholder="邀请码" style="margin-bottom:8px"
+          onkeydown="if(event.key==='Enter')useCode()">
+        <button class="btn sm" onclick="useCode()">使用邀请码</button></div>`}
       <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
+  }
   else
     inner=`<div class="lbl" style="margin-bottom:10px">登录主办台 — 开启云备份/多设备</div>
       <input id="au_email" type="email" placeholder="邮箱" style="margin-bottom:8px"
         value="${esc(S.authEmail||'')}" onchange="S.authEmail=this.value">
-      <input id="au_pw" type="password" placeholder="密码" style="margin-bottom:10px"
+      <input id="au_pw" type="password" placeholder="密码" style="margin-bottom:8px"
         onkeydown="if(event.key==='Enter')doSignIn()">
+      <input id="au_code" placeholder="邀请码（注册用；没有则等待管理员批准）" style="margin-bottom:10px">
       <div style="display:flex;gap:8px">
         <button class="btn sm" style="flex:1" onclick="doSignIn()">登录</button>
         <button class="btn ghost sm" style="flex:1" onclick="doSignUp()">注册（主办方）</button></div>
-      <p class="note9">未登录也可以用 — 数据存在本机浏览器。注册后需管理员批准才开启云同步。</p>`;
+      <p class="note9">未登录也可以用 — 数据存在本机浏览器。<br>
+        注册须有<b>邀请码</b>（立即开通）或<b>等待管理员批准</b>；两者都没有时，云同步不会打开。</p>`;
   return `<div class="drawerbg" onclick="S.auth=false;render()"></div>
     <div class="drawer" style="left:auto;right:0;animation:none">${inner}</div>`;
 }
@@ -623,15 +674,26 @@ function doSignIn(){
 function doSignUp(){
   if(_authBusy||!sb)return;_authBusy=true;
   const email=($('au_email').value||'').trim(),pw=$('au_pw').value||'';
+  const code=(($('au_code')||{}).value||'').trim();
   if(!email||pw.length<6){toast('请输入邮箱和至少6位密码');_authBusy=false;return;}
+  // bound to this address and short-lived: the code is redeemed server-side after login
+  try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+30*60*1000}));
+      else clearPendingCode();}catch(e){}
   sb.auth.signUp({email,password:pw,options:{emailRedirectTo:'https://ym.jjconnect.tokyo/organizer/'}}).then(({data,error})=>{
     _authBusy=false;
     if(error){toast('注册失败：'+error.message);return;}
-    toast(data.session?'注册成功':'确认邮件已发送，请查收后回来登录');
+    toast(data.session?(code?'注册成功，正在校验邀请码':'注册成功 — 等待管理员批准')
+                      :'确认邮件已发送，请查收后回来登录');
     S.auth=false;render();
   });
 }
-function doSignOut(){if(sb)sb.auth.signOut().then(()=>{PROFILE=null;S.auth=false;render();});}
+function useCode(){
+  const el=$('au_code2');const c=(el&&el.value||'').trim();
+  if(!c){toast('请输入邀请码');return;}
+  redeemInvite(c,false).then(r=>{if(r==='ok')cloudLoad();});
+}
+function doSignOut(){clearPendingCode();   // never carry a code across identities
+  if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
 
 /* ---------- library panel (pick & apply) ---------- */
 function libPanel(){
@@ -1590,6 +1652,101 @@ function syncEventPost(e,announce){
       if(announce)toast(data&&data.length?'已公开到官网':'已提交');
       POSTS=null;
     });
+}
+
+/* ================= 管理 — admin only (0012) =================
+   Server-side is the boundary: profile_upd_admin + is_admin() gate every write here, and
+   ym_invite is unreadable to non-admins. This tab is the operator surface, not the guard. */
+let ADMIN=null;
+function adminLoad(){
+  if(!canCloud()||!PROFILE||!PROFILE.is_admin){ADMIN={people:[],codes:[]};return;}
+  Promise.all([
+    sb.from('profile').select('user_id,email,role,status,is_admin,created_at').order('created_at',{ascending:false}),
+    sb.from('ym_invite').select('*').order('created_at',{ascending:false})
+  ]).then(([p,c])=>{
+    if(p.error)toast('读取用户失败：'+p.error.message);
+    if(c.error)toast('读取邀请码失败：'+c.error.message);
+    ADMIN={people:p.data||[],codes:c.data||[]};render();
+  });
+}
+function viewAdmin(){
+  if(!PROFILE||!PROFILE.is_admin)return `<div class="main"><div class="empty">仅管理员可见。</div></div>`;
+  if(ADMIN===null){adminLoad();return `<div class="main"><div class="empty">读取中…</div></div>`;}
+  const pend=ADMIN.people.filter(p=>p.status==='pending');
+  const others=ADMIN.people.filter(p=>p.status!=='pending');
+  const pRow=p=>`<div class="rvrow" style="flex-wrap:wrap;gap:8px">
+    <span class="c2">${esc(p.email||p.user_id.slice(0,8))}
+      <span class="lbl"> ${esc(p.role)}${p.is_admin?' · 管理员':''}</span></span>
+    <span class="st ${p.status==='approved'?'on':'off'}" style="font-size:10.5px">${
+      p.status==='approved'?'● 已批准':p.status==='pending'?'○ 待批准':'✕ 已拒绝'}</span>
+    <span style="display:flex;gap:6px;flex:none">
+      ${p.status!=='approved'?`<button class="btn sm" onclick="adminSet('${p.user_id}','approved','organizer')">批准为主办方</button>`:''}
+      ${p.status==='approved'&&p.role!=='organizer'&&!p.is_admin?`<button class="btn ghost sm" onclick="adminSet('${p.user_id}',null,'organizer')">改为主办方</button>`:''}
+      ${p.status!=='rejected'&&!p.is_admin&&p.user_id!==SESSION.user.id?`<button class="btn danger sm" onclick="adminSet('${p.user_id}','rejected',null)">停用</button>`:''}
+    </span></div>`;
+  const cRow=c=>`<div class="rvrow" style="flex-wrap:wrap;gap:8px">
+    <span class="c2 num" style="letter-spacing:.06em">${esc(c.code)}</span>
+    <span class="lbl">${esc(c.role)}${c.note?' · '+esc(c.note):''}</span>
+    <span class="st ${c.uses_left>0?'on':'off'}" style="font-size:10.5px">${c.uses_left>0?'可用 '+c.uses_left:'已用完'}</span>
+    <span style="display:flex;gap:6px;flex:none">
+      <button class="btn ghost sm" onclick="adminCopyCode('${esc(c.code)}')">复制</button>
+      ${c.uses_left>0?`<button class="btn danger sm" onclick="adminRevokeCode('${esc(c.code)}')">作废</button>`:''}
+    </span></div>`;
+  return `<div class="main" style="max-width:680px;margin:0 auto">
+    <div class="sec">待批准 ${pend.length?`· ${pend.length}`:''}</div>
+    <div class="rvsec">${pend.length?pend.map(pRow).join(''):'<div class="note9">没有待批准的注册。</div>'}</div>
+    <div class="sec">邀请码 — 有码即时开通，无码等待批准</div>
+    <div class="rvsec">
+      ${ADMIN.codes.length?ADMIN.codes.map(cRow).join(''):'<div class="note9">还没有邀请码。</div>'}
+      <div class="addform" style="margin-top:10px">
+        <div class="frow"><input id="ac_note" placeholder="备注，如：缘满沙龙 主办方">
+          <input id="ac_uses" style="width:90px" placeholder="可用次数" inputmode="numeric" value="1"></div>
+        <button class="btn sm" onclick="adminNewCode()">生成邀请码</button>
+        <p class="note9">邀请码只有管理员看得见；使用后次数自动递减。</p></div>
+    </div>
+    <div class="sec">全部账号 ${others.length}</div>
+    <div class="rvsec">${others.map(pRow).join('')||'<div class="note9">空</div>'}</div>
+    <p class="note9">管理员不能在这里被创建或撤销 — is_admin 只能在数据库里改（0012 的硬规则）。</p>
+  </div>`;
+}
+function adminSet(uid,status,role){
+  const patch={};if(status)patch.status=status;if(role)patch.role=role;
+  if(!Object.keys(patch).length)return;
+  // assert on the returned ROW, not merely on the absence of an error: the profile trigger
+  // silently reverts status/role for a non-admin caller, which would otherwise "succeed"
+  sb.from('profile').update(patch).eq('user_id',uid).select('user_id,status,role').then(({data,error})=>{
+    if(error){toast('操作失败：'+error.message);return;}
+    const row=data&&data[0];
+    if(!row){toast('没有更新任何账号');return;}
+    const applied=(!status||row.status===status)&&(!role||row.role===role);
+    ADMIN=null;render();
+    toast(applied?(status==='rejected'?'已停用':'已更新'):'服务器未接受该修改（权限不足）');
+  });
+}
+function adminNewCode(){
+  const note=($('ac_note').value||'').trim();
+  const uses=parseInt(($('ac_uses').value||'1').replace(/[^\d]/g,''),10)||1;
+  const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789';           // no look-alike glyphs
+  const buf=new Uint32Array(12);crypto.getRandomValues(buf);
+  const body=[...buf].map(x=>A[x%A.length]).join('');
+  const code='YM-'+body.slice(0,4)+'-'+body.slice(4,8)+'-'+body.slice(8,12);
+  sb.from('ym_invite').insert({code,role:'organizer',note,uses_left:uses,
+    created_by:SESSION.user.id}).select('code').then(({error})=>{
+      if(error){toast('生成失败：'+error.message);return;}
+      ADMIN=null;render();adminCopyCode(code);
+    });
+}
+function adminCopyCode(c){
+  (navigator.clipboard?navigator.clipboard.writeText(c):Promise.reject())
+    .then(()=>toast('已复制邀请码 '+c),()=>prompt('邀请码：',c));
+}
+function adminRevokeCode(c){
+  if(!confirm('作废邀请码 '+c+'？'))return;
+  sb.from('ym_invite').update({uses_left:0}).eq('code',c).select('code,uses_left').then(({data,error})=>{
+    if(error){toast('作废失败：'+error.message);return;}
+    if(!data||!data.length||data[0].uses_left!==0){toast('没有作废（可能已失效或无权限）');ADMIN=null;render();return;}
+    ADMIN=null;render();toast('已作废');
+  });
 }
 
 /* ================= 复盘 review + 保存回资产库 (pass ②) ================= */

@@ -122,6 +122,21 @@ and re-confirm shared vs own project.
   live solely in the host's own `ym_doc` (owner-only RLS). This supersedes the earlier note that
   guests might one day read their own record — they may not.
 
+### Auth & registration (owner, 2026-07-20)
+- **Every registration needs an INVITE CODE (instant) or waits PENDING for an admin.** No third
+  path: an unapproved account keeps working locally but never syncs, publishes, or shares.
+- **Seats:** `ljzhujudy@gmail.com` = 主办方 host (whitelisted → approved on first login);
+  `07.yang@gmail.com` = admin (already whitelisted by 0002).
+- **管理 tab** (admin only): approve / re-role / disable accounts, and mint or revoke invite
+  codes. Codes are `YM-XXXX-XXXX-XXXX` from a CSPRNG over an unambiguous alphabet, admin-readable
+  only, with a use counter.
+- **The invariant from 0002 is preserved:** a user can never self-approve. Redemption is a
+  narrow, audited exception — `ym_redeem_invite()` validates the code *first*, then sets a
+  transaction-local flag that `profile_before_upd()` honours. **`is_admin` is never grantable by
+  an invite**; only an existing admin, in the database, can create another admin.
+- Members (志愿者 with accounts) are unaffected: they need no profile and no approval — the
+  host's published share row is still the whole grant.
+
 ### Y5 — people & member accounts · shipped 2026-07-20
 - [x] `0009_ym_people.sql`: `ym_share` (host CRUD · member SELECT own claimed rows ·
       claim-by-verified-email RPC, no enumeration). **Refinement: members need NO profile
