@@ -867,7 +867,7 @@ function viewSheet(){
       <div class="mline total"><span>差额</span>
         <span class="num ${mt.planNet<0?'neg':'pos'}">${yen(mt.planNet)}</span></div>
     </div></div>`;
-  const hd=`<div class="evhead ${S.sel==='header'?'sel':''}" onclick="selRow('header',event)">
+  const hd=`<div class="evhead ${S.sel==='header'?'sel':''}" data-rid="header" onclick="selRow('header',event)">
     <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
       <input style="flex:2;min-width:140px;font-weight:700" value="${esc(e.name)}" placeholder="活动名"
         onclick="event.stopPropagation();selRow('header')" onchange="e_upd('name',this.value)">
@@ -893,7 +893,7 @@ function viewSheet(){
         onchange="e_upd('signup',this.value)">`:'<span class="lbl">勾选后活动卡出现在官网</span>'}
     </div>
   </div>`;
-  const rows=e.rows.map((r,i)=>`<div class="rowcard ${S.sel===r.id?'sel':''}" onclick="selRow('${r.id}',event)">
+  const rows=e.rows.map((r,i)=>`<div class="rowcard ${S.sel===r.id?'sel':''}" data-rid="${r.id}" onclick="selRow('${r.id}',event)">
     <div class="tm"><input value="${esc(r.time)}" placeholder="--:--"
       onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','time',this.value)"></div>
     <div class="bd">
@@ -936,9 +936,20 @@ function chipsHtml(holder,loc){
   return res+money;
 }
 function holderOf(loc){const e=ev();return loc==='header'?e.header:e.rows.find(r=>r.id===loc);}
-function selRow(id,evt){S.sel=id;render();}
-function e_upd(f,v){const e=ev();e[f]=v;save();if(e.publicOn)syncEventPost(e);render();}
-function r_upd(id,f,v){const r=ev().rows.find(x=>x.id===id);if(r){r[f]=v;save();render();}}
+// Selecting a row (to attach a library item) only moves a highlight. A full render() here
+// would destroy and recreate the input the user just clicked, stealing focus — the cause of
+// "slow typing drops characters". Toggle the .sel class in place instead; no rebuild.
+function selRow(id,evt){
+  if(S.sel===id)return;
+  S.sel=id;
+  document.querySelectorAll('.evhead.sel,.rowcard.sel').forEach(el=>el.classList.remove('sel'));
+  const el=document.querySelector('[data-rid="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+  if(el)el.classList.add('sel');
+}
+// Text-field edits update the model + save, but must NOT render — the input already shows the
+// value, and none of the strips depend on these fields. Rendering would drop the cursor.
+function e_upd(f,v){const e=ev();e[f]=v;save();if(e.publicOn)syncEventPost(e);}
+function r_upd(id,f,v){const r=ev().rows.find(x=>x.id===id);if(r){r[f]=v;save();}}
 function addRow(){const e=ev();e.rows.push({id:uid(),time:'',seg:'',owner:'',resources:[],money:[]});
   S.sel=e.rows[e.rows.length-1].id;save();render();}
 function delRow(id){const e=ev();const r=e.rows.find(x=>x.id===id);
