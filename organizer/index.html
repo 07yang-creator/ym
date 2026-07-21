@@ -158,6 +158,10 @@
   .chipadd{font-size:10.5px;color:var(--brass);background:none;border:1px dashed var(--brass-dim);
     border-radius:12px;padding:3px 9px;cursor:pointer;letter-spacing:.02em}
   .chipadd:hover{border-color:var(--brass);background:rgba(201,163,86,.08)}
+  /* reuse prompt — 场地履历 etc. (the assets remember themselves) */
+  .reusehint{margin-top:8px;font-size:11px;color:var(--brass);background:rgba(201,163,86,.07);
+    border:1px solid var(--brass-dim);border-radius:6px;padding:6px 10px;cursor:pointer;display:inline-block}
+  .reusehint:hover{background:rgba(201,163,86,.13)}
   .addrow{width:100%;border:1px dashed var(--line);border-radius:6px;padding:11px;color:var(--muted);
     font-size:12.5px;letter-spacing:.1em;margin:2px 0 16px}
   .addrow:hover{border-color:var(--brass);color:var(--brass)}
@@ -1030,6 +1034,22 @@ function recheck(){
 function doSignOut(){clearPendingCode();   // never carry a code across identities
   if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
 
+/* ---------- reuse prompts (read-time projections — the assets remember themselves) ---------- */
+// how many DISTINCT events have used this library item (by refId)
+function usedEvents(refId){if(!refId)return 0;const s=new Set();
+  STORE.events.forEach(e=>{let hit=false;[e.header].concat(e.rows).forEach(h=>{
+    (h.resources||[]).concat(h.money||[]).forEach(c=>{if(c.refId===refId)hit=true;});});
+    if(hit)s.add(e.id);});
+  return s.size;}
+// past events at the SAME venue (+ the most recent 场地-type cost, if any)
+function venueHistory(e){const v=(e.venue||'').trim();if(!v)return null;
+  const past=STORE.events.filter(x=>x.id!==e.id&&(x.venue||'').trim()===v)
+    .sort((a,b)=>(a.date||'')<(b.date||'')?1:-1);
+  if(!past.length)return null;
+  let lastCost=null;const vc=allMoneyChips(past[0]).find(x=>/场地|场租|租金|会場|venue/i.test(x.c.name));
+  if(vc)lastCost=vc.c.actual!=null?vc.c.actual:vc.c.plan;
+  return {count:past.length,lastCost,dates:past.map(x=>fmtDate(x.date))};}
+function venueHistDetail(){const e=ev();const vh=venueHistory(e);if(vh)toast((e.venue||'').trim()+' — 办过：'+vh.dates.join('、'));}
 /* ---------- library panel (pick & apply) ---------- */
 function libPanel(){
   const L=STORE.library;
@@ -1048,13 +1068,16 @@ function libPanel(){
     // the PANEL only offers what can be dropped on a rundown row: 志愿者 and 物资.
     // 嘉宾 join through an event (board / 报名表 / CSV), 捐赠人 through donations — by design.
     const cat=S.libTab==='people'?'volunteer':'goods';
-    items=peoList(cat).map(r=>`<button class="libitem" onclick="applyRes('${r.id}')">
-      <div class="t">${cat==='volunteer'?'👤':'📦'} ${esc(r.name)}${dtag(r)}</div><div class="m">${esc(r.role)}${r.contact?' · '+esc(r.contact):''}</div></button>`).join('');
+    items=peoList(cat).map(r=>{const u=usedEvents(r.id);
+      const meta=[esc(r.role),r.contact?esc(r.contact):'',cat==='goods'&&r.inv!=null?INV_ST[r.inv]:'',u?`用过 ${u} 场`:''].filter(Boolean).join(' · ');
+      return `<button class="libitem" onclick="applyRes('${r.id}')">
+      <div class="t">${cat==='volunteer'?'👤':'📦'} ${esc(r.name)}${dtag(r)}</div><div class="m">${meta}</div></button>`;}).join('');
     hint=cat==='volunteer'?'先点选一行（或活动卡），再点这里 → 志愿者挂到该行。<br>嘉宾从活动看板加入，不挂在台本行上。'
                  :'先点选一行（或活动卡），再点这里 → 物资/场地挂到该行。';
   }else{
-    items=L.money.map(m=>`<button class="libitem" onclick="applyMoney('${m.id}')">
-      <div class="t">${m.kind==='in'?'⊕':'⊖'} ${esc(m.name)}${dtag(m)}</div><div class="m num">${yen(m.amount)} · ${m.kind==='in'?'收入':'支出'}</div></button>`).join('');
+    items=L.money.map(m=>{const u=usedEvents(m.id);
+      return `<button class="libitem" onclick="applyMoney('${m.id}')">
+      <div class="t">${m.kind==='in'?'⊕':'⊖'} ${esc(m.name)}${dtag(m)}</div><div class="m num">${yen(m.amount)} · ${m.kind==='in'?'收入':'支出'}${u?' · 用过 '+u+' 场':''}</div></button>`;}).join('');
     hint='先点选一行（或活动卡），再点这里 → 收支项挂到该行（金额=计划）。';
   }
   return `<div class="lbl" style="margin-bottom:10px">资产库 · 点选应用</div>
@@ -1134,6 +1157,7 @@ function viewSheet(){
         onclick="event.stopPropagation();selRow('header')" onchange="e_upd('start',this.value)">
       <input style="flex:2;min-width:130px" value="${esc(e.venue)}" placeholder="场地"
         onclick="event.stopPropagation();selRow('header')" onchange="e_upd('venue',this.value)"></div>
+    ${(()=>{const vh=venueHistory(e);return vh?`<div class="reusehint" onclick="event.stopPropagation();venueHistDetail()">🏛 这个场地办过 ${vh.count} 场${vh.lastCost?' · 上次场租 '+yen(vh.lastCost):''} · 点看日期</div>`:'';})()}
     <div class="chips">${chipsHtml(e.header,'header')}</div>
     <div class="lbl" style="margin-top:8px">活动全场 — 点选此卡后，从资产库挂「全场」资源/收支</div>
     <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:flex;
