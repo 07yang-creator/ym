@@ -330,6 +330,8 @@
   .deskcard .dc-brief{display:none;font-size:11px;color:var(--stock-dim);margin-top:7px;padding-top:7px;border-top:1px solid var(--line)}
   @media(hover:hover){.deskcard:hover .dc-brief{display:block}}
   .deskcard .dc-brief .t{color:var(--brass);cursor:pointer;font-weight:700}
+  .deskcard .dc-del{position:absolute;top:6px;right:10px;color:var(--brass-dim);cursor:pointer;font-size:14px;line-height:1;padding:2px 5px}
+  .deskcard .dc-del:hover{color:var(--alarm)}
   /* kickoff bar (planning UI) + gate */
   .kickoff{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:11px 14px;border-radius:10px}
   .kickoff.plan{background:linear-gradient(90deg,rgba(201,163,86,.16),rgba(201,163,86,.03));border:1px solid var(--brass-dim)}
@@ -436,6 +438,14 @@
   .jepick{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
   .jepick span{font-size:11px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:14px;padding:3px 10px;cursor:pointer;background:rgba(201,163,86,.06)}
   .jepick span:hover{background:rgba(201,163,86,.14)}
+  /* participants list + import */
+  .plist{display:flex;gap:6px;flex-wrap:wrap}
+  .implist{max-height:44vh;overflow:auto;margin:4px 0}
+  .improw{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--line)}
+  .improw .gtog{cursor:pointer;font-size:15px;color:var(--brass);width:20px;text-align:center;flex:none}
+  .improw .inm{flex:none;font-size:13px;min-width:64px;color:var(--stock)}
+  .improw .imok{font-size:11.5px;color:var(--ok)}
+  .improw .immatch{flex:1;min-width:0;font-size:12px;background:var(--felt);border:1px solid var(--line);border-radius:5px;color:var(--stock);padding:5px 8px}
   /* ===== desktop tree: vertical trunk = time axis (owner 2026-07-21) ===== */
   .exmob{display:block}
   .exdesk{display:none}
@@ -935,6 +945,7 @@ function render(){
     ${fabsHtml()}
     ${S.auth?authSheet():''}
     ${S.jobEdit?jobEditCard():''}
+    ${S.showImport?importListCard():''}
     ${peopleDatalist()}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
       <div class="drawer">${libPanel()}</div>`:''}`;
@@ -1138,7 +1149,7 @@ function viewSheet(){
     <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
     ${e?`<button class="btn ghost sm" onclick="cloneEvent('${e.id}')">🔁 再办一场</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
-    ${e&&!S.readonly?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
+    ${e&&!S.readonly&&evPhase(e)==='plan'?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
   </div>`;
   const roBanner=S.readonly?`<div class="hintbar" style="border:1px solid var(--brass-dim);border-radius:5px;padding:9px 11px">
     🔒 只读回看（已归档活动）· <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读编辑</span></div>`:'';
@@ -1226,7 +1237,7 @@ function viewSheet(){
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
       <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧/📚 资产库点选应用。</div>
-    ${strips}${S.costDraft?costDraftCard():''}${hd}${foldbar}${rows}
+    ${strips}${participantsStrip(e)}${S.costDraft?costDraftCard():''}${hd}${foldbar}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
   <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>
@@ -1383,9 +1394,11 @@ function cloneEvent(srcId){
     participants:[]};
   STORE.events.push(ne);S.evId=ne.id;S.readonly=false;S.view='sheet';S.showAllRows=false;S.sel='header';S.gate=null;
   save();render();toast('已照这份台本开了新一场 — 改个日期就能办 🎉');}
-function delEvent(){const e=ev();if(!e)return;
-  if(!confirm('删除活动「'+e.name+'」？此操作不可恢复'))return;
-  STORE.events=STORE.events.filter(x=>x.id!==e.id);S.evId=STORE.events[0]?STORE.events[0].id:null;
+function delEvent(id){const e=id?STORE.events.find(x=>x.id===id):ev();if(!e)return;
+  // only 筹备中 (plan) events can be deleted — kicked-off or finished ones are protected
+  if(evPhase(e)!=='plan'){toast('已启动或已结束的活动不能删除');return;}
+  if(!confirm('删除活动「'+(e.name||'未命名')+'」？此操作不可恢复'))return;
+  STORE.events=STORE.events.filter(x=>x.id!==e.id);if(!id||S.evId===e.id)S.evId=STORE.events[0]?STORE.events[0].id:null;
   if(canCloud())sb.from('ym_doc').delete().match({kind:'event',doc_id:e.id}).then(()=>{});
   S.sel='header';save();render();}
 function remindAll(){const e=ev();const un=allResChips(e).filter(x=>!x.c.ignored&&x.c.type!=='任务'&&(x.c.status||0)<2);
@@ -1761,6 +1774,57 @@ function addFromLib(libId){
   e.participants.push({id:uid(),libId:g.id,gender,n:nextBadge(e,gender),name:g.name,
     job:g.occupation||'',arrived:false,at:null,evals:[],profile:null});
   save();render();toast(g.name+' 已加入本场');
+}
+/* ---- 参加者 名单 on the planning UI: list + import + name-match (recorded for next time) ---- */
+function delParticipant(pid){if(S.readonly)return;const e=ev();e.participants=e.participants.filter(p=>p.id!==pid);save();render();}
+// a guest already in the registry, matched by name OR a previously-recorded alias
+function matchGuestByName(name){const k=(name||'').trim();if(!k)return null;
+  return peoList('guest').find(g=>(g.name||'').trim()===k||((g.aliases||[]).some(a=>(a||'').trim()===k)))||null;}
+function guestDatalist(){return `<datalist id="guestlist">${peoList('guest').map(g=>`<option value="${esc(g.name)}">`).join('')}</datalist>`;}
+function participantsStrip(e){
+  const men=e.participants.filter(p=>p.gender==='男').length,women=e.participants.filter(p=>p.gender==='女').length;
+  return `<div class="strip pstrip"><div class="hd"><span class="lbl">参加者 · 名单</span>
+      <span style="font-size:12px;color:var(--muted)">${e.participants.length} 人 · 男 ${men} · 女 ${women}</span></div>
+    <div class="plist">${e.participants.length?e.participants.map(p=>`<span class="chip s1">${p.gender==='男'?'♂':'♀'} ${esc(p.name)}${p.libId?'':' <span class="lbl" style="color:var(--alarm)">新</span>'}
+      <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`).join(''):'<span class="note9">还没有参加者 — 从名册选，或导入名单。</span>'}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+      <button class="btn ghost sm" onclick="S.pickGuest=true;render()">＋ 从名册选</button>
+      <button class="btn ghost sm" onclick="S.showImport=true;S.importRows=null;render()">⬆ 导入名单</button></div>
+    ${S.pickGuest?pickGuestHtml(e):''}</div>`;
+}
+function parseImport(){const t=$('imp_text');if(!t)return;
+  S.importRows=(t.value||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+    let g='',name=l;const m=l.match(/^(男|女|♂|♀)\s*(.+)$/)||l.match(/^(.+?)[\s·,，]*(男|女|♂|♀)$/);
+    if(m){const a=m[1],b=m[2];if(/男|女|♂|♀/.test(a)&&a.length<=1){g=/男|♂/.test(a)?'男':'女';name=b;}else{g=/男|♂/.test(b)?'男':'女';name=a;}}
+    name=name.trim();const hit=matchGuestByName(name);
+    return {name,gender:g||(hit?hit.gender:'男'),matchId:hit?hit.id:null};});
+  render();}
+function impGender(i){if(S.importRows&&S.importRows[i])S.importRows[i].gender=S.importRows[i].gender==='男'?'女':'男';render();}
+function impMatch(i,val){const g=peoList('guest').find(x=>(x.name||'').trim()===(val||'').trim());
+  if(S.importRows&&S.importRows[i]){S.importRows[i].matchId=g?g.id:null;if(g&&g.gender)S.importRows[i].gender=g.gender;}render();}
+function commitImport(){if(S.readonly||!S.importRows)return;const e=ev();let n=0;
+  S.importRows.forEach(r=>{const gen=r.gender||'男';
+    if(r.matchId){const g=STORE.library.resources.find(x=>x.id===r.matchId);if(!g)return;
+      if(r.name&&r.name!==g.name){if(!g.aliases)g.aliases=[];if(!g.aliases.includes(r.name))g.aliases.push(r.name);}  // record the match for next time
+      e.participants.push({id:uid(),libId:g.id,gender:gen,n:nextBadge(e,gen),name:g.name,job:g.occupation||'',arrived:false,at:null,evals:[]});}
+    else{const p={id:uid(),gender:gen,n:nextBadge(e,gen),name:r.name,job:'',arrived:false,at:null,evals:[]};e.participants.push(p);fileGuest(p);}
+    n++;});
+  S.showImport=false;S.importRows=null;save();render();toast('已加入 '+n+' 人 · 匹配已记住，下次自动认出');}
+function importListCard(){
+  return `<div class="drawerbg" onclick="S.showImport=false;S.importRows=null;render()"></div>
+    <div class="exdlg jobdlg" style="width:min(430px,calc(100vw - 24px))">
+      <div class="hd"><span class="tp">⬆ 导入参加者名单</span><button class="btn ghost sm" onclick="S.showImport=false;S.importRows=null;render()">✕</button></div>
+      ${!S.importRows?`<p class="note9" style="margin:2px 0 8px">从别处（微信 / LINE …）把名字复制贴进来，一行一个。名字前后可写 男/女。</p>
+        <textarea id="imp_text" rows="6" style="width:100%;background:var(--felt);border:1px solid var(--line);border-radius:6px;color:var(--stock);padding:8px" placeholder="男 张三&#10;李四&#10;王五 女"></textarea>
+        <div class="df"><button class="btn" style="flex:1" onclick="parseImport()">解析 →</button></div>`
+      :`<p class="note9" style="margin:2px 0 8px">核对性别；把标「新」的匹配到名册里已有的人（下次同名自动认出）。</p>
+        <div class="implist">${S.importRows.map((r,i)=>{const g=r.matchId?STORE.library.resources.find(x=>x.id===r.matchId):null;
+          return `<div class="improw"><span class="gtog" onclick="impGender(${i})">${r.gender==='男'?'♂':'♀'}</span>
+            <span class="inm">${esc(r.name)}</span>
+            ${g?`<span class="imok">→ ${esc(g.name)} ✓</span>`:`<input class="immatch" list="guestlist" placeholder="匹配已有人（留空=新人）" onchange="impMatch(${i},this.value)">`}</div>`;}).join('')}</div>
+        <div class="df"><button class="btn" style="flex:1" onclick="commitImport()">全部加入（${S.importRows.length} 人）</button>
+          <button class="btn ghost sm" onclick="S.importRows=null;render()">重来</button></div>`}
+      ${guestDatalist()}</div>`;
 }
 /* ---- 台本 run ---- */
 function dayRun(e){
@@ -2706,6 +2770,7 @@ function viewDesk(){
   const evCard=(e)=>{const f=followUps(e),ph=evPhase(e),mt=moneyTotals(e);
     const act=ph==='current'?'执行看板':(ph==='archived'?'只读回看':(ph==='hot'?'复盘 / 跟进':'计划'));
     return `<button class="deskcard" onclick="deskOpen('${e.id}')">
+      ${ph==='plan'?`<span class="dc-del" onclick="event.stopPropagation();delEvent('${e.id}')" title="删除（仅筹备中可删）">✕</span>`:''}
       <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}</div>
       <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">🔁 再办一场</span>`:''}</div></button>`;};
