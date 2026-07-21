@@ -139,6 +139,16 @@
   .chip.money.in{color:var(--ok)}
   .chip.money.out{color:var(--stock-dim)}
   .chip.money .amt{font-family:Oswald,sans-serif;font-size:11.5px}
+  /* jobs (要做的事) on a 环节 — a to-do, colored by 待办/进行中/完成 */
+  .chip.job{border-radius:12px;border-style:solid}
+  .chip.job.b0{border-color:var(--alarm);color:var(--alarm)}
+  .chip.job.b1{border-color:var(--brass-dim);color:var(--brass)}
+  .chip.job.b2{background:var(--ok);border-color:var(--ok);color:var(--ink);font-weight:700}
+  .chip.job.ig{opacity:.55;border-style:dashed;color:var(--muted)}
+  .chip.job .lbl{font-size:9.5px}
+  .chipadd{font-size:10.5px;color:var(--brass);background:none;border:1px dashed var(--brass-dim);
+    border-radius:12px;padding:3px 9px;cursor:pointer;letter-spacing:.02em}
+  .chipadd:hover{border-color:var(--brass);background:rgba(201,163,86,.08)}
   .addrow{width:100%;border:1px dashed var(--line);border-radius:6px;padding:11px;color:var(--muted);
     font-size:12.5px;letter-spacing:.1em;margin:2px 0 16px}
   .addrow:hover{border-color:var(--brass);color:var(--brass)}
@@ -708,13 +718,14 @@ function seed(){
   const mchip=(name,actual)=>{const m=lib.money.find(x=>x.name===name);return m?{id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,unit:m.unit,actual:actual==null?null:actual}:null;};
   const row=(time,seg,owner,res,mon)=>({id:uid(),time,seg,owner:owner||'',
     resources:(res||[]).filter(Boolean),money:(mon||[]).filter(Boolean)});
+  const job=(name,st)=>({id:uid(),type:'任务',name,status:st==null?0:st});   // 要做的事 on a 环节
   const tplRows=[
-    row('13:00','场地布置','张姐',[rchip('后勤'),rchip('物料')]),
-    row('13:30','签到入场','王芳',[rchip('签到')]),
+    row('13:00','场地布置','张姐',[rchip('后勤'),rchip('物料'),job('预订场地',3),job('布置签到台')]),
+    row('13:30','签到入场','王芳',[rchip('签到'),job('打印签到表')]),
     row('14:00','开场介绍','小林',[rchip('主持')]),
     row('14:10','自我介绍轮','小林',[]),
     row('14:40','快问快答','小林',[]),
-    row('15:10','茶歇','张姐',[rchip('茶歇')],[mchip('饮料点心')]),
+    row('15:10','茶歇','张姐',[rchip('茶歇'),job('订饮料点心')],[mchip('饮料点心')]),
     row('15:30','一对一轮转','小林',[rchip('配对协助')]),
     row('16:30','心动投票','陈叔',[]),
     row('16:50','配对公布','小林',[]),
@@ -1162,17 +1173,26 @@ function viewSheet(){
   ${S.gate?gateCard():''}`;
 }
 function chipsHtml(holder,loc){
-  const res=holder.resources.map(c=>`<span class="chip s${c.status||0}"
-    onclick="event.stopPropagation();cycleRes('${loc}','${c.id}')"
-    title="点击翻状态 · ${RES_ST[c.status||0]}">${c.type==='人'?'👤':'📦'} ${esc(c.name)}
-    <span class="lbl">${RES_ST[c.status||0]}</span>
-    <span class="x" onclick="event.stopPropagation();delChip('${loc}','res','${c.id}')">✕</span></span>`).join('');
+  const res=holder.resources.map(c=>{
+    if((c.type||'人')==='任务'){   // a JOB — a 要做的事 for this 环节 (booking / setup / tools …)
+      const b=taskBucket(c);
+      return `<span class="chip job b${b}${c.ignored?' ig':''}" onclick="event.stopPropagation();cycleJob('${loc}','${c.id}')"
+        title="要做的事 · 点击翻状态">📌 ${esc(c.name)}
+        <span class="lbl">${c.ignored?'已搁置':TASK_ST[b]}</span>
+        <span class="x" onclick="event.stopPropagation();delChip('${loc}','res','${c.id}')">✕</span></span>`;
+    }
+    return `<span class="chip s${c.status||0}" onclick="event.stopPropagation();cycleRes('${loc}','${c.id}')"
+      title="点击翻状态 · ${RES_ST[c.status||0]}">${c.type==='物'?'📦':'👤'} ${esc(c.name)}
+      <span class="lbl">${RES_ST[c.status||0]}</span>
+      <span class="x" onclick="event.stopPropagation();delChip('${loc}','res','${c.id}')">✕</span></span>`;
+  }).join('');
   const money=holder.money.map(c=>`<span class="chip money ${c.kind==='in'?'in':'out'}"
     onclick="event.stopPropagation();editMoney('${loc}','${c.id}')"
     title="点击填实际金额">${c.kind==='in'?'⊕':'⊖'} ${esc(c.name)}
     <span class="amt">${yen(c.plan)}${c.actual!=null?' → '+yen(c.actual):''}</span>
     <span class="x" onclick="event.stopPropagation();delChip('${loc}','money','${c.id}')">✕</span></span>`).join('');
-  return res+money;
+  const addJob=S.readonly?'':`<button class="chipadd" onclick="event.stopPropagation();addJob('${loc}')" title="加一件要做的事">＋事项</button>`;
+  return res+money+addJob;
 }
 function holderOf(loc){const e=ev();return loc==='header'?e.header:e.rows.find(r=>r.id===loc);}
 // Selecting a row (to attach a library item) only moves a highlight. A full render() here
@@ -1198,6 +1218,13 @@ function moveRow(id,d){const e=ev();const i=e.rows.findIndex(x=>x.id===id);const
   if(i<0||j<0||j>=e.rows.length)return;const t=e.rows[i];e.rows[i]=e.rows[j];e.rows[j]=t;save();render();}
 function cycleRes(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
   if(c){c.status=((c.status||0)+1)%4;stampDone(c);save();render();}}
+// jobs = 要做的事 on a 环节 (a 任务 chip); 3-state like the tree (待办→进行中→完成)
+function addJob(loc){if(S.readonly)return;
+  const name=prompt('这个环节要做的事（如：预订场地 / 布置会场 / 借设备 / 打印名牌）');
+  if(!name||!name.trim())return;const h=holderOf(loc);if(!h)return;
+  h.resources.push({id:uid(),type:'任务',name:name.trim(),status:0});save();render();}
+function cycleJob(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
+  if(c){const nb=(taskBucket(c)+1)%3;c.status=BUCKET_STATUS[nb];stampDone(c);save();render();}}
 function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
   const k=kind==='res'?'resources':'money';h[k]=h[k].filter(x=>x.id!==cid);save();render();}
 function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
@@ -2232,12 +2259,14 @@ function applySaveBack(){
   // ad-hoc 任务 chip into future events (owner 2026-07-21 — a real leak the review caught)
   const cpR=c=>({id:uid(),refId:c.refId,name:c.name,type:c.type,role:c.role,status:0});
   const cpM=c=>({id:uid(),refId:c.refId,name:c.name,kind:c.kind,plan:c.plan,unit:c.unit,actual:null});
-  const noTask=arr=>(arr||[]).filter(c=>c.type!=='任务');   // one-off chores don't belong in a template
+  const noTask=arr=>(arr||[]).filter(c=>c.type!=='任务');   // header one-off chores don't belong in a template
+  const live=arr=>(arr||[]).filter(c=>!c.ignored);          // 搁置'd items were set aside — don't seed the next event
   if(sb.tpl.on){L.templates.push({id:uid(),name:sb.tpl.name,
     note:e.rows.length+'环节 · 来自 '+fmtDate(e.date),
+    // rows KEEP their 要做的事 (jobs) so the same 环节 auto-suggests them next time (owner: absorb & reappear)
     rows:e.rows.map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,
-      resources:noTask(r.resources).map(cpR),money:r.money.map(cpM)})),
-    header:{resources:noTask(e.header.resources).map(cpR),money:e.header.money.map(cpM)}});n++;}
+      resources:live(r.resources).map(cpR),money:r.money.map(cpM)})),
+    header:{resources:noTask(live(e.header.resources)).map(cpR),money:e.header.money.map(cpM)}});n++;}
   sb.ideas.filter(x=>x.on).forEach(x=>{L.ideas.push({id:uid(),seg:x.seg,dur:x.dur,res:x.res});n++;});
   sb.res.filter(x=>x.on).forEach(x=>{L.resources.push({id:uid(),name:x.name,type:x.type,
     cat:x.cat||(x.type==='物'?'goods':'volunteer'),role:x.role});n++;});
@@ -2474,7 +2503,7 @@ function exDelTask(cid){const e=ev();
   S.exTask=null;save();render();}
 /* the two lifecycle buttons */
 // 0-job 环节 = a rundown row with a name but nothing to do on it (no resource/任务 chips)
-function bareRows(e){return e.rows.filter(r=>(r.resources||[]).length===0&&(r.seg||'').trim());}
+function bareRows(e){return e.rows.filter(r=>(r.resources||[]).length===0&&(r.money||[]).length===0&&(r.seg||'').trim());}
 // kickoff — prompt ONLY for what's missing; if nothing's missing, start tracking silently
 function enterExec(){const e=ev();if(!e)return;
   const unmet=followUps(e).filter(x=>x.type==='res'), bare=bareRows(e);
