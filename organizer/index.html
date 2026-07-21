@@ -441,22 +441,21 @@ async function cloudLoad(){
   stopPoll();
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
   if(error){toast('云端读取失败：'+error.message);render();return;}
-  if(rows&&rows.length){
-    // MERGE, never replace. Two devices practising before approval must not delete each
-    // other's work: cloud wins per event id, and anything only this device has is kept.
-    const cloudEvs=rows.filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
-    const have={};cloudEvs.forEach(e=>{if(e&&e.id)have[e.id]=1;});
-    const localOnly=(STORE.events||[]).filter(e=>e&&e.id&&!have[e.id]&&!e.demo);
-    const lib=rows.find(r=>r.kind==='library');
-    STORE={events:cloudEvs.concat(localOnly),
-           library:mergeLibrary(lib?lib.payload:null,STORE.library),
-           y2:1,y6:1,y7:1};
-    ensureY2();
-    S.evId=STORE.events[0]?STORE.events[0].id:null;S.sel='header';
-    if(localOnly.length)toast('☁ 已同步（本机 '+localOnly.length+' 场活动已合并上传）');
-    else toast('☁ 云同步已开启');
-    if(localOnly.length)cloudPushAll();
-  }else{cloudPushAll();toast('☁ 云同步已开启');}
+  const cloudEvs=(rows||[]).filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
+  const lib=(rows||[]).find(r=>r.kind==='library');
+  // MERGE, never replace. cloud wins per event id; every local event NOT in the cloud is kept
+  // (a second device's offline work, and the 教学示例 tutorial — which still never uploads).
+  const have={};cloudEvs.forEach(e=>{if(e&&e.id)have[e.id]=1;});
+  const localKept=(STORE.events||[]).filter(e=>e&&e.id&&!have[e.id]);
+  const localReal=localKept.filter(e=>!e.demo);          // demo is kept locally but not counted as "uploaded"
+  STORE={events:cloudEvs.concat(localKept),
+         library:mergeLibrary(lib?lib.payload:null,STORE.library),
+         y2:1,y6:1,y7:1};
+  ensureY2();
+  if(!STORE.events.length)cloudPushAll();                 // never leave the host with an empty app
+  S.evId=STORE.events[0]?STORE.events[0].id:null;S.sel='header';
+  if(localReal.length){toast('☁ 已同步（本机 '+localReal.length+' 场活动已合并上传）');cloudPushAll();}
+  else toast('☁ 云同步已开启');
   render();
 }
 // union by id; cloud entries win, local-only entries survive
