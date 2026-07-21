@@ -284,6 +284,56 @@
     color:var(--ink);font-size:12.5px;padding:9px 16px;border-radius:4px;box-shadow:0 8px 20px -4px rgba(0,0,0,.6)}
   .hintbar{font-size:11px;color:var(--muted);line-height:1.7;margin:0 2px 12px}
   .hintbar b{color:var(--brass);font-weight:500}
+  /* read-only回看: disable editing on the sheet without disabling scroll */
+  .main.ro input,.main.ro select,.main.ro textarea,.main.ro .chip{pointer-events:none;opacity:.9;background:var(--felt)}
+  .main.ro .chip .x,.main.ro .rowops,.main.ro .addrow,.main.ro .libitem,.main.ro .strip .btn,
+  .main.ro .evsw .btn.danger,.main.ro .rowcard .tm,.main.ro label.btn{pointer-events:none;opacity:.5}
+  /* ===== 工作台 desk ===== */
+  .deskcard{display:block;width:100%;text-align:left;background:var(--felt-up);border:1px solid var(--line);
+    border-radius:6px;padding:11px 13px;margin-bottom:7px}
+  .deskcard:hover{border-color:var(--brass)}
+  .deskcard .dc-t{font-size:14.5px;font-weight:700}
+  .deskcard .dc-m{font-size:11.5px;color:var(--muted);margin-top:2px;letter-spacing:.04em}
+  .deskcard .dc-m b{color:var(--alarm)}
+  /* ===== 执行 tree (owner 2026-07-21) ===== */
+  .exhero{text-align:center;padding:10px 0 16px;border-bottom:1px solid var(--line);margin-bottom:14px}
+  .exhero .cd{font-family:Oswald,sans-serif;font-size:40px;line-height:1;color:var(--brass);font-variant-numeric:tabular-nums}
+  .exhero .cd.over{color:var(--alarm)}
+  .exhero .cd.none{font-size:22px;color:var(--stock-dim)}
+  .exhero .lab{font-size:11px;letter-spacing:.2em;color:var(--muted);margin-top:6px}
+  .exhero .evn{font-size:14px;color:var(--stock);margin-top:4px;font-weight:500}
+  .exband{margin-bottom:14px}
+  .exband .bt{display:flex;justify-content:space-between;align-items:baseline;margin:0 2px 8px}
+  .exband .bt .lbl{font-size:11px;letter-spacing:.18em}
+  .exband.todo .bt .lbl{color:var(--alarm)}
+  .excols{display:flex;gap:10px}
+  .excols .exband{flex:1;min-width:0;margin-bottom:0}
+  .extask{display:flex;gap:9px;align-items:center;background:var(--felt-up);border:1px solid var(--line);
+    border-radius:6px;padding:9px 11px;margin-bottom:6px;width:100%;text-align:left}
+  .extask .bd{flex:1;min-width:0}
+  .extask .nm{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .extask .wh{font-size:10.5px;color:var(--muted);margin-top:1px}
+  .extask .due{font-size:10px;color:var(--brass);margin-left:5px}
+  .extask .due.over{color:var(--alarm);font-weight:700}
+  .exchip{font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:20px;flex:none;letter-spacing:.06em;cursor:pointer;white-space:nowrap}
+  .exchip.b0{background:#3a2420;color:var(--alarm);border:1px solid var(--alarm)}
+  .exchip.b1{background:var(--felt);color:var(--brass);border:1px solid var(--brass-dim)}
+  .exchip.b2{background:var(--stock);color:var(--ink)}
+  .extask.done{opacity:.6}
+  .exmoney{background:var(--felt-up);border:1px dashed var(--line);border-radius:6px;padding:9px 12px;
+    font-size:12px;color:var(--stock-dim);margin-bottom:12px}
+  .exignore{background:none;border:1px dashed var(--brass-dim);border-radius:6px;padding:8px 11px;margin-top:10px}
+  .exignore .it{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);padding:3px 0}
+  .exignore .it .rz{color:var(--brass);cursor:pointer;font-size:11px}
+  .exadd{width:100%;border:1px dashed var(--line);border-radius:6px;padding:10px;color:var(--muted);
+    font-size:12.5px;letter-spacing:.08em;margin:2px 0 14px}
+  .exadd:hover{border-color:var(--brass);color:var(--brass)}
+  .exfold{font-size:11px;color:var(--brass);cursor:pointer}
+  /* floating task detail */
+  .exdetail .row2{display:flex;gap:7px;margin:10px 0}
+  .exdetail .sb{flex:1;text-align:center;padding:10px 4px;border-radius:6px;border:1px solid var(--line);
+    font-size:12.5px;font-weight:700;cursor:pointer;color:var(--stock-dim)}
+  .exdetail .sb.on{background:var(--brass);color:var(--ink);border-color:var(--brass)}
   /* 示例 (demo/tutorial) marker — shown wherever seeded data appears */
   .demotag{display:inline-block;font-size:9px;line-height:1.4;letter-spacing:.1em;
     color:var(--felt);background:var(--brass);border-radius:3px;padding:1px 5px;margin-left:6px;
@@ -357,7 +407,7 @@ function shareDataFor(p){
   STORE.events.filter(e=>!e.demo).forEach(e=>{
     const duties=[];
     const scan=(holder,where,time)=>holder.resources.forEach(c=>{
-      if(c.refId===p.id)duties.push({where,time,status:RES_ST[c.status||0]});});
+      if(c.refId===p.id)duties.push({where,time,status:taskLabel(c)});});   // one vocabulary: 待办/进行中/完成
     scan(e.header,'活动全场','');
     e.rows.forEach(r=>scan(r,r.seg||'',r.time||''));
     if(!duties.length)return;
@@ -579,9 +629,22 @@ function seed(){
   const hm=ev.header.money.find(c=>c.name==='场地费');if(hm)hm.actual=40000;
   ev.participants=seedParticipants();
   ev.demo=true;                      // tutorial case — kept on purpose (owner 2026-07-20)
+  // a finished, archived worked-example so the host can DISCOVER the whole plan→执行→复盘 arc
+  const past=instantiate(lib.templates[0],lib);
+  past.name='春日联谊 · 八对八';past.theme='已办完的示例 · 回看用';
+  const pd=new Date();pd.setDate(pd.getDate()-24);
+  past.date=pd.getFullYear()+'-'+String(pd.getMonth()+1).padStart(2,'0')+'-'+String(pd.getDate()).padStart(2,'0');
+  past.start='14:00';past.venue='星见咖啡 3F';past.status='done';
+  const ed=new Date();ed.setDate(ed.getDate()-24);past.endedAt=ed.toISOString();
+  [past.header].concat(past.rows).forEach(h=>{h.resources.forEach(c=>c.status=3);   // all 到位=完成
+    h.money.forEach(c=>{if(c.actual==null)c.actual=c.plan;});});
+  past.participants=seedParticipants().slice(0,16).map((p,i)=>Object.assign(p,{arrived:true,at:'14:0'+(i%9)}));
+  past.participants[6].evals=[{id:uid(),strengths:'沟通积极，主动介绍工作',improvements:'家庭话题略紧张',
+    follow_up:'推荐参加下一次活动',source:'manual',at:new Date().toISOString()}];
+  past.volLog={};past.demo=true;
   // mark EVERY seeded asset so the host can tell 示例 data from their own on any screen
   ['resources','money','ideas','templates'].forEach(k=>lib[k].forEach(x=>{x.demo=true;}));
-  return {events:[ev],library:lib};
+  return {events:[ev,past],library:lib};
 }
 // Fabricated demo roster (design: ym/design/ym-event-day.jsx). No real people.
 function seedParticipants(){
@@ -656,28 +719,59 @@ function allResChips(e){let out=e.header.resources.map(c=>({c,where:'活动全�
   e.rows.forEach(r=>r.resources.forEach(c=>out.push({c,where:(r.time?r.time+' ':'')+(r.seg||'')})));return out;}
 function allMoneyChips(e){let out=e.header.money.map(c=>({c,where:'活动全场'}));
   e.rows.forEach(r=>r.money.forEach(c=>out.push({c,where:(r.seg||'')})));return out;}
-function resCounts(e){const n=[0,0,0,0];allResChips(e).forEach(x=>n[x.c.status||0]++);return n;}
+// 资源 strip counts real resources only — ad-hoc 任务 chips (execution chores) are excluded
+function resCounts(e){const n=[0,0,0,0];allResChips(e).forEach(x=>{if(x.c.type!=='任务')n[x.c.status||0]++;});return n;}
+
+/* ===== execution: tasks are a PROJECTION of chips (owner 2026-07-21). No task store. ===== */
+const TASK_ST=['待办','进行中','完成'];        // the ONE vocabulary — used by tree, member page, CSV
+const INV_ST=['待入库','已入库','已发放','已用完'];   // donation-material inventory — ONE field, not a CRM
+function cycleInv(id){const r=STORE.library.resources.find(x=>x.id===id);
+  if(r){r.inv=((r.inv||0)+1)%INV_ST.length;save();render();}}
+// a chip's 4-state status → task bucket: 未联系=待办 · 已联系/已确认=进行中 · 到位=完成
+function taskBucket(c){const s=c.status||0;return s>=3?2:(s>=1?1:0);}
+function taskLabel(c){return TASK_ST[taskBucket(c)];}
+// active (non-ignored) resource/任务 chips as tasks; money is handled separately (待记账)
+function tasks(e){return allResChips(e).filter(x=>!x.c.ignored)
+  .map(x=>({c:x.c,where:x.where,bucket:taskBucket(x.c)}));}
+function ignoredTasks(e){return allResChips(e).filter(x=>x.c.ignored).map(x=>({c:x.c,where:x.where}));}
+function moneyTodo(e){return allMoneyChips(e).filter(x=>!x.c.ignored&&x.c.actual==null).map(x=>({c:x.c,where:x.where}));}
+// event lifecycle phase (owner: two buttons + 14-day cool-down)
+const HOT_DAYS=14;
+function evPhase(e){
+  if(e.archived)return 'archived';
+  const st=e.status||'plan';
+  if(st==='run')return 'current';
+  if(st==='done'||st==='cancelled'){
+    if(e.endedAt){const d=(nowMs()-Date.parse(e.endedAt))/86400000; if(d>HOT_DAYS)return 'archived';}
+    return 'hot';
+  }
+  return 'plan';   // 筹备中
+}
+function nowMs(){return new Date().getTime();}
+const PHASE_LABEL={current:'当前',plan:'筹备中',hot:'已结束·仍热',archived:'已归档'};
 function moneyTotals(e){
   const t={inPlan:0,inActual:0,outPlan:0,outActual:0};
   allMoneyChips(e).forEach(x=>{const c=x.c;
     if(c.kind==='in'){t.inPlan+=c.plan||0;t.inActual+=c.actual||0;}
     else{t.outPlan+=c.plan||0;t.outActual+=c.actual||0;}});
   t.planNet=t.inPlan-t.outPlan;t.actualNet=t.inActual-t.outActual;return t;}
-function followUps(e){const f=[];
-  allResChips(e).forEach(x=>{if((x.c.status||0)<2)f.push({type:'res',c:x.c,where:x.where,ev:e});});
-  allMoneyChips(e).forEach(x=>{if(x.c.actual==null)f.push({type:'money',c:x.c,where:x.where,ev:e});});
+function followUps(e){const f=[];   // unmet, non-ignored — drives 催 + desk counts
+  allResChips(e).forEach(x=>{if(!x.c.ignored&&(x.c.status||0)<2)f.push({type:'res',c:x.c,where:x.where,ev:e});});
+  allMoneyChips(e).forEach(x=>{if(!x.c.ignored&&x.c.actual==null)f.push({type:'money',c:x.c,where:x.where,ev:e});});
   return f;}
 
 /* ================= render ================= */
 const $=id=>document.getElementById(id);
 function render(){
-  const navItems=[['today','今日'],['sheet','活动'],['lib','资产库'],['post','发布']];
+  const navItems=[['desk','工作台'],['sheet','活动'],['lib','资产库'],['post','发布']];
   if(PROFILE&&PROFILE.is_admin)navItems.push(['admin','管理']);
   const nav=navItems.map(([k,l])=>
-    `<button class="${S.view===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
+    `<button class="${S.view===k||(k==='sheet'&&S.view==='exec')?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
   let body='';
   if(S.view==='sheet')body=viewSheet();
-  else if(S.view==='today')body=viewToday();
+  else if(S.view==='desk')body=viewDesk();
+  else if(S.view==='today')body=viewDesk();
+  else if(S.view==='exec')body=viewExec();
   else if(S.view==='day')body=viewDay();
   else if(S.view==='review')body=viewReview();
   else if(S.view==='post')body=viewPost();
@@ -698,7 +792,7 @@ function render(){
   if(S.postEdit&&$('po_body')&&window.ymSanitize)
     window.ymSanitize.into($('po_body'),S.postEdit.body_html||'');
 }
-function go(v){S.view=v;S.drawer=false;render();}
+function go(v){S.view=v;S.drawer=false;if(v!=='sheet')S.readonly=false;render();}
 
 /* ---------- round corner fabs: 📷 photo + 🎤 hold-to-talk (jjcashflow pattern) ---------- */
 function fabsHtml(){
@@ -841,23 +935,23 @@ function libPanel(){
 }
 
 /* ---------- apply ops ---------- */
-function applyTpl(id){const t=STORE.library.templates.find(x=>x.id===id),e=ev();if(!t)return;
+function applyTpl(id){if(S.readonly)return;const t=STORE.library.templates.find(x=>x.id===id),e=ev();if(!t)return;
   if(!e){const ne=instantiate(t);STORE.events.push(ne);S.evId=ne.id;}
   else{
     if(e.rows.length&&!confirm('当前台本已有 '+e.rows.length+' 个环节，用模板覆盖？'))return;
     const ne=instantiate(t);e.rows=ne.rows;e.header=ne.header;
   }
   S.view='sheet';S.drawer=false;save();render();toast('模板已铺入台本');}
-function applyIdea(id){const i=STORE.library.ideas.find(x=>x.id===id),e=ev();if(!i||!e)return;
+function applyIdea(id){if(S.readonly)return;const i=STORE.library.ideas.find(x=>x.id===id),e=ev();if(!i||!e)return;
   const chips=(i.res||[]).map(q=>{const r=STORE.library.resources.find(x=>x.role===q||x.name===q);
     return r?{id:uid(),refId:r.id,name:r.name,role:r.role,type:r.type,status:0}:null;}).filter(Boolean);
   e.rows.push({id:uid(),time:'',seg:i.seg,owner:'',resources:chips,money:[]});
   S.sel=e.rows[e.rows.length-1].id;S.drawer=false;save();render();toast('已加入环节：'+i.seg);}
-function applyRes(id){const r=STORE.library.resources.find(x=>x.id===id),e=ev();if(!r||!e)return;
+function applyRes(id){if(S.readonly)return;const r=STORE.library.resources.find(x=>x.id===id),e=ev();if(!r||!e)return;
   const tgt=S.sel==='header'?e.header:e.rows.find(x=>x.id===S.sel);if(!tgt){toast('先点选一行');return;}
   tgt.resources.push({id:uid(),refId:r.id,name:r.name,role:r.role,type:r.type,status:0});
   S.drawer=false;save();render();toast(r.name+' 已挂上');}
-function applyMoney(id){const m=STORE.library.money.find(x=>x.id===id),e=ev();if(!m||!e)return;
+function applyMoney(id){if(S.readonly)return;const m=STORE.library.money.find(x=>x.id===id),e=ev();if(!m||!e)return;
   const tgt=S.sel==='header'?e.header:e.rows.find(x=>x.id===S.sel);if(!tgt){toast('先点选一行');return;}
   tgt.money.push({id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,unit:m.unit,actual:null});
   S.drawer=false;save();render();toast(m.name+' 已挂上');}
@@ -869,11 +963,14 @@ function viewSheet(){
     <select onchange="S.evId=this.value;S.sel='header';render()">
       ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${x.demo?'【教学】':''}${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
     </select>
-    ${e?`<button class="btn sm" onclick="goDay()">▶ 当天</button>
+    ${e&&!S.readonly?`<button class="btn sm" onclick="${e.status==='run'?`goExec('${e.id}')`:'enterExec()'}">${e.status==='run'?'▶ 执行看板':'进入执行'}</button>
+    <button class="btn ghost sm" onclick="goDay()">当天</button>
     <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
-    ${e?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
+    ${e&&!S.readonly?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
   </div>`;
+  const roBanner=S.readonly?`<div class="hintbar" style="border:1px solid var(--brass-dim);border-radius:5px;padding:9px 11px">
+    🔒 只读回看（已归档活动）· <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读编辑</span></div>`:'';
   if(!e)return `<div class="wrap"><div class="panel">${libPanel()}</div>
     <div class="main">${sw}<div class="empty">还没有活动。<br>点「＋ 新活动」，或从左侧资产库点一个模板开始。</div></div></div>
     <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>`;
@@ -938,8 +1035,8 @@ function viewSheet(){
       <button onclick="event.stopPropagation();moveRow('${r.id}',1)" ${i===e.rows.length-1?'disabled':''}>▼</button>
       <button onclick="event.stopPropagation();delRow('${r.id}')">✕</button>
     </div></div>`).join('');
-  return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main">
-    ${sw}
+  return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main${S.readonly?' ro':''}">
+    ${sw}${roBanner}
     ${e.demo?`<div class="hintbar" style="border:1px dashed var(--brass-dim);border-radius:5px;padding:9px 11px">
       <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不会上云或公开到官网。
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
@@ -985,26 +1082,26 @@ function delRow(id){const e=ev();const r=e.rows.find(x=>x.id===id);
   e.rows=e.rows.filter(x=>x.id!==id);if(S.sel===id)S.sel='header';save();render();}
 function moveRow(id,d){const e=ev();const i=e.rows.findIndex(x=>x.id===id);const j=i+d;
   if(i<0||j<0||j>=e.rows.length)return;const t=e.rows[i];e.rows[i]=e.rows[j];e.rows[j]=t;save();render();}
-function cycleRes(loc,cid){const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
+function cycleRes(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
   if(c){c.status=((c.status||0)+1)%4;save();render();}}
 function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
   const k=kind==='res'?'resources':'money';h[k]=h[k].filter(x=>x.id!==cid);save();render();}
-function editMoney(loc,cid){const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
+function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
   const v=prompt((c.kind==='in'?'收入':'支出')+'「'+c.name+'」实际金额（计划 '+yen(c.plan)+'；留空=未发生）',
     c.actual!=null?c.actual:'');
   if(v===null)return;c.actual=v===''?null:(parseInt(v.replace(/[^\d]/g,''),10)||0);save();render();}
 // the host may well rename the tutorial into their real event — give that an exit
-function promoteDemo(){const e=ev();if(!e||!e.demo)return;
+function promoteDemo(){S.readonly=false;const e=ev();if(!e||!e.demo)return;
   if(!confirm('把「'+e.name+'」转为正式活动？转正后会上云备份，也可以公开到官网。'))return;
   delete e.demo;save();render();toast('已转为正式活动');}
-function newEvent(){const e=instantiate(null);e.name='新活动';STORE.events.push(e);
+function newEvent(){S.readonly=false;const e=instantiate(null);e.name='新活动';STORE.events.push(e);
   S.evId=e.id;S.sel='header';save();render();toast('从资产库点一个模板铺台本');}
 function delEvent(){const e=ev();if(!e)return;
   if(!confirm('删除活动「'+e.name+'」？此操作不可恢复'))return;
   STORE.events=STORE.events.filter(x=>x.id!==e.id);S.evId=STORE.events[0]?STORE.events[0].id:null;
   if(canCloud())sb.from('ym_doc').delete().match({kind:'event',doc_id:e.id}).then(()=>{});
   S.sel='header';save();render();}
-function remindAll(){const e=ev();const un=allResChips(e).filter(x=>(x.c.status||0)<2);
+function remindAll(){const e=ev();const un=allResChips(e).filter(x=>!x.c.ignored&&x.c.type!=='任务'&&(x.c.status||0)<2);
   if(!un.length){toast('资源都已确认，无需催');return;}
   const txt='【'+e.name+'】'+fmtDate(e.date)+(e.start?' '+e.start:'')+' 提醒：\n'+
     un.map(x=>'· '+x.c.name+'（'+(x.c.role||x.c.type)+' / '+x.where+'）— 请确认').join('\n')+'\n收到请回复，谢谢！';
@@ -1080,6 +1177,7 @@ function viewLib(){
           ${x.shareEmail?`<span class="lbl" style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span>`:''}</div>
         <div class="m">${meta}
         <span style="float:right">
+          ${cat==='goods'?`<button class="exchip b${(x.inv||0)===3?0:((x.inv||0)?1:0)}" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();cycleInv('${x.id}')">📦 ${INV_ST[x.inv||0]}</button> `:''}
           ${cat==='volunteer'?`<button class="btn ghost sm" onclick="event.stopPropagation();grantAccount('${x.id}')">${x.shareEmail?'账号✓':'授权账号'}</button> `:''}
           <button class="btn danger sm" onclick="event.stopPropagation();libDel('resources','${x.id}')">删除</button></span></div></div>`;
     }).join('');
@@ -1781,7 +1879,7 @@ function postDel(){
   });
 }
 /* 活动 → 官网卡片：内容跟着活动走，勾选即发布 */
-function pubEvent(on){
+function pubEvent(on){if(S.readonly){render();return;}
   const e=ev();if(!e)return;
   if(!canCloud()){toast('登录后才能公开到官网');render();return;}
   if(on&&e.demo){toast('教学示例不能公开到官网');render();return;}
@@ -1978,7 +2076,7 @@ function buildSaveBack(e){
   const rseen={},res=[];
   allResChips(e).forEach(x=>{const c=x.c;
     if(rseen[c.name]||L.resources.some(y=>y.name===c.name))return;
-    rseen[c.name]=1;res.push({on:true,name:c.name,type:c.type||'人',role:c.role||'',
+    if((c.type||'人')==='任务')return; rseen[c.name]=1;res.push({on:true,name:c.name,type:c.type||'人',role:c.role||'',
       cat:(c.type==='物')?'goods':'volunteer'});});
   const mseen={},money=[];
   allMoneyChips(e).forEach(x=>{const c=x.c;
@@ -2016,13 +2114,16 @@ function saveBackCard(){
 }
 function applySaveBack(){
   const sb=S.saveBack,L=STORE.library,e=ev();let n=0;
-  const cpR=c=>Object.assign({},c,{id:uid(),status:0});
-  const cpM=c=>Object.assign({},c,{id:uid(),actual:null});
+  // whitelist-copy: a saved template must NOT carry execution state (status/due/ignored) or an
+  // ad-hoc 任务 chip into future events (owner 2026-07-21 — a real leak the review caught)
+  const cpR=c=>({id:uid(),refId:c.refId,name:c.name,type:c.type,role:c.role,status:0});
+  const cpM=c=>({id:uid(),refId:c.refId,name:c.name,kind:c.kind,plan:c.plan,unit:c.unit,actual:null});
+  const noTask=arr=>(arr||[]).filter(c=>c.type!=='任务');   // one-off chores don't belong in a template
   if(sb.tpl.on){L.templates.push({id:uid(),name:sb.tpl.name,
     note:e.rows.length+'环节 · 来自 '+fmtDate(e.date),
     rows:e.rows.map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,
-      resources:r.resources.map(cpR),money:r.money.map(cpM)})),
-    header:{resources:e.header.resources.map(cpR),money:e.header.money.map(cpM)}});n++;}
+      resources:noTask(r.resources).map(cpR),money:r.money.map(cpM)})),
+    header:{resources:noTask(e.header.resources).map(cpR),money:e.header.money.map(cpM)}});n++;}
   sb.ideas.filter(x=>x.on).forEach(x=>{L.ideas.push({id:uid(),seg:x.seg,dur:x.dur,res:x.res});n++;});
   sb.res.filter(x=>x.on).forEach(x=>{L.resources.push({id:uid(),name:x.name,type:x.type,
     cat:x.cat||(x.type==='物'?'goods':'volunteer'),role:x.role});n++;});
@@ -2078,6 +2179,151 @@ function printRundown(){
     '</table><scr'+'ipt>print()</scr'+'ipt></body></html>');
   w.document.close();
 }
+
+/* ================= 执行 tree (owner 2026-07-21, PRIORITY #1) ================= */
+const BUCKET_STATUS=[0,1,3];   // 待办→未联系, 进行中→已联系, 完成→到位
+function goExec(id){if(id)S.evId=id;S.view='exec';S.draft=null;render();}
+function daysTo(e){if(!e.date)return null;return Math.round((Date.parse(e.date+'T00:00:00')-Date.parse(todayStr()+'T00:00:00'))/86400000);}
+function heroHtml(e){
+  const d=daysTo(e),ph=evPhase(e);
+  if(ph==='hot'||ph==='archived')
+    return `<div class="cd none">已结束</div><div class="lab">${ph==='hot'?'仍在跟进期':'已归档'}</div>`;
+  if(d==null)return `<div class="cd none">日期未定</div><div class="lab">先在计划里定个日子</div>`;
+  if(d<0)return `<div class="cd over">已过 ${-d} 天</div><div class="lab">活动日已过</div>`;
+  return `<div class="cd${d<=3?' over':''}">${d===0?'今天':d}</div><div class="lab">${d===0?'就是今天':'还有 '+d+' 天'}</div>`;
+}
+function taskCard(x){
+  const c=x.c,b=x.bucket,icon=c.type==='任务'?'📌':(c.type==='物'?'📦':'👤');
+  const due=c.due?`<span class="due${(c.due<todayStr()&&b<2)?' over':''}">截止${fmtDate(c.due)}</span>`:'';
+  return `<div class="extask ${b===2?'done':''}">
+    <div class="bd" onclick="exOpen('${c.id}')">
+      <div class="nm">${icon} ${esc(c.name)}${due}</div>
+      <div class="wh">${esc(x.where)}${c.role?' · '+esc(c.role):''}</div></div>
+    <span class="exchip b${b}" onclick="event.stopPropagation();exAdvance('${c.id}')">${TASK_ST[b]}</span></div>`;
+}
+function viewExec(){
+  const e=ev();if(!e)return `<div class="main"><div class="empty">还没有活动。去「活动」页新建一个。</div></div>`;
+  const ph=evPhase(e);
+  if(ph==='hot'||ph==='archived'){S.view='review';return viewReview();}   // past events → 复盘, not a dead countdown
+  const t=tasks(e),todo=t.filter(x=>x.bucket===0),doing=t.filter(x=>x.bucket===1),done=t.filter(x=>x.bucket===2);
+  const mt=moneyTodo(e),ign=ignoredTasks(e);
+  const card=x=>taskCard(x);
+  const doneBody=S.exShowDone?done.map(card).join(''):'';
+  return `<div class="main" style="max-width:600px;margin:0 auto;padding-bottom:120px">
+    <div class="d" style="font-size:11px;color:var(--muted);letter-spacing:.14em;padding:0 2px 6px">
+      <span class="bk" style="color:var(--brass);cursor:pointer" onclick="go('sheet')">← 计划</span> · 执行</div>
+    <div class="exhero">${heroHtml(e)}<div class="evn">${esc(e.name)}${dtag(e)}</div></div>
+    <div class="exband todo"><div class="bt"><span class="lbl">待办 ${todo.length}</span></div>
+      ${todo.map(card).join('')||'<div class="note9" style="margin:0 2px">没有待办 — 都在推进或已完成。</div>'}
+      <button class="exadd" onclick="exAddTodo()">＋ 加一个待办（如：打电话确认场地）</button></div>
+    <div class="excols">
+      <div class="exband"><div class="bt"><span class="lbl">进行中 ${doing.length}</span></div>
+        ${doing.map(card).join('')||'<div class="note9" style="margin:0 2px">—</div>'}</div>
+      <div class="exband"><div class="bt"><span class="lbl">完成 ${done.length}</span>
+        ${done.length?`<span class="exfold" onclick="S.exShowDone=!S.exShowDone;render()">${S.exShowDone?'收起':'展开'}</span>`:''}</div>
+        ${doneBody||(done.length?'':'<div class="note9" style="margin:0 2px">—</div>')}</div></div>
+    ${mt.length?`<div class="exmoney">💰 待记账 ${mt.length} 项：${mt.slice(0,3).map(x=>esc(x.c.name)).join('、')}${mt.length>3?' …':''}
+      <span class="exfold" style="float:right" onclick="go('sheet')">去收支填实际 →</span></div>`:''}
+    ${ign.length?`<div class="exignore"><div class="lbl" style="margin-bottom:4px">已搁置 ${ign.length}（保留为提示，不催办）</div>
+      ${ign.map(x=>`<div class="it"><span>${esc(x.c.name)} · ${esc(x.where)}</span>
+        <span class="rz" onclick="exRestore('${x.c.id}')">恢复为待办</span></div>`).join('')}</div>`:''}
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn" style="flex:1" onclick="endExec('done')">✓ 完成活动</button>
+      <button class="btn ghost sm" onclick="endExec('cancelled')">取消活动</button></div>
+    <p class="note9">点状态标签一下切换 待办→进行中→完成；点任务名看详情/催办/搁置/截止。</p>
+  </div>
+  ${S.exTask?exDetailCard():''}`;
+}
+function chipById(cid){const e=ev();let f=null;
+  [e.header].concat(e.rows).forEach(h=>{['resources','money'].forEach(k=>{(h[k]||[]).forEach(c=>{if(c.id===cid)f=c;});});});
+  return f;}
+function exAdvance(cid){const c=chipById(cid);if(!c)return;
+  const nb=(taskBucket(c)+1)%3;c.status=BUCKET_STATUS[nb];save();render();}
+function exOpen(cid){S.exTask=cid;render();}
+function exDetailCard(){
+  const c=chipById(S.exTask);if(!c){S.exTask=null;return '';}
+  const b=taskBucket(c);
+  return `<div class="drawerbg" onclick="S.exTask=null;render()"></div>
+    <div class="modal-g exdetail"><div class="rvsec" style="margin:0">
+      <div class="hd"><span class="lbl">${c.type==='任务'?'待办':(c.type==='物'?'物资':'人员')}</span>
+        <button class="btn ghost sm" onclick="S.exTask=null;render()">✕</button></div>
+      <div style="font-size:15px;font-weight:600;margin:2px 0 2px">${esc(c.name)}</div>
+      ${c.role?`<div class="note9" style="margin:0 0 4px">${esc(c.role)}</div>`:''}
+      <div class="row2">${TASK_ST.map((l,i)=>`<button class="sb ${b===i?'on':''}" onclick="exSet('${c.id}',${i})">${l}</button>`).join('')}</div>
+      <label class="fld" style="display:block;margin:8px 0"><span class="lbl">截止日期（可选，只提醒不排期）</span>
+        <input type="date" value="${esc(c.due||'')}" onchange="exDue('${c.id}',this.value)"></label>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        ${b<2?`<button class="btn ghost sm" onclick="exRemind('${c.id}')">📤 催办</button>`:''}
+        ${c.type==='任务'?`<button class="btn danger sm" onclick="exDelTask('${c.id}')">删除</button>`
+          :`<button class="btn ghost sm" onclick="exIgnore('${c.id}')">搁置（不催办）</button>`}</div>
+    </div></div>`;
+}
+function exSet(cid,bucket){const c=chipById(cid);if(!c||taskBucket(c)===bucket)return;c.status=BUCKET_STATUS[bucket];save();render();}
+function exDue(cid,v){const c=chipById(cid);if(c){c.due=v||undefined;save();}}
+function exIgnore(cid){const c=chipById(cid);if(!c)return;c.ignored=true;S.exTask=null;save();render();toast('已搁置（下方提示保留，不再催办）');}
+function exRestore(cid){const c=chipById(cid);if(!c)return;c.ignored=false;save();render();}
+function exRemind(cid){const e=ev(),c=chipById(cid);if(!c)return;
+  const txt='【'+e.name+'】'+fmtDate(e.date)+' 提醒：\n· '+c.name+(c.role?'（'+c.role+'）':'')+' — 请尽快确认/到位';
+  share(txt);}
+function exAddTodo(){const name=prompt('待办内容（如：打电话确认场地、印名牌、续保险）');if(!name||!name.trim())return;
+  const e=ev();e.header.resources.push({id:uid(),type:'任务',name:name.trim(),role:'',status:0});
+  save();render();toast('已加到待办');}
+function exDelTask(cid){const e=ev();
+  e.header.resources=e.header.resources.filter(c=>c.id!==cid);
+  e.rows.forEach(r=>{r.resources=r.resources.filter(c=>c.id!==cid);});
+  S.exTask=null;save();render();}
+/* the two lifecycle buttons */
+function enterExec(){const e=ev();if(!e)return;
+  const unmet=followUps(e);
+  if(unmet.length&&!confirm('还有 '+unmet.length+' 项资源/收支没落实。\n进入执行后它们会排到「待办」，你可以逐个推进或搁置。\n现在进入执行？'))return;
+  e.status='run';save();goExec(e.id);toast('已进入执行 — 这是执行看板');}
+function endExec(kind){const e=ev();if(!e)return;
+  if(!confirm(kind==='done'?'把这场活动标记为「完成」？完成后进入 14 天跟进期，可复盘并保存回资产库。'
+                          :'取消这场活动？'))return;
+  e.status=kind;e.endedAt=new Date().toISOString();save();
+  if(kind==='done'){S.view='review';S.saveBack=buildSaveBack(e);render();toast('活动完成 — 复盘并「保存回资产库」，模板会一点点攒起来');}
+  else{go('desk');toast('活动已取消');}
+}
+
+/* ================= 工作台 desk (owner 2026-07-21) ================= */
+function goDesk(){S.view='desk';S.peek=null;render();}
+function viewDesk(){
+  const groups={current:[],plan:[],hot:[],archived:[]};
+  STORE.events.forEach(e=>groups[evPhase(e)].push(e));
+  const sortByDate=(a,b)=>(a.date||'9999')<(b.date||'9999')?-1:1;
+  Object.keys(groups).forEach(k=>groups[k].sort(sortByDate));
+  const evCard=(e)=>{const f=followUps(e);
+    return `<button class="deskcard" onclick="peek('${e.id}')">
+      <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
+      <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}</div></button>`;};
+  const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
+    (groups[k].length?groups[k].map(evCard).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);
+  return `<div class="main" style="max-width:640px;margin:0 auto">
+    <div class="evsw" style="margin-bottom:12px"><button class="btn sm" onclick="newEvent();go('sheet')">＋ 新活动</button></div>
+    ${sec('current','正在进行的活动会出现在这里（在计划页点「进入执行」）。')}
+    ${sec('plan','筹备中的活动。')}
+    ${sec('hot','刚结束、还在跟进复盘的活动（14 天内）。')}
+    ${sec('archived','已归档的活动 — 点开只读回看。')}
+    ${S.peek?peekCard():''}
+  </div>`;
+}
+function peek(id){S.peek=id;render();}
+function peekCard(){
+  const e=STORE.events.find(x=>x.id===S.peek);if(!e){S.peek=null;return '';}
+  const ph=evPhase(e),f=followUps(e),mt=moneyTotals(e);
+  const open=ph==='current'?`goExec('${e.id}')`:ph==='archived'?`openArchived('${e.id}')`:`S.evId='${e.id}';go('sheet')`;
+  const openLbl=ph==='current'?'▶ 打开执行看板':ph==='archived'?'👁 只读回看':ph==='hot'?'复盘 / 跟进':'打开计划';
+  return `<div class="drawerbg" onclick="S.peek=null;render()"></div>
+    <div class="modal-g"><div class="rvsec" style="margin:0">
+      <div class="hd"><span class="lbl">${PHASE_LABEL[ph]}</span>
+        <button class="btn ghost sm" onclick="S.peek=null;render()">✕</button></div>
+      <div style="font-size:16px;font-weight:700;margin:2px 0">${esc(e.name)||'未命名'}${dtag(e)}</div>
+      <div class="note9" style="margin:0 0 8px">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${e.venue?' · '+esc(e.venue):''}</div>
+      <div style="font-size:12.5px;line-height:1.9">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}</div>
+      <button class="btn" style="width:100%;margin-top:12px" onclick="S.peek=null;${ph==='hot'?`S.evId='${e.id}';S.view='review';render()`:open}">${openLbl}</button>
+    </div></div>`;
+}
+function openArchived(id){S.evId=id;S.readonly=true;go('sheet');}
 
 /* ================= boot ================= */
 STORE=load();
