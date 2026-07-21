@@ -153,9 +153,17 @@ undimmed floating detail; desk cards open in ONE click, routed by phase; overlap
 cards + a center gutter + height that grows with count) · ② gate per-item 待处理/搁置 triage +
 **JOBS per rundown item** (owner refinement 2026-07-21: each 环节 has people+resources+jobs; jobs
 absorbed into templates so they auto-reappear; a 环节 with 0 jobs = no task; the gate warns about
-0-job 环节, host can 忽略→a note beneath the tree) · ③ fold-to-major + 全部展开 · ④ pre/post
-advisory links (last, Gantt-guarded) · ⑤ participant screenshot-absorb (separate, APPI-gated).
+0-job 环节, host can 忽略→a note beneath the tree) · ✅ ③ fold-to-major + 全部展开 — DONE (台本
+shows 环节 + a 资源/要做/收支 summary; tap a 环节 to expand its chips in-place—render-free so typing
+keeps focus—or 全部展开; header stays open) · ④ pre/post advisory links (last, Gantt-guarded —
+likely unnecessary since tasks already sit on a day-axis) · ⑤ participant screenshot-absorb
+(separate, APPI-gated).
 Owner also confirmed: leave the 活动 tab as-is for now (demo-stage, unsure of use).
+
+**The execution revision (PRIORITY #1) is now substantially complete** (tree · peek · desk · kickoff ·
+gate · jobs · fold). Natural next per the owner's own stated priority = DATA-REUSE — 一键复办 (clone
+this event → next) + reuse prompts (CONNECTIONS.md Groups 2+4; serves pass-condition ②). ④/⑤ remain
+deferred/gated.
 
 ## 1. Site structure
 
