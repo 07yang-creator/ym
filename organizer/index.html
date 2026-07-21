@@ -129,10 +129,19 @@
   /* fold-to-major: in fold mode show only 环节 + a summary; the SELECTED row (or 全部展开) expands its chips */
   .rowcard .rowsum{display:none;font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:.03em;cursor:pointer}
   .rowcard .rowsum .empty{color:var(--brass-dim)}
-  .main.foldsheet .rowcard .chips{display:none}
+  .main.foldsheet .rowcard .rowdetail{display:none}
   .main.foldsheet .rowcard .rowsum{display:block}
+  .main.foldsheet .rowcard.sel .descsi,.main.foldsheet.showall .rowcard .descsi{display:block}
   .main.foldsheet .rowcard.sel .chips,.main.foldsheet.showall .rowcard .chips{display:flex}
+  .main.foldsheet .rowcard.sel .rowfiles,.main.foldsheet.showall .rowcard .rowfiles{display:flex}
   .main.foldsheet .rowcard.sel .rowsum,.main.foldsheet.showall .rowcard .rowsum{display:none}
+  .descsi{width:100%;margin-top:6px;background:var(--felt);border:1px solid var(--line);border-radius:5px;
+    color:var(--stock);font-size:12px;padding:6px 9px}
+  .rowfiles{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center}
+  .filechip{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--stock-dim);
+    background:var(--felt);border:1px solid var(--line);border-radius:12px;padding:3px 9px;cursor:pointer}
+  .filechip .x{color:var(--brass-dim)}
+  .fileadd{font-size:10.5px;color:var(--brass);border:1px dashed var(--brass-dim);border-radius:12px;padding:3px 9px;cursor:pointer}
   .foldtoggle{display:flex;justify-content:space-between;align-items:center;margin:2px 2px 8px;font-size:12px;color:var(--muted)}
   .foldtoggle .t{color:var(--brass);cursor:pointer;font-weight:600}
   .chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:3px;
@@ -441,17 +450,19 @@
   .tlcanopy .extask{width:auto;max-width:270px;margin-bottom:0;border-left-color:var(--alarm)}
   .tlcanopy .exadd{max-width:270px;margin:12px auto 0}
   .extl{position:relative;margin:0 auto;width:100%}
-  .extl .shd{position:absolute;top:-20px;font-size:11px;letter-spacing:.14em;font-weight:600}
-  .extl .shd.l{right:calc(50% + 84px);color:var(--stock-dim)}
-  .extl .shd.r{left:calc(50% + 84px);color:var(--brass)}
-  .extl .top{position:absolute;left:50%;top:-4px;transform:translate(-50%,-100%);font-size:10px;color:var(--brass-dim);white-space:nowrap}
+  /* column headers spread over each side; no arrows crossing the trunk */
+  .extl .shd{position:absolute;top:-22px;font-size:11px;letter-spacing:.16em;font-weight:600}
+  .extl .shd.l{left:0;width:44%;text-align:center;color:var(--ok)}
+  .extl .shd.r{right:0;width:44%;text-align:center;color:var(--brass)}
+  .extl .top{position:absolute;left:50%;top:-22px;transform:translateX(-50%);font-size:10px;color:var(--brass-dim);white-space:nowrap}
   .tltrunk{position:absolute;left:50%;top:0;bottom:0;width:26px;transform:translateX(-50%);border-radius:6px;
     background:var(--felt-up);border:1px solid var(--line);overflow:hidden;z-index:1}
   .tltrunk .el{position:absolute;left:0;right:0;top:0;background:linear-gradient(180deg,#7a6636,var(--brass-dim))}
-  .tltoday{position:absolute;left:0;right:0;height:2px;z-index:3;
-    background:linear-gradient(90deg,transparent,rgba(201,163,86,.55) 18%,rgba(201,163,86,.55) 82%,transparent)}
-  .tltoday .tg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--brass);color:var(--ink);
-    font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;letter-spacing:.06em}
+  /* 今天 = a small marker ON the trunk (a short tick + a pill to the side), NOT a full-width line */
+  .tltoday{position:absolute;left:50%;height:0;z-index:6}
+  .tltoday::before{content:"";position:absolute;left:-15px;width:30px;height:3px;top:-1px;background:var(--brass);border-radius:2px}
+  .tltoday .tg{position:absolute;left:50%;top:5px;transform:translateX(-50%);background:var(--brass);color:var(--ink);
+    font-size:9px;font-weight:700;padding:1px 7px;border-radius:20px;white-space:nowrap;letter-spacing:.04em}
   .tldl{position:absolute;left:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;
     background:var(--brass);border:2px solid var(--felt);box-shadow:0 0 0 1px var(--brass);z-index:5}
   .tldl.over{background:var(--alarm);box-shadow:0 0 0 1px var(--alarm)}
@@ -848,7 +859,7 @@ function instantiate(tpl,lib){
 }
 
 /* ================= state ================= */
-const S={view:'sheet',evId:null,sel:'header',libTab:'tpl',drawer:false};
+const S={view:'desk',evId:null,sel:'header',libTab:'tpl',drawer:false};   // host lands on 工作台 (owner)
 function ev(){return STORE.events.find(e=>e.id===S.evId)||STORE.events[0]||null;}
 
 /* ================= aggregations (the strips) ================= */
@@ -900,7 +911,7 @@ function followUps(e){const f=[];   // unmet, non-ignored — drives 催 + desk 
 /* ================= render ================= */
 const $=id=>document.getElementById(id);
 function render(){
-  const navItems=[['desk','工作台'],['sheet','活动'],['lib','资产库'],['post','发布']];
+  const navItems=[['desk','工作台'],['sheet','计划'],['lib','资产库'],['post','发布']];
   if(PROFILE&&PROFILE.is_admin)navItems.push(['admin','管理']);
   const nav=navItems.map(([k,l])=>
     `<button class="${S.view===k||(k==='sheet'&&S.view==='exec')?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
@@ -924,6 +935,7 @@ function render(){
     ${fabsHtml()}
     ${S.auth?authSheet():''}
     ${S.jobEdit?jobEditCard():''}
+    ${peopleDatalist()}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
       <div class="drawer">${libPanel()}</div>`:''}`;
   // editor body is filled with sanitized NODES (never innerHTML) — no re-parse window
@@ -1185,10 +1197,13 @@ function viewSheet(){
       <div class="seg2">
         <input class="segi" value="${esc(r.seg)}" placeholder="环节"
           onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','seg',this.value)">
-        <input class="owni" value="${esc(r.owner)}" placeholder="负责人"
+        <input class="owni" value="${esc(r.owner)}" placeholder="负责人" list="peoplelist"
           onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','owner',this.value)">
       </div>
-      <div class="chips">${chipsHtml(r,r.id)}</div>
+      <input class="descsi rowdetail" value="${esc(r.desc||'')}" placeholder="这个环节的简介 / 说明（可选）"
+        onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','desc',this.value)">
+      <div class="chips rowdetail">${chipsHtml(r,r.id)}</div>
+      <div class="rowfiles rowdetail">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">📎 ${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
       <div class="rowsum" onclick="event.stopPropagation();selRow('${r.id}')">${rowSum(r)}</div>
     </div>
     <div class="rowops">
@@ -1262,6 +1277,15 @@ function selRow(id,evt){
 // value, and none of the strips depend on these fields. Rendering would drop the cursor.
 function e_upd(f,v){const e=ev();e[f]=v;save();if(e.publicOn)syncEventPost(e);}
 function r_upd(id,f,v){const r=ev().rows.find(x=>x.id===id);if(r){r[f]=v;save();}}
+// 环节 attachments — small files inline (data URL); big ones keep the name only until the Drive proxy is wired
+function rowAttach(rid,input){if(S.readonly)return;const f=input.files&&input.files[0];if(!f)return;
+  const r=ev().rows.find(x=>x.id===rid);if(!r)return;if(!r.files)r.files=[];const fid=uid();
+  if(f.size>400000){r.files.push({id:fid,name:f.name});save();render();toast('已记下文件名（大文件待接入云盘）');return;}
+  const rd=new FileReader();rd.onload=()=>{r.files.push({id:fid,name:f.name,url:rd.result,mime:f.type});save();render();toast('已附上：'+f.name);};
+  rd.readAsDataURL(f);}
+function delFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);if(r&&r.files){r.files=r.files.filter(x=>x.id!==fid);save();render();}}
+function openFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);const f=r&&(r.files||[]).find(x=>x.id===fid);if(!f)return;
+  if(f.url)window.open(f.url,'_blank');else toast(f.name+' — 待接入云盘后可打开');}
 function addRow(){const e=ev();e.rows.push({id:uid(),time:'',seg:'',owner:'',resources:[],money:[]});
   S.sel=e.rows[e.rows.length-1].id;save();render();}
 function delRow(id){const e=ev();const r=e.rows.find(x=>x.id===id);
@@ -1279,6 +1303,13 @@ function uniquePlanNames(e,type){const s=new Set();
   [e.header].concat(e.rows).forEach(h=>{(h.resources||[]).forEach(c=>{if((c.type||'人')===type&&c.name)s.add(c.name);});});
   if(type==='人')e.rows.forEach(r=>{if((r.owner||'').trim())s.add(r.owner.trim());});
   return [...s].slice(0,10);}
+// 负责人 dropdown: pick an existing person (资产库 + this plan) or type a new name
+function peopleOptions(){const s=new Set();
+  peoList('volunteer').forEach(r=>{if(r.name)s.add(r.name);});
+  const e=ev();if(e){[e.header].concat(e.rows).forEach(h=>(h.resources||[]).forEach(c=>{if((c.type||'人')==='人'&&c.name)s.add(c.name);}));
+    e.rows.forEach(r=>{if((r.owner||'').trim())s.add(r.owner.trim());});}
+  return [...s];}
+function peopleDatalist(){return `<datalist id="peoplelist">${peopleOptions().map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`;}
 function findChipLoc(cid){const e=ev();if((e.header.resources||[]).some(c=>c.id===cid))return 'header';
   const r=e.rows.find(x=>(x.resources||[]).some(c=>c.id===cid));return r?r.id:'header';}
 function jobHolder(loc){const e=ev();return loc==='header'?e.header:e.rows.find(x=>x.id===loc);}
@@ -1288,7 +1319,7 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
   const h=jobHolder(je.loc);const c=je.cid&&h?h.resources.find(x=>x.id===je.cid):null;
   const d=c||{name:'',role:'',needs:'',due:''};const b=c?taskBucket(c):0;
   const where=je.loc==='header'?'活动全场':(()=>{const r=e.rows.find(x=>x.id===je.loc);return r?((r.time?r.time+' ':'')+(r.seg||'环节')):'环节';})();
-  const pick=(arr,fn)=>arr.length?`<div class="jepick">${arr.map(n=>`<span onclick="${fn}('${n.replace(/['"\\]/g,'')}')">${esc(n)}</span>`).join('')}</div>`:'';
+  const pick=(arr,fn)=>arr.length?`<div class="jepick">${arr.map(n=>`<span onclick="${fn}(this.textContent)">${esc(n)}</span>`).join('')}</div>`:'';
   return `<div class="drawerbg" onclick="S.jobEdit=null;render()"></div>
     <div class="exdlg jobdlg">
       <div class="hd"><span class="tp">📌 ${c?'这件要做的事':'加一件要做的事'}</span>
@@ -1297,7 +1328,7 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
       <label class="dfld"><span class="l">要做什么</span>
         <input id="je_name" value="${esc(d.name)}" placeholder="如：预订场地 / 布置会场 / 借设备"></label>
       <label class="dfld"><span class="l">谁来做（负责人）</span>
-        <input id="je_role" value="${esc(d.role||'')}" placeholder="从下面点，或直接写"></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
+        <input id="je_role" value="${esc(d.role||'')}" placeholder="选一个人，或直接写新名字" list="peoplelist"></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
       <label class="dfld"><span class="l">需要什么（资源）</span>
         <input id="je_needs" value="${esc(d.needs||'')}" placeholder="从下面点添加，或直接写"></label>${pick(uniquePlanNames(e,'物'),'jeNeed')}
       <label class="dfld"><span class="l">什么时候前完成（可选）</span>
@@ -1318,7 +1349,7 @@ function jobEditSave(){if(S.readonly||!S.jobEdit)return;const je=S.jobEdit;const
   const segEl=document.querySelector('.jobdlg .exseg');
   const bi=segEl?[...segEl.querySelectorAll('.sb')].findIndex(s=>s.classList.contains('on')):0;
   let c=je.cid?h.resources.find(x=>x.id===je.cid):null;
-  if(c){c.name=name;c.role=role;c.needs=needs;c.due=due;c.status=BUCKET_STATUS[Math.max(0,bi)];stampDone(c);}
+  if(c){c.name=name;c.role=role;c.needs=needs;c.due=due;c.ignored=false;c.status=BUCKET_STATUS[Math.max(0,bi)];stampDone(c);}
   else{h.resources.push({id:uid(),type:'任务',name:name,role:role,needs:needs,due:due,status:0});}
   S.jobEdit=null;save();render();toast(c?'已更新':'已加到要做的事');}
 function jeDelete(){if(!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);
@@ -1347,7 +1378,7 @@ function cloneEvent(srcId){
   const noTask=arr=>(arr||[]).filter(c=>(c.type||'人')!=='任务');   // header one-off chores don't carry over
   const ne={id:uid(),name:src.name,theme:src.theme||'',date:'',start:src.start||'',venue:src.venue||'',status:'plan',
     header:{resources:noTask(live(src.header.resources)).map(cpR),money:(src.header.money||[]).map(cpM)},
-    rows:(src.rows||[]).map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,
+    rows:(src.rows||[]).map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,desc:r.desc,
       resources:live(r.resources).map(cpR),money:(r.money||[]).map(cpM)})),   // rows KEEP their 要做的事 (jobs)
     participants:[]};
   STORE.events.push(ne);S.evId=ne.id;S.readonly=false;S.view='sheet';S.showAllRows=false;S.sel='header';S.gate=null;
@@ -2384,7 +2415,7 @@ function applySaveBack(){
   if(sb.tpl.on){L.templates.push({id:uid(),name:sb.tpl.name,
     note:e.rows.length+'环节 · 来自 '+fmtDate(e.date),
     // rows KEEP their 要做的事 (jobs) so the same 环节 auto-suggests them next time (owner: absorb & reappear)
-    rows:e.rows.map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,
+    rows:e.rows.map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,desc:r.desc,
       resources:live(r.resources).map(cpR),money:r.money.map(cpM)})),
     header:{resources:noTask(live(e.header.resources)).map(cpR),money:e.header.money.map(cpM)}});n++;}
   sb.ideas.filter(x=>x.on).forEach(x=>{L.ideas.push({id:uid(),seg:x.seg,dur:x.dur,res:x.res});n++;});
@@ -2459,7 +2490,7 @@ function heroHtml(e){
 function taskCard(x){
   const c=x.c,b=x.bucket,icon=c.type==='任务'?'📌':(c.type==='物'?'📦':'👤');
   const due=c.due?`<span class="due${(c.due<todayStr()&&b<2)?' over':''}">截止${fmtDate(c.due)}</span>`:'';
-  const brief=[esc(x.where),c.role?esc(c.role):'',c.due?'截止 '+fmtDate(c.due):''].filter(Boolean).join(' · ');
+  const brief=[esc(x.where),c.role?esc(c.role):'',c.needs?'需要 '+esc(c.needs):'',c.due?'截止 '+fmtDate(c.due):''].filter(Boolean).join(' · ');
   return `<div class="extask${S.armed===c.id?' armed':''}" data-cid="${c.id}" onclick="taskTap('${c.id}')">
     <div class="nm"><span class="nmt">${icon} ${esc(c.name)}</span>${due}</div>
     <span class="exchip b${b}" onclick="event.stopPropagation();exAdvance('${c.id}')">${TASK_ST[b]}</span>
@@ -2553,14 +2584,14 @@ function execDesktop(e,todo,doing,done){
     arr.forEach(o=>{let tp=y(o.f);if(tp<last+gap)tp=last+gap;o.top=Math.min(tp,H-PAD);last=o.top;});return arr;};
   const L=place(done),R=place(doing),tpx=y(dayFrac(e,todayStr()));
   const marks=[...todo,...doing,...done].filter(x=>x.c.due).map(x=>({top:y(dayFrac(e,x.c.due)),over:x.c.due<todayStr()&&x.bucket<2}));
-  const item=(o,side)=>`<div class="tlitem ${side==='l'?'done':'doing'} ${side}" style="top:${o.top}px"><span class="stem"></span>${card(o.x)}</div>`;
+  const item=(o,side)=>`<div class="tlitem ${side==='l'?'done':'doing'} ${side}" style="top:${o.top}px">${card(o.x)}</div>`;
   const canopy=`<div class="tlcanopy"><div class="hd"><i class="dot"></i>待办 <span style="opacity:.6;font-weight:400">${todo.length}</span></div>
     ${todo.length?`<div class="row">${todo.map(card).join('')}</div>`:'<div class="exempty" style="opacity:.7">没有待办 — 都在推进或已完成 👍</div>'}
     <button class="exadd" onclick="exAddTodo()">＋ 加一个待办</button></div>`;
   // base countdown: mirror heroHtml so a past-dated event still 'run' shows 已过, not a negative number
   const cd=d<0?String(-d):(d===0?'今天':String(d)),lab=d<0?(-d)+' 天前 · 已过':(d===0?'就是今天':'还有 '+d+' 天');
   const tl=`<div class="extl" style="height:${H}px">
-    <div class="shd l">完成 ←</div><div class="shd r">→ 进行中</div>
+    <div class="shd l">完成</div><div class="shd r">进行中</div>
     <div class="top">▲ 计划开始 ${fmtDate(planStart(e))}</div>
     <div class="tltrunk"><div class="el" style="height:${tpx}px"></div></div>
     ${marks.map(m=>`<div class="tldl${m.over?' over':''}" style="top:${m.top}px"></div>`).join('')}
