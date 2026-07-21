@@ -316,6 +316,7 @@
   .deskcard .dc-m b{color:var(--alarm)}
   .deskcard .dc-brief{display:none;font-size:11px;color:var(--stock-dim);margin-top:7px;padding-top:7px;border-top:1px solid var(--line)}
   @media(hover:hover){.deskcard:hover .dc-brief{display:block}}
+  .deskcard .dc-brief .t{color:var(--brass);cursor:pointer;font-weight:700}
   /* kickoff bar (planning UI) + gate */
   .kickoff{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:11px 14px;border-radius:10px}
   .kickoff.plan{background:linear-gradient(90deg,rgba(201,163,86,.16),rgba(201,163,86,.03));border:1px solid var(--brass-dim)}
@@ -1093,6 +1094,7 @@ function viewSheet(){
     </select>
     ${e&&!S.readonly?`<button class="btn ghost sm" onclick="goDay()">当天</button>
     <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
+    ${e?`<button class="btn ghost sm" onclick="cloneEvent('${e.id}')">🔁 再办一场</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
     ${e&&!S.readonly?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
   </div>`;
@@ -1257,6 +1259,21 @@ function promoteDemo(){S.readonly=false;const e=ev();if(!e||!e.demo)return;
   delete e.demo;save();render();toast('已转为正式活动');}
 function newEvent(){S.readonly=false;const e=instantiate(null);e.name='新活动';STORE.events.push(e);
   S.evId=e.id;S.sel='header';save();render();toast('从资产库点一个模板铺台本');}
+// 一键复办 — the last event's ASSETS (台本 · 环节 · 资源 · 要做的事 · 收支项) become the next event;
+// execution state, participants and the date are NOT carried (owner: copy assets, not the schedule)
+function cloneEvent(srcId){
+  const src=STORE.events.find(x=>x.id===srcId)||ev();if(!src)return;
+  const cpR=c=>({id:uid(),refId:c.refId,name:c.name,type:c.type,role:c.role,status:0});   // reset to 待办
+  const cpM=c=>({id:uid(),refId:c.refId,name:c.name,kind:c.kind,plan:c.plan,unit:c.unit,actual:null});
+  const live=arr=>(arr||[]).filter(c=>!c.ignored);          // 搁置'd items don't carry over
+  const noTask=arr=>(arr||[]).filter(c=>(c.type||'人')!=='任务');   // header one-off chores don't carry over
+  const ne={id:uid(),name:src.name,theme:src.theme||'',date:'',start:src.start||'',venue:src.venue||'',status:'plan',
+    header:{resources:noTask(live(src.header.resources)).map(cpR),money:(src.header.money||[]).map(cpM)},
+    rows:(src.rows||[]).map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,
+      resources:live(r.resources).map(cpR),money:(r.money||[]).map(cpM)})),   // rows KEEP their 要做的事 (jobs)
+    participants:[]};
+  STORE.events.push(ne);S.evId=ne.id;S.readonly=false;S.view='sheet';S.showAllRows=false;S.sel='header';S.gate=null;
+  save();render();toast('已照这份台本开了新一场 — 改个日期就能办 🎉');}
 function delEvent(){const e=ev();if(!e)return;
   if(!confirm('删除活动「'+e.name+'」？此操作不可恢复'))return;
   STORE.events=STORE.events.filter(x=>x.id!==e.id);S.evId=STORE.events[0]?STORE.events[0].id:null;
@@ -2202,6 +2219,9 @@ function viewReview(){
       <button class="btn ghost sm" onclick="exportMoney()">⬇ 收支 CSV</button>
       <button class="btn ghost sm" onclick="exportPeople()">⬇ 名单·评价 CSV</button></div>
     ${S.saveBack?saveBackCard():''}
+    <div class="kickoff plan" style="margin:16px 0 4px">
+      <button class="btn big" onclick="cloneEvent('${e.id}')">🔁 再办一场（照这份台本开下一场）</button>
+      <span class="rem">整份台本、资源、要做的事、收支项都搬过去；只留日期给你填</span></div>
     <p class="note9">保存回资产库＝这场活动变成下一场的起点：台本成模板、新环节成灵感、帮过忙的人进资源、实际价格更新收支项。</p>
   </div>`;
 }
@@ -2577,7 +2597,7 @@ function viewDesk(){
     return `<button class="deskcard" onclick="deskOpen('${e.id}')">
       <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}</div>
-      <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →</div></button>`;};
+      <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">🔁 再办一场</span>`:''}</div></button>`;};
   const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
     (groups[k].length?groups[k].map(evCard).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);
   return `<div class="main" style="max-width:640px;margin:0 auto">
