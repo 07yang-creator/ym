@@ -34,16 +34,35 @@ the raw task list (every 资源 chip with status < 到位, every 收支 chip wit
   header, so these appear on the tree for free; just exclude `type==='任务'` from the 资源 strip.
 
 ### E.1 The 执行 tree (per-event, reached by opening a 当前 event — not a new nav tab)
-- **Countdown hero** centre: 还有 N 天 (reuse the `viewToday` math). Fallback **日期未定** when
-  `e.date==''` (the demo has no date — today it would render `NaN`). The tree is a **pre-event**
-  object: past events route to 复盘, not to a countdown that has gone negative.
-- **待办 on top** (full-width cards, most-actionable), then **进行中 | 完成** as two flanks
-  (reuse the check-in board's two-column phone layout). *Flank order = OPEN DECISION #A.*
-- **Fold to 环节 rows as the major items** (`签到入场 · 待办2`); tap a row → a **floating card**
-  lists its chips with status-flip + optional 截止/关联; a **全部展开** toggle = "show all at
-  once". Detail always in the floating layer, never a new page.
-- **Two verbs only: 状态翻转 + 📤催** (reuse `cycleRes`/`execFlip` + `remindAll`/`share`). Plus a
-  **↩ 退回** so a 到位 helper who drops out can leave 完成. No assignment grid, no scheduling.
+- **The tree IS the core management UI — not a label.** All planned data (each rundown step's
+  人 / 物 / 钱 → 任务) feeds this ONE view; it is where the organizer *manages* the whole event.
+- **Trunk = a VERTICAL time axis (owner spec, 2026-07-21).** Its **length = the execution runway**.
+  **Top = 计划完成日** (`e.runAt`, stamped when 进入执行 is pressed) · **Root/bottom = 活动日**
+  (`e.date`). A **「今天」marker descends** one notch per day from top toward the root — above-today =
+  elapsed, below = time left. 还有 N 天 anchors the root. ⚠ A circular countdown ring is the trunk's
+  **cross-section** — it throws away the length=time dimension; the trunk must be vertical. Fallback
+  **日期未定** when `e.date==''`; past events route to 复盘, never a negative countdown.
+- **Sides = status, positioned by DAY.** **完成 = LEFT · 进行中 = RIGHT.** Each task sits at its
+  day-height on the trunk: **has 截止 → its deadline day; else 进行中 → the 今天 line; else 完成 →
+  its completion day** (`chip.doneAt`, stamped the first time a chip reaches 到位). So the left side
+  becomes a "what got done, and when" record, and a completing task **slides right→left at its day**
+  — the host *watches it cross over on the day it happened*.
+- **待办 = the canopy, on TOP** (spanning): unstarted / unassigned requests + undated to-dos wait
+  here until started (they don't yet occupy a day). **搁置 = the roots** under the trunk (§E.2,
+  non-dismissible).
+- **Deadlines MARK + CHASE (owner).** A dated task gets a **● marker pinned to its day on the
+  trunk** AND is actively chased: as the day nears it escalates (amber → red), overdue floats to the
+  top of 待办 and reddens, and the host is **pushed** to act (surfacing + one-tap 📤催 via
+  `exRemind`/`share`). Advisory only — it *reminds/chases*, never auto-schedules or touches `e.date`
+  (§E.7).
+- **Desktop = the full tree** (canopy / vertical-trunk-timeline with day-positioned sides +
+  right→left crossover + ● deadline markers / roots). **Phone linearises** (compact countdown →
+  待办 → 进行中 → 完成 → 搁置 — the mobile stack already tested). The desktop tree is the design.
+- **Detail in a floating layer** (centered dialog, already built): tap a task → status seg/翻转,
+  截止, 📤催, 搁置/删除. **Two verbs only: 状态翻转 + 📤催** (+ **↩ 退回**). No assignment grid, no scheduling.
+- **New fields, additive (jsonb, no migration):** `e.runAt` (计划完成日), `chip.doneAt` (完成日).
+  Both degrade gracefully when absent — top defaults to today; a done chip with no `doneAt` sits on
+  the 今天 line.
 
 ### E.2 The end-of-planning gate + ignore
 - A **「进入执行」** button flips the (currently dead) `event.status` `plan→run`, walks
@@ -97,6 +116,35 @@ on this; sequence independently or cut for v1.
 - Donation inventory growing **per-unit/batch/movement history** — one field.
 - The alias registry becoming a **cross-platform identity/contact graph** — flat `aliases[]`, host-only.
 - **Money forced onto the three flanks** — it's binary; show as a small secondary 待记账 group.
+
+### E.8 Status vs the full spec (re-check 2026-07-21) — built / partial / missing
+Re-read of the owner's complete execution spec against the code. ✅ built · 🟡 partial · ❌ missing.
+- ✅ **3 statuses** (待办/进行中/完成), tasks = projection of chips (spec 1).
+- ✅ **Optional timeline** — trunk time-axis + 截止 day-positioning (spec 1).
+- ❌ **Pre/post-step LINKS** (spec 1, "even better") — advisory jump-notes 接续自…/接续到…, NO
+  ordering/blocking/date-math (§E.7). Not built; lowest priority, highest Gantt risk → LAST.
+- ✅ **Tree shape** — vertical trunk (计划开始→活动日, 今天 descends), 完成 left / 进行中 right /
+  待办 canopy / 搁置 roots (spec 2).
+- ✅ **Tasks from planning; unfilled → 待办; ignore → non-dismissible 搁置 note** (spec 3).
+- ❌ **Participant screenshot-absorb** + manual username→person match kept in memory
+  (`roster_shot` OCR + `guest.aliases[]`) (spec 4). APPI-委託契約-gated → SEPARATE TRACK / maybe v2.
+- 🟡 **Folding "major items only" + 「全部展开 / show me all at once」** (spec 5) — only 完成 folds
+  today; desktop shows all. Need a fold-to-major-item default + a show-all toggle.
+- 🟡 **Floating windows for detail (hover desktop / tap mobile), stay-oriented** (spec 5, 5.2) —
+  today it's a CENTERED modal for tasks + a bottom-sheet peek for desk events. Replace with an
+  **anchored floating peek**: desktop = mouse-hover; phone = **tap-once = peek, tap-again = open**.
+  Applies to BOTH task nodes (tree) and event cards (desk).
+- ✅ **Desk = 4 phases** current/筹备/仍热/归档, routing current→tree · 归档→read-only plan ·
+  筹备→plan · 仍热→复盘 (spec 5.1, 5.2 routing correct — only the hover/two-tap trigger is missing).
+- 🟡 **End-of-planning GATE per-item triage** (spec 5.3) — today `enterExec` just confirms and dumps
+  all unfilled into 待办; the spec wants a per-item **待处理(→task) / 搁置(→note)** choice AT the gate.
+  Build a light triage list (default 全部待处理, then 搁置 individually) — NOT an assignment grid.
+- ✅ **Donation-material inventory** = one enum field `inv` (spec 6).
+
+**Remaining build order (push):** ① anchored floating peek (hover / tap-once-then-open) for tasks +
+desk — the interaction the tree needs · ② gate per-item 待处理/搁置 triage · ③ fold-to-major +
+全部展开 · ④ pre/post advisory links (last, Gantt-guarded) · ⑤ participant screenshot-absorb
+(separate, APPI-gated). Plus: land the correctness-review fixes on the timeline code first.
 
 ## 1. Site structure
 

@@ -336,9 +336,10 @@
   .exband.doing .extask{border-left-color:var(--brass)}
   .exband.done  .extask{border-left-color:var(--ok);opacity:.72}
   .extask .bd{flex:1;min-width:0;cursor:pointer}
-  .extask .nm{font-size:13px;font-weight:500;color:var(--stock);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .extask .nm{font-size:13px;font-weight:500;color:var(--stock);display:flex;align-items:baseline;gap:5px;min-width:0}
+  .extask .nm .nmt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .extask .wh{font-size:10.5px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .extask .due{font-size:9.5px;color:var(--brass);margin-left:6px;font-weight:600;white-space:nowrap}
+  .extask .due{font-size:9.5px;color:var(--brass);font-weight:600;white-space:nowrap;flex:none}
   .extask .due.over{color:var(--alarm)}
   .exchip{font-size:10px;font-weight:700;padding:5px 11px;border-radius:20px;flex:none;letter-spacing:.06em;cursor:pointer;white-space:nowrap}
   .exchip.b0{background:rgba(210,96,74,.14);color:var(--alarm);border:1px solid var(--alarm)}
@@ -374,6 +375,48 @@
   .exdlg .dfld .l{font-size:10px;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:4px}
   .exdlg .dfld input{width:100%}
   .exdlg .df{display:flex;gap:8px;margin-top:12px}
+  /* ===== desktop tree: vertical trunk = time axis (owner 2026-07-21) ===== */
+  .exmob{display:block}
+  .exdesk{display:none}
+  @media(min-width:760px){ .extree{max-width:900px} .exmob{display:none} .exdesk{display:block} .rfab.exhide{display:none} }
+  .exchase{display:flex;align-items:center;justify-content:center;gap:10px;margin:2px auto 14px;max-width:520px;
+    background:rgba(210,96,74,.1);border:1px solid var(--alarm);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--alarm)}
+  .exchase .go{color:var(--brass);cursor:pointer;font-weight:700;white-space:nowrap}
+  .tlcanopy{text-align:center;margin-bottom:30px}
+  .tlcanopy .hd{display:inline-flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.16em;font-weight:600;color:var(--alarm);margin-bottom:10px}
+  .tlcanopy .hd .dot{width:7px;height:7px;border-radius:50%;background:var(--alarm)}
+  .tlcanopy .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .tlcanopy .extask{width:auto;max-width:270px;margin-bottom:0;border-left-color:var(--alarm)}
+  .tlcanopy .exadd{max-width:270px;margin:12px auto 0}
+  .extl{position:relative;margin:0 auto;width:100%}
+  .extl .shd{position:absolute;top:-20px;font-size:11px;letter-spacing:.14em;font-weight:600}
+  .extl .shd.l{right:calc(50% + 84px);color:var(--stock-dim)}
+  .extl .shd.r{left:calc(50% + 84px);color:var(--brass)}
+  .extl .top{position:absolute;left:50%;top:-4px;transform:translate(-50%,-100%);font-size:10px;color:var(--brass-dim);white-space:nowrap}
+  .tltrunk{position:absolute;left:50%;top:0;bottom:0;width:26px;transform:translateX(-50%);border-radius:6px;
+    background:var(--felt-up);border:1px solid var(--line);overflow:hidden;z-index:1}
+  .tltrunk .el{position:absolute;left:0;right:0;top:0;background:linear-gradient(180deg,#7a6636,var(--brass-dim))}
+  .tltoday{position:absolute;left:0;right:0;height:2px;z-index:3;
+    background:linear-gradient(90deg,transparent,rgba(201,163,86,.55) 18%,rgba(201,163,86,.55) 82%,transparent)}
+  .tltoday .tg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--brass);color:var(--ink);
+    font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;letter-spacing:.06em}
+  .tldl{position:absolute;left:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;
+    background:var(--brass);border:2px solid var(--felt);box-shadow:0 0 0 1px var(--brass);z-index:5}
+  .tldl.over{background:var(--alarm);box-shadow:0 0 0 1px var(--alarm)}
+  .tlitem{position:absolute;transform:translateY(-50%);z-index:2;display:flex;align-items:center;max-width:44%}
+  .tlitem.l{right:calc(50% + 26px);justify-content:flex-end}
+  .tlitem.r{left:calc(50% + 26px)}
+  .tlitem .extask{width:auto;max-width:300px;margin-bottom:0}
+  .tlitem.done .extask{border-left-color:var(--ok);opacity:.78}
+  .tlitem.doing .extask{border-left-color:var(--brass)}
+  .tlitem .stem{position:absolute;top:50%;height:1px;background:var(--line);z-index:0}
+  .tlitem.l .stem{right:-26px;width:26px}
+  .tlitem.r .stem{left:-26px;width:26px}
+  .tlbase{width:158px;margin:16px auto 0;text-align:center;border:1px solid var(--brass-dim);border-radius:12px;
+    padding:9px 0 11px;background:radial-gradient(circle at 50% 30%,var(--felt-up),var(--felt))}
+  .tlbase .cd{font-family:Oswald,sans-serif;font-size:38px;line-height:.9;color:var(--brass);font-variant-numeric:tabular-nums}
+  .tlbase .cd.over{color:var(--alarm)}
+  .tlbase .lab{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:.06em}
   /* 示例 (demo/tutorial) marker — shown wherever seeded data appears */
   .demotag{display:inline-block;font-size:9px;line-height:1.4;letter-spacing:.1em;
     color:var(--felt);background:var(--brass);border-radius:3px;padding:1px 5px;margin-left:6px;
@@ -844,10 +887,11 @@ function fabsHtml(){
         style="display:none" onchange="S.fabMenu=false;costPhoto(this)"></label>
       <label>📷 报名表 → 名册<input type="file" accept="image/*" capture="environment"
         style="display:none" onchange="S.fabMenu=false;formPhoto(this)"></label></div>`:'';
+  const hide=S.view==='exec'?' exhide':'';   // desktop 执行 tree: fabs would cover the 进行中 column (CSS hides ≥760px)
   return `${menu}
-    <button class="rfab" style="bottom:${base+62}px" title="拍照（票据/报名表）"
+    <button class="rfab${hide}" style="bottom:${base+62}px" title="拍照（票据/报名表）"
       onclick="S.fabMenu=!S.fabMenu;render()">📷</button>
-    ${recTab?'':`<button class="rfab" id="micfab" style="bottom:${base}px" title="按住说话（签到/翻状态/评价/记账）"
+    ${recTab?'':`<button class="rfab${hide}" id="micfab" style="bottom:${base}px" title="按住说话（签到/翻状态/评价/记账）"
       onmousedown="recStart()" onmouseup="recStop()" onmouseleave="recStop()"
       ontouchstart="event.preventDefault();recStart()" ontouchend="recStop()">🎤</button>`}
     ${S.draft&&!recTab?`<div class="drawerbg" onclick="S.draft=null;render()"></div>
@@ -1123,7 +1167,7 @@ function delRow(id){const e=ev();const r=e.rows.find(x=>x.id===id);
 function moveRow(id,d){const e=ev();const i=e.rows.findIndex(x=>x.id===id);const j=i+d;
   if(i<0||j<0||j>=e.rows.length)return;const t=e.rows[i];e.rows[i]=e.rows[j];e.rows[j]=t;save();render();}
 function cycleRes(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
-  if(c){c.status=((c.status||0)+1)%4;save();render();}}
+  if(c){c.status=((c.status||0)+1)%4;stampDone(c);save();render();}}
 function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
   const k=kind==='res'?'resources':'money';h[k]=h[k].filter(x=>x.id!==cid);save();render();}
 function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
@@ -1659,7 +1703,7 @@ function execCheckin(pid,undo){const p=ev().participants.find(x=>x.id===pid);if(
   p.arrived=!undo;p.at=p.arrived?nowHM():null;S.draft=null;save();render();
   toast(p.gender+p.n+(undo?' 已取消签到':' 已签到'));}
 function execFlip(cid,status){const e=ev();const hit=allResChips(e).find(x=>x.c.id===cid);if(!hit)return;
-  const i=RES_ST.indexOf(status);if(i>=0)hit.c.status=i;S.draft=null;save();render();toast(hit.c.name+' → '+status);}
+  const i=RES_ST.indexOf(status);if(i>=0){hit.c.status=i;stampDone(hit.c);}S.draft=null;save();render();toast(hit.c.name+' → '+status);}
 function execCost(cid,name,kind,amount){const e=ev();
   if(cid){const hit=allMoneyChips(e).find(x=>x.c.id===cid);if(hit)hit.c.actual=amount;}
   else e.header.money.push({id:uid(),refId:null,name:name||'语音记账',kind:kind==='in'?'in':'out',plan:0,actual:amount});
@@ -2238,25 +2282,50 @@ function taskCard(x){
   const sub=[esc(x.where),c.role?esc(c.role):''].filter(Boolean).join(' · ');
   return `<div class="extask">
     <div class="bd" onclick="exOpen('${c.id}')">
-      <div class="nm">${icon} ${esc(c.name)}${due}</div>
+      <div class="nm"><span class="nmt">${icon} ${esc(c.name)}</span>${due}</div>
       ${sub?`<div class="wh">${sub}</div>`:''}</div>
     <span class="exchip b${b}" onclick="event.stopPropagation();exAdvance('${c.id}')">${TASK_ST[b]}</span></div>`;
 }
+/* ---- trunk = execution timeline: helpers ---- */
+function planStart(e){return e.runAt||todayStr();}     // top of trunk = 计划完成日 (进入执行 那天)
+function dayFrac(e,dayStr){                              // 0 = top(计划开始) … 1 = root(活动日)
+  const a=Date.parse(planStart(e)+'T00:00:00'),b=Date.parse((e.date||'')+'T00:00:00'),d=Date.parse((dayStr||'')+'T00:00:00');
+  if(isNaN(b)||isNaN(d)||!(b>a))return 0.5;
+  return Math.max(0,Math.min(1,(d-a)/(b-a)));
+}
+function taskDay(e,x){const c=x.c,b=x.bucket;           // a task's day on the trunk; null → canopy (待办)
+  if(b===0)return null;
+  if(c.due)return c.due;                                // dated → its deadline day
+  if(b===2)return c.doneAt||todayStr();                 // done → the day it was finished
+  return todayStr();                                    // doing, undated → the 今天 line
+}
+function stampDone(c){if(taskBucket(c)===2){if(!c.doneAt)c.doneAt=todayStr();}else{c.doneAt=undefined;}}
+function overdueTasks(e){return tasks(e).filter(x=>x.c.due&&x.c.due<todayStr()&&x.bucket<2);}
 function viewExec(){
   const e=ev();if(!e)return `<div class="main"><div class="empty">还没有活动。去「活动」页新建一个。</div></div>`;
   const ph=evPhase(e);
   if(ph==='hot'||ph==='archived'){S.view='review';return viewReview();}   // past events → 复盘, not a dead countdown
-  const t=tasks(e),todo=t.filter(x=>x.bucket===0),doing=t.filter(x=>x.bucket===1),done=t.filter(x=>x.bucket===2);
-  const mt=moneyTodo(e),ign=ignoredTasks(e);
-  const card=x=>taskCard(x);
-  const total=todo.length+doing.length+done.length,pct=total?Math.round(done.length/total*100):0;
+  const t=tasks(e),doing=t.filter(x=>x.bucket===1),done=t.filter(x=>x.bucket===2);
+  // 待办 sorted so dated/overdue float to the top (chase)
+  const todo=t.filter(x=>x.bucket===0).sort((a,b)=>{const ad=a.c.due||'￿',bd=b.c.due||'￿';return ad<bd?-1:(ad>bd?1:0);});
+  const mt=moneyTodo(e),ign=ignoredTasks(e),od=overdueTasks(e);
   return `<div class="main"><div class="extree">
     <div class="exback"><span class="bk" onclick="go('sheet')">← 计划</span> · 执行看板</div>
-    <div class="exhub"><div class="evn">${esc(e.name)}${dtag(e)}</div>${heroHtml(e)}</div>
-    <div class="exsum">
-      <div class="exbar"><i style="width:${pct}%"></i></div>
-      <div class="lg"><span class="a">待办 <b>${todo.length}</b></span><span>进行中 <b>${doing.length}</b></span><span class="g">完成 <b>${done.length}</b></span></div>
-    </div>
+    <div style="text-align:center"><span style="font-size:13px;color:var(--stock);font-weight:600">${esc(e.name)}${dtag(e)}</span></div>
+    ${od.length?`<div class="exchase">⚠ ${od.length} 项已过截止还没完成 <span class="go" onclick="exRemindOverdue()">去催 →</span></div>`:''}
+    <div class="exmob">${execMobile(e,todo,doing,done)}</div>
+    <div class="exdesk">${execDesktop(e,todo,doing,done)}</div>
+    ${execFooter(e,mt,ign)}
+    <p class="note9">桌面＝时间树：树干顶＝计划开始、根＝活动日，「今天」每天下移；右(进行中)做好当天滑到左(完成)，有截止的钉 ● 标记。点任务看详情、催办、设截止或搁置。</p>
+  </div></div>
+  ${S.exTask?exDetailCard():''}`;
+}
+function execMobile(e,todo,doing,done){
+  const card=x=>taskCard(x);
+  const total=todo.length+doing.length+done.length,pct=total?Math.round(done.length/total*100):0;
+  return `<div style="text-align:center;margin-top:8px">${heroHtml(e)}</div>
+    <div class="exsum"><div class="exbar"><i style="width:${pct}%"></i></div>
+      <div class="lg"><span class="a">待办 <b>${todo.length}</b></span><span>进行中 <b>${doing.length}</b></span><span class="g">完成 <b>${done.length}</b></span></div></div>
     <div class="extrunk"></div>
     <div class="exband todo"><div class="bt"><span class="lbl"><i class="dot"></i>待办 <span class="n">${todo.length}</span></span></div>
       ${todo.length?todo.map(card).join(''):'<div class="exempty">没有待办 — 都在推进或已完成 👍</div>'}
@@ -2266,24 +2335,57 @@ function viewExec(){
         ${doing.length?doing.map(card).join(''):'<div class="exempty">还没有推进中的</div>'}</div>
       <div class="exband done"><div class="bt"><span class="lbl"><i class="dot"></i>完成 <span class="n">${done.length}</span></span>
         ${done.length?`<span class="exfold" onclick="S.exShowDone=!S.exShowDone;render()">${S.exShowDone?'收起':'展开'}</span>`:''}</div>
-        ${done.length?(S.exShowDone?done.map(card).join(''):`<div class="exempty">已完成 ${done.length} 项 · 点「展开」查看</div>`):'<div class="exempty">还没有完成的</div>'}</div></div>
-    ${mt.length?`<div class="exmoney"><span>💰 待记账 ${mt.length} 项：${mt.slice(0,3).map(x=>esc(x.c.name)).join('、')}${mt.length>3?' …':''}</span>
-      <span class="exfold" onclick="go('sheet')">去填实际 →</span></div>`:''}
-    ${ign.length?`<div class="exignore"><div class="lbl">已搁置 ${ign.length} · 保留为提示，不催办</div>
-      ${ign.map(x=>`<div class="it"><span>${esc(x.c.name)} · ${esc(x.where)}</span>
-        <span class="rz" onclick="exRestore('${x.c.id}')">恢复为待办</span></div>`).join('')}</div>`:''}
-    <div class="exend">
-      <button class="btn" style="flex:1" onclick="endExec('done')">✓ 完成活动</button>
-      <button class="btn ghost sm" onclick="endExec('cancelled')">取消活动</button></div>
-    <p class="note9">点右侧标签切换 待办→进行中→完成；点任务名看详情、催办、设截止或搁置。</p>
-  </div></div>
-  ${S.exTask?exDetailCard():''}`;
+        ${done.length?(S.exShowDone?done.map(card).join(''):`<div class="exempty">已完成 ${done.length} 项 · 点「展开」查看</div>`):'<div class="exempty">还没有完成的</div>'}</div></div>`;
 }
+function execDesktop(e,todo,doing,done){
+  const card=x=>taskCard(x),d=daysTo(e);
+  // degenerate window (no event date, or event day not after 计划开始) → the trunk can't position by day; fall back to the stack
+  const a=Date.parse(planStart(e)+'T00:00:00'),b=Date.parse((e.date||'')+'T00:00:00');
+  if(isNaN(b)||!(b>a))return execMobile(e,todo,doing,done);
+  const PAD=10;   // grow the field so crowded/same-day columns never clamp onto one line
+  const H=Math.max(440,Math.max(doing.length,done.length)*54+PAD*2);
+  const span=H-PAD*2, y=f=>Math.round(PAD+f*span);
+  const place=(items)=>{const arr=items.map(x=>({x,f:dayFrac(e,taskDay(e,x))})).sort((p,q)=>p.f-q.f);
+    let last=-999;const gap=Math.min(52,arr.length>1?span/(arr.length-1):52);
+    arr.forEach(o=>{let tp=y(o.f);if(tp<last+gap)tp=last+gap;o.top=Math.min(tp,H-PAD);last=o.top;});return arr;};
+  const L=place(done),R=place(doing),tpx=y(dayFrac(e,todayStr()));
+  const marks=[...todo,...doing,...done].filter(x=>x.c.due).map(x=>({top:y(dayFrac(e,x.c.due)),over:x.c.due<todayStr()&&x.bucket<2}));
+  const item=(o,side)=>`<div class="tlitem ${side==='l'?'done':'doing'} ${side}" style="top:${o.top}px"><span class="stem"></span>${card(o.x)}</div>`;
+  const canopy=`<div class="tlcanopy"><div class="hd"><i class="dot"></i>待办 <span style="opacity:.6;font-weight:400">${todo.length}</span></div>
+    ${todo.length?`<div class="row">${todo.map(card).join('')}</div>`:'<div class="exempty" style="opacity:.7">没有待办 — 都在推进或已完成 👍</div>'}
+    <button class="exadd" onclick="exAddTodo()">＋ 加一个待办</button></div>`;
+  // base countdown: mirror heroHtml so a past-dated event still 'run' shows 已过, not a negative number
+  const cd=d<0?String(-d):(d===0?'今天':String(d)),lab=d<0?(-d)+' 天前 · 已过':(d===0?'就是今天':'还有 '+d+' 天');
+  const tl=`<div class="extl" style="height:${H}px">
+    <div class="shd l">完成 ←</div><div class="shd r">→ 进行中</div>
+    <div class="top">▲ 计划开始 ${fmtDate(planStart(e))}</div>
+    <div class="tltrunk"><div class="el" style="height:${tpx}px"></div></div>
+    ${marks.map(m=>`<div class="tldl${m.over?' over':''}" style="top:${m.top}px"></div>`).join('')}
+    <div class="tltoday" style="top:${tpx}px"><div class="tg">今天</div></div>
+    ${L.map(o=>item(o,'l')).join('')}${R.map(o=>item(o,'r')).join('')}
+  </div>
+  <div class="tlbase"><div class="cd${(d<0||d<=3)?' over':''}">${cd}</div>
+    <div class="lab">${lab} · ${fmtDate(e.date)} 活动日</div></div>`;
+  return canopy+tl;
+}
+function execFooter(e,mt,ign){
+  return `${mt.length?`<div class="exmoney" style="max-width:520px;margin:18px auto 0"><span>💰 待记账 ${mt.length} 项：${mt.slice(0,3).map(x=>esc(x.c.name)).join('、')}${mt.length>3?' …':''}</span>
+      <span class="exfold" onclick="go('sheet')">去填实际 →</span></div>`:''}
+    ${ign.length?`<div class="exignore" style="max-width:520px;margin:16px auto 0"><div class="lbl">🌱 已搁置 ${ign.length} · 保留为提示，不催办</div>
+      ${ign.map(x=>`<div class="it"><span>${esc(x.c.name)} · ${esc(x.where)}</span>
+        <span class="rz" onclick="exRestore('${x.c.id}')">↩ 恢复为待办</span></div>`).join('')}</div>`:''}
+    <div class="exend" style="max-width:520px;margin:18px auto 0">
+      <button class="btn" style="flex:1" onclick="endExec('done')">✓ 完成活动</button>
+      <button class="btn ghost sm" onclick="endExec('cancelled')">取消活动</button></div>`;
+}
+function exRemindOverdue(){const e=ev();const od=overdueTasks(e);if(!od.length)return;
+  const txt='【'+e.name+'】逾期提醒：\n'+od.map(x=>'· '+x.c.name+(x.c.role?'（'+x.c.role+'）':'')+' 截止'+fmtDate(x.c.due)).join('\n')+'\n请尽快完成或确认';
+  share(txt);}
 function chipById(cid){const e=ev();let f=null;
   [e.header].concat(e.rows).forEach(h=>{['resources','money'].forEach(k=>{(h[k]||[]).forEach(c=>{if(c.id===cid)f=c;});});});
   return f;}
-function exAdvance(cid){const c=chipById(cid);if(!c)return;
-  const nb=(taskBucket(c)+1)%3;c.status=BUCKET_STATUS[nb];save();render();}
+function exAdvance(cid){if(S.readonly)return;const c=chipById(cid);if(!c)return;
+  const nb=(taskBucket(c)+1)%3;c.status=BUCKET_STATUS[nb];stampDone(c);save();render();}
 function exOpen(cid){S.exTask=cid;render();}
 function exDetailCard(){
   const c=chipById(S.exTask);if(!c){S.exTask=null;return '';}
@@ -2304,7 +2406,7 @@ function exDetailCard(){
           :`<button class="btn ghost sm" onclick="exIgnore('${c.id}')">搁置</button>`}</div>
     </div>`;
 }
-function exSet(cid,bucket){const c=chipById(cid);if(!c||taskBucket(c)===bucket)return;c.status=BUCKET_STATUS[bucket];save();render();}
+function exSet(cid,bucket){if(S.readonly)return;const c=chipById(cid);if(!c||taskBucket(c)===bucket)return;c.status=BUCKET_STATUS[bucket];stampDone(c);save();render();}
 function exDue(cid,v){const c=chipById(cid);if(c){c.due=v||undefined;save();}}
 function exIgnore(cid){const c=chipById(cid);if(!c)return;c.ignored=true;S.exTask=null;save();render();toast('已搁置（下方提示保留，不再催办）');}
 function exRestore(cid){const c=chipById(cid);if(!c)return;c.ignored=false;save();render();}
@@ -2322,7 +2424,7 @@ function exDelTask(cid){const e=ev();
 function enterExec(){const e=ev();if(!e)return;
   const unmet=followUps(e);
   if(unmet.length&&!confirm('还有 '+unmet.length+' 项资源/收支没落实。\n进入执行后它们会排到「待办」，你可以逐个推进或搁置。\n现在进入执行？'))return;
-  e.status='run';save();goExec(e.id);toast('已进入执行 — 这是执行看板');}
+  e.status='run';if(!e.runAt)e.runAt=todayStr();save();goExec(e.id);toast('已进入执行 — 这是执行看板');}
 function endExec(kind){const e=ev();if(!e)return;
   if(!confirm(kind==='done'?'把这场活动标记为「完成」？完成后进入 14 天跟进期，可复盘并保存回资产库。'
                           :'取消这场活动？'))return;
