@@ -14,6 +14,90 @@ localStorage first, Supabase later.
 > **① The organizer runs one Saturday event end to end without opening Excel.**
 > **② The next event is created from this one's assets in minutes, not from scratch.**
 
+## E. Execution revision (owner, 2026-07-21) — **PRIORITY #1**
+
+> The plan stage works. The revision makes **execution** the point: after planning, the app
+> helps the organizer track each task's status. A **tree** view, not Gantt. Design-reviewed by
+> 5 agents + a critic against the live code; the load-bearing decisions and gaps are below.
+
+### E.0 The one idea that makes it cheap
+**Tasks are a *projection* of chips, never a new stored thing.** `followUps()` already computes
+the raw task list (every 资源 chip with status < 到位, every 收支 chip with `actual==null`). So:
+- **A task = a chip.** The chip's existing 4-state status IS the task state, mapped 4→3 for
+  display: **未联系 = 待办 · 已联系/已确认 = 进行中 · 到位 = 完成**. Flipping a chip (the existing
+  `cycleRes`/`execFlip`) moves the task on the tree. One source of truth.
+- **No task table, no `holder.tasks[]`.** Adding one would break `applySaveBack`/`cycleRes`/
+  `execFlip`/`remindAll` and the whole "aggregations over the sheet, no modules" thesis.
+- **Ad-hoc chores** (打电话确认场地、印名牌、续保险) — the chores a newbie actually lives in, which
+  are NOT resource requests — are handled by letting the organizer drop a **bare chip
+  `{type:'任务'}`** on the event-header (全场). `allResChips`/`followUps` already start from the
+  header, so these appear on the tree for free; just exclude `type==='任务'` from the 资源 strip.
+
+### E.1 The 执行 tree (per-event, reached by opening a 当前 event — not a new nav tab)
+- **Countdown hero** centre: 还有 N 天 (reuse the `viewToday` math). Fallback **日期未定** when
+  `e.date==''` (the demo has no date — today it would render `NaN`). The tree is a **pre-event**
+  object: past events route to 复盘, not to a countdown that has gone negative.
+- **待办 on top** (full-width cards, most-actionable), then **进行中 | 完成** as two flanks
+  (reuse the check-in board's two-column phone layout). *Flank order = OPEN DECISION #A.*
+- **Fold to 环节 rows as the major items** (`签到入场 · 待办2`); tap a row → a **floating card**
+  lists its chips with status-flip + optional 截止/关联; a **全部展开** toggle = "show all at
+  once". Detail always in the floating layer, never a new page.
+- **Two verbs only: 状态翻转 + 📤催** (reuse `cycleRes`/`execFlip` + `remindAll`/`share`). Plus a
+  **↩ 退回** so a 到位 helper who drops out can leave 完成. No assignment grid, no scheduling.
+
+### E.2 The end-of-planning gate + ignore
+- A **「进入执行」** button flips the (currently dead) `event.status` `plan→run`, walks
+  `followUps(e)`, and doubles as the desk's phase signal — one button, zero new fields.
+- For each unfilled request: **待处理** (stays a 待办 task) or **搁置/ignore** → one bool
+  `chip.ignored`. Ignored items render as a **muted note strip beneath the tree** with 恢复为待办
+  only (no ✕) — so "never dismissible" falls out for free. **Ignored is excluded from every count
+  and from 催** (else the host is nagged forever about what they set aside).
+
+### E.3 The 工作台 desk (folds in today's 今日)
+Top row = 4 phases: **当前 · 筹备中 · 已结束但仍热 · 已归档**. Derive from date + one new bool
+`e.archived`: 当前 = within the event window; 筹备中 = future & not archived; 仍热 = 0 < today−date
+≤ **14d** *(OPEN DECISION #B)*; 已归档 = archived or older. Reuse the dormant `event.status`.
+- **Phone-first peek/open** (hover & long-press don't work on phones): **one tap = a floating
+  peek card** with an **「打开」** button → 当前 opens the 执行 tree, 筹备中 opens the planning
+  sheet, 已归档 opens a **read-only** sheet (a read-only render mode is new — small).
+
+### E.4 Donation-material inventory (easy)
+One enum on the **existing goods record** — `INV_ST = [待入库 · 已入库 · 已发放 · 已用完]`
+*(labels = OPEN DECISION #C)*, tap-to-cycle like `cycleRes`, linked to a 捐赠人. **One field, not
+a CRM** — hold that line literally.
+
+### E.5 Participant-absorb by screenshot — **SEPARATE TRACK, gated, maybe cut from v1**
+New `/api/parse` mode `roster_shot` → `[{platform, handle, display_name, conf}]` from a chat
+screenshot (mirror `payslip`: **process in memory, never store the image**). A `guest.aliases[]`
+holds the cross-platform username↔person map. A floating confirm-first match modal (with a per-row
+男/女 toggle — **the screenshot has no gender; that's an unsolved source**). **Blocked on the APPI
+委託契約** (a screenshot is third-party PII, same gate as a real roster). Do **not** block the tree
+on this; sequence independently or cut for v1.
+
+### E.6 Build order (each step additive to the live app; ljzhujudy is mid-test — never rewrite `chip.status`)
+1. **Read-only 执行 tree** — project `followUps()`+chips into 待办/进行中/完成 + countdown hero +
+   日期未定 fallback. Zero new fields, zero writes, zero migration. Delivers the core ask alone.
+2. **Interactive** — tap-to-advance (`cycleRes`/`execFlip`), per-node 📤催, ↩ 退回.
+3. **Ad-hoc 待办 chips** (`type:'任务'` on the header) + exclude from 资源 strip.
+4. **Gate + ignore** — `chip.ignored`, 「进入执行」 button; **same commit: whitelist-copy in
+   `cpR`/`cpM` so new fields don't leak into templates** (see gap #1) + exclude ignored from
+   counts/催. Ships with a template-leak regression test.
+5. **Optional 截止 `chip.due`** — red overdue pill, floats to top; advisory only, never schedules.
+6. **The 工作台 desk** — 4 phases + `e.archived` + floating peek + read-only sheet route; fold 今日 in.
+7. **Donation-material inventory enum** — trivial, anytime.
+8. **Optional pre/post links** *last* — inline tap-to-scroll notes (接续自…/接续到…), **no lines,
+   no ordering, no date math**. Lowest value, highest Gantt risk; only if 1–7 land clean.
+
+### E.7 Cut / hold the line (Gantt & CRM bait the review flagged)
+- A real **task entity/table** — never; tasks stay a projection.
+- **Pre/post links** that impose ordering, block a dependent, or move dates — that IS a
+  dependency graph. Keep advisory-only.
+- **Deadlines** that auto-schedule or touch `e.date` — keep advisory-only.
+- The gate becoming a **who-does-what assignment grid** — two verbs only (待处理/搁置).
+- Donation inventory growing **per-unit/batch/movement history** — one field.
+- The alias registry becoming a **cross-platform identity/contact graph** — flat `aliases[]`, host-only.
+- **Money forced onto the three flanks** — it's binary; show as a small secondary 待记账 group.
+
 ## 1. Site structure
 
 Two front doors, mirroring this repo's splash → role-app pattern:
