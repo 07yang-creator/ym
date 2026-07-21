@@ -141,10 +141,15 @@ Re-read of the owner's complete execution spec against the code. ✅ built · �
   Build a light triage list (default 全部待处理, then 搁置 individually) — NOT an assignment grid.
 - ✅ **Donation-material inventory** = one enum field `inv` (spec 6).
 
-**Remaining build order (push):** ① anchored floating peek (hover / tap-once-then-open) for tasks +
-desk — the interaction the tree needs · ② gate per-item 待处理/搁置 triage · ③ fold-to-major +
-全部展开 · ④ pre/post advisory links (last, Gantt-guarded) · ⑤ participant screenshot-absorb
-(separate, APPI-gated). Plus: land the correctness-review fixes on the timeline code first.
+**Remaining build order (push):** ✅ ① anchored floating peek — DONE (cards show name+status only;
+hover(desktop)/tap-once(mobile) shows a 环节·负责 brief; click/tap-again opens an anchored,
+undimmed floating detail; desk cards open in ONE click, routed by phase; overlap killed by compact
+cards + a center gutter + height that grows with count) · ② gate per-item 待处理/搁置 triage +
+**JOBS per rundown item** (owner refinement 2026-07-21: each 环节 has people+resources+jobs; jobs
+absorbed into templates so they auto-reappear; a 环节 with 0 jobs = no task; the gate warns about
+0-job 环节, host can 忽略→a note beneath the tree) · ③ fold-to-major + 全部展开 · ④ pre/post
+advisory links (last, Gantt-guarded) · ⑤ participant screenshot-absorb (separate, APPI-gated).
+Owner also confirmed: leave the 活动 tab as-is for now (demo-stage, unsure of use).
 
 ## 1. Site structure
 
