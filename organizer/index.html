@@ -297,6 +297,19 @@
   .deskcard .dc-m b{color:var(--alarm)}
   .deskcard .dc-brief{display:none;font-size:11px;color:var(--stock-dim);margin-top:7px;padding-top:7px;border-top:1px solid var(--line)}
   @media(hover:hover){.deskcard:hover .dc-brief{display:block}}
+  /* kickoff bar (planning UI) + gate */
+  .kickoff{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:11px 14px;border-radius:10px}
+  .kickoff.plan{background:linear-gradient(90deg,rgba(201,163,86,.16),rgba(201,163,86,.03));border:1px solid var(--brass-dim)}
+  .kickoff.run{background:var(--felt-up);border:1px solid var(--line)}
+  .kickoff .st{font-size:12.5px;font-weight:700;color:var(--ok);letter-spacing:.04em}
+  .kickoff .rem{font-size:11px;color:var(--muted)}
+  .btn.big{font-size:14px;padding:11px 20px;font-weight:700}
+  .gaterow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .gaterow .gn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gaterow .gseg{display:flex;gap:5px;flex:none}
+  .gatetog{font-size:10.5px;font-weight:700;padding:4px 11px;border-radius:16px;cursor:pointer;border:1px solid var(--line);color:var(--stock-dim);white-space:nowrap}
+  .gatetog.todo.on{background:rgba(210,96,74,.14);color:var(--alarm);border-color:var(--alarm)}
+  .gatetog.skip.on{background:var(--felt);color:var(--brass);border-color:var(--brass-dim)}
   /* ===== 执行 tree (owner 2026-07-21, redesigned) ===== */
   .extree{max-width:600px;margin:0 auto;padding-bottom:96px}
   .exback{font-size:11px;color:var(--muted);letter-spacing:.14em;padding:2px 2px 8px}
@@ -346,7 +359,8 @@
     background:var(--felt);border:1px solid var(--brass-dim);border-radius:8px;padding:7px 10px;
     font-size:10.5px;color:var(--stock-dim);box-shadow:0 8px 26px rgba(0,0,0,.5);pointer-events:none;line-height:1.55;white-space:normal}
   @media(hover:hover){.extask:hover .brief{display:block}}
-  .extask.armed .brief{display:block}
+  /* armed = mobile tap: the brief catches taps (bubbles to the card → 2nd tap opens) so they never fall through to the covered card */
+  .extask.armed .brief{display:block;pointer-events:auto}
   .extask.armed{border-color:var(--brass-dim);box-shadow:0 0 0 1px var(--brass-dim)}
   .exchip{font-size:10px;font-weight:700;padding:5px 11px;border-radius:20px;flex:none;letter-spacing:.06em;cursor:pointer;white-space:nowrap}
   .exchip.b0{background:rgba(210,96,74,.14);color:var(--alarm);border:1px solid var(--alarm)}
@@ -366,7 +380,7 @@
   .exend{display:flex;gap:8px;margin-top:18px}
   /* task detail — floating, anchored near the tapped node (JS positions it); stays oriented (no dimming) */
   .exdlgcatch{position:fixed;inset:0;z-index:49}
-  .exdlg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;
+  .exdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;
     width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 48px);overflow:auto;
     background:var(--felt);border:1px solid var(--brass-dim);border-radius:16px;padding:16px 16px 14px;
     box-shadow:0 24px 70px rgba(0,0,0,.55)}
@@ -1057,8 +1071,7 @@ function viewSheet(){
     <select onchange="S.evId=this.value;S.sel='header';render()">
       ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${x.demo?'【教学】':''}${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
     </select>
-    ${e&&!S.readonly?`<button class="btn sm" onclick="${e.status==='run'?`goExec('${e.id}')`:'enterExec()'}">${e.status==='run'?'▶ 执行看板':'进入执行'}</button>
-    <button class="btn ghost sm" onclick="goDay()">当天</button>
+    ${e&&!S.readonly?`<button class="btn ghost sm" onclick="goDay()">当天</button>
     <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
     ${e&&!S.readonly?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
@@ -1129,8 +1142,14 @@ function viewSheet(){
       <button onclick="event.stopPropagation();moveRow('${r.id}',1)" ${i===e.rows.length-1?'disabled':''}>▼</button>
       <button onclick="event.stopPropagation();delRow('${r.id}')">✕</button>
     </div></div>`).join('');
+  const kickoff=(e&&!S.readonly)?(e.status==='run'
+    ?`<div class="kickoff run"><span class="st">● 执行跟踪中</span>
+        <button class="btn sm" onclick="goExec('${e.id}')">▶ 执行看板</button>
+        <span class="rem">改计划随时改，跟踪不会重来</span></div>`
+    :`<div class="kickoff plan"><button class="btn big" onclick="enterExec()">🚀 计划好了 · 开始跟踪执行</button>
+        <span class="rem">把计划变成会自己提醒你的执行看板</span></div>`):'';
   return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main${S.readonly?' ro':''}">
-    ${sw}${roBanner}
+    ${sw}${roBanner}${kickoff}
     ${e.demo?`<div class="hintbar" style="border:1px dashed var(--brass-dim);border-radius:5px;padding:9px 11px">
       <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不会上云或公开到官网。
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
@@ -1139,7 +1158,8 @@ function viewSheet(){
     ${strips}${S.costDraft?costDraftCard():''}${hd}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
-  <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>`;
+  <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>
+  ${S.gate?gateCard():''}`;
 }
 function chipsHtml(holder,loc){
   const res=holder.resources.map(c=>`<span class="chip s${c.status||0}"
@@ -2305,15 +2325,18 @@ function openTask(cid){S.armed=null;S.exTask=cid;render();}
 // place the floating detail next to the tapped node so the tree stays visible ("stay oriented")
 function positionExDlg(){
   const dlg=document.querySelector('.exdlg');if(!dlg)return;
+  if(!window._exReflow){window._exReflow=1;window.addEventListener('resize',()=>{if(S.exTask)positionExDlg();});}
   // both the mobile stack and the desktop tree render the same data-cid; pick the VISIBLE one (hidden has offsetWidth 0)
   let node=null;document.querySelectorAll('.extask[data-cid="'+S.exTask+'"]').forEach(n=>{if(n.offsetWidth>0)node=n;});
-  if(!node)return;   // else falls back to centered
+  if(!node){   // node folded away (e.g. just marked 完成 under the collapsed fold) → keep last position, don't snap to center
+    if(S._exPos){dlg.style.left=S._exPos.left+'px';dlg.style.top=S._exPos.top+'px';dlg.style.transform='none';}return;}
   const r=node.getBoundingClientRect(),dw=dlg.offsetWidth,dh=dlg.offsetHeight,M=10;
   let left=r.left,top=r.bottom+8;
   if(left+dw>window.innerWidth-M)left=window.innerWidth-M-dw;
   if(left<M)left=M;
   if(top+dh>window.innerHeight-M)top=Math.max(M,r.top-dh-8);   // not enough room below → flip above
-  dlg.style.left=left+'px';dlg.style.top=top+'px';dlg.style.transform='none';
+  left+=window.scrollX;top+=window.scrollY;   // absolute + document coords → the dialog scrolls with the tree
+  dlg.style.left=left+'px';dlg.style.top=top+'px';dlg.style.transform='none';S._exPos={left,top};
 }
 /* ---- trunk = execution timeline: helpers ---- */
 function planStart(e){return e.runAt||todayStr();}     // top of trunk = 计划完成日 (进入执行 那天)
@@ -2450,10 +2473,41 @@ function exDelTask(cid){const e=ev();
   e.rows.forEach(r=>{r.resources=r.resources.filter(c=>c.id!==cid);});
   S.exTask=null;save();render();}
 /* the two lifecycle buttons */
+// 0-job 环节 = a rundown row with a name but nothing to do on it (no resource/任务 chips)
+function bareRows(e){return e.rows.filter(r=>(r.resources||[]).length===0&&(r.seg||'').trim());}
+// kickoff — prompt ONLY for what's missing; if nothing's missing, start tracking silently
 function enterExec(){const e=ev();if(!e)return;
-  const unmet=followUps(e);
-  if(unmet.length&&!confirm('还有 '+unmet.length+' 项资源/收支没落实。\n进入执行后它们会排到「待办」，你可以逐个推进或搁置。\n现在进入执行？'))return;
-  e.status='run';if(!e.runAt)e.runAt=todayStr();save();goExec(e.id);toast('已进入执行 — 这是执行看板');}
+  const unmet=followUps(e).filter(x=>x.type==='res'), bare=bareRows(e);
+  if(!unmet.length&&!bare.length){doKickoff(e);return;}
+  S.gate={ignore:{},rows:{}};render();
+}
+function doKickoff(e){e.status='run';if(!e.runAt)e.runAt=todayStr();S.gate=null;save();goExec(e.id);toast('开始跟踪 — 这是执行看板');}
+function gateTog(cid,skip){if(S.gate)S.gate.ignore[cid]=!!skip;render();}
+function gateTogRow(rid){if(S.gate)S.gate.rows[rid]=!S.gate.rows[rid];render();}
+function gateConfirm(){const e=ev();if(!e||!S.gate)return;
+  Object.keys(S.gate.ignore).forEach(cid=>{if(S.gate.ignore[cid]){const c=chipById(cid);if(c)c.ignored=true;}});
+  Object.keys(S.gate.rows).forEach(rid=>{if(S.gate.rows[rid]){const r=e.rows.find(x=>x.id===rid);
+    if(r)r.resources.push({id:uid(),type:'任务',name:'（'+(r.seg||'此环节')+'）暂不安排',ignored:true});}});
+  doKickoff(e);
+}
+function gateCard(){const e=ev();if(!e||!S.gate)return '';
+  const unmet=followUps(e).filter(x=>x.type==='res'), bare=bareRows(e);
+  const ic=c=>c.type==='物'?'📦':(c.type==='任务'?'📌':'👤');
+  const resRow=x=>{const ig=!!S.gate.ignore[x.c.id];
+    return `<div class="gaterow"><span class="gn">${ic(x.c)} ${esc(x.c.name)}${x.c.role?' · '+esc(x.c.role):''}</span>
+      <span class="gseg"><span class="gatetog todo${ig?'':' on'}" onclick="gateTog('${x.c.id}',0)">待办</span><span class="gatetog skip${ig?' on':''}" onclick="gateTog('${x.c.id}',1)">搁置</span></span></div>`;};
+  const rowRow=r=>{const ig=!!S.gate.rows[r.id];
+    return `<div class="gaterow"><span class="gn">${esc(r.time)||'--:--'} ${esc(r.seg)}</span>
+      <span class="gseg"><span class="gatetog todo${ig?'':' on'}" onclick="gateTogRow('${r.id}')">回去安排</span><span class="gatetog skip${ig?' on':''}" onclick="gateTogRow('${r.id}')">忽略</span></span></div>`;};
+  return `<div class="drawerbg" onclick="S.gate=null;render()"></div>
+    <div class="modal-g" style="width:min(380px,calc(100vw - 28px))"><div class="rvsec" style="margin:0">
+      <div class="hd"><span class="lbl">开始跟踪前 · 只说没安排好的</span><button class="btn ghost sm" onclick="S.gate=null;render()">✕</button></div>
+      <p class="note9" style="margin:2px 0 10px">安排好的都不打扰你。下面这些，选「搁置/忽略」就不再提醒。</p>
+      ${unmet.length?`<div class="lbl" style="margin-bottom:5px">还没落实 ${unmet.length} 项（默认进「待办」跟）</div>${unmet.map(resRow).join('')}`:''}
+      ${bare.length?`<div class="lbl" style="margin:12px 0 5px">${bare.length} 个环节还没安排要做的事</div>${bare.map(rowRow).join('')}`:''}
+      <button class="btn" style="width:100%;margin-top:14px" onclick="gateConfirm()">开始跟踪 →</button>
+    </div></div>`;
+}
 function endExec(kind){const e=ev();if(!e)return;
   if(!confirm(kind==='done'?'把这场活动标记为「完成」？完成后进入 14 天跟进期，可复盘并保存回资产库。'
                           :'取消这场活动？'))return;
