@@ -421,6 +421,12 @@
   .exdlg .dfld .l{font-size:10px;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:4px}
   .exdlg .dfld input{width:100%}
   .exdlg .df{display:flex;gap:8px;margin-top:12px}
+  /* the natural task/job editor — a centered modal (not an anchored peek) */
+  .exdlg.jobdlg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%)}
+  .jobdlg .dfld input{width:100%}
+  .jepick{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+  .jepick span{font-size:11px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:14px;padding:3px 10px;cursor:pointer;background:rgba(201,163,86,.06)}
+  .jepick span:hover{background:rgba(201,163,86,.14)}
   /* ===== desktop tree: vertical trunk = time axis (owner 2026-07-21) ===== */
   .exmob{display:block}
   .exdesk{display:none}
@@ -917,6 +923,7 @@ function render(){
     </div>${body}
     ${fabsHtml()}
     ${S.auth?authSheet():''}
+    ${S.jobEdit?jobEditCard():''}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
       <div class="drawer">${libPanel()}</div>`:''}`;
   // editor body is filled with sanitized NODES (never innerHTML) — no re-parse window
@@ -1265,12 +1272,57 @@ function moveRow(id,d){const e=ev();const i=e.rows.findIndex(x=>x.id===id);const
 function cycleRes(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
   if(c){c.status=((c.status||0)+1)%4;stampDone(c);save();render();}}
 // jobs = 要做的事 on a 环节 (a 任务 chip); 3-state like the tree (待办→进行中→完成)
-function addJob(loc){if(S.readonly)return;
-  const name=prompt('这个环节要做的事（如：预订场地 / 布置会场 / 借设备 / 打印名牌）');
-  if(!name||!name.trim())return;const h=holderOf(loc);if(!h)return;
-  h.resources.push({id:uid(),type:'任务',name:name.trim(),status:0});save();render();}
-function cycleJob(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
-  if(c){const nb=(taskBucket(c)+1)%3;c.status=BUCKET_STATUS[nb];stampDone(c);save();render();}}
+// a task/job = 要做什么 + 负责人 + 需要资源 + 截止 (owner) — edited in a natural in-app window, not a prompt
+function addJob(loc){openJobEditor(loc,null);}
+function cycleJob(loc,cid){openJobEditor(loc,cid);}   // clicking a job opens its window
+function uniquePlanNames(e,type){const s=new Set();
+  [e.header].concat(e.rows).forEach(h=>{(h.resources||[]).forEach(c=>{if((c.type||'人')===type&&c.name)s.add(c.name);});});
+  if(type==='人')e.rows.forEach(r=>{if((r.owner||'').trim())s.add(r.owner.trim());});
+  return [...s].slice(0,10);}
+function findChipLoc(cid){const e=ev();if((e.header.resources||[]).some(c=>c.id===cid))return 'header';
+  const r=e.rows.find(x=>(x.resources||[]).some(c=>c.id===cid));return r?r.id:'header';}
+function jobHolder(loc){const e=ev();return loc==='header'?e.header:e.rows.find(x=>x.id===loc);}
+function openJobEditor(loc,cid){if(S.readonly)return;S.exTask=null;S.armed=null;S.jobEdit={loc:loc,cid:cid||null};render();
+  const el=document.getElementById('je_name');if(el&&!cid)el.focus();}
+function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
+  const h=jobHolder(je.loc);const c=je.cid&&h?h.resources.find(x=>x.id===je.cid):null;
+  const d=c||{name:'',role:'',needs:'',due:''};const b=c?taskBucket(c):0;
+  const where=je.loc==='header'?'活动全场':(()=>{const r=e.rows.find(x=>x.id===je.loc);return r?((r.time?r.time+' ':'')+(r.seg||'环节')):'环节';})();
+  const pick=(arr,fn)=>arr.length?`<div class="jepick">${arr.map(n=>`<span onclick="${fn}('${n.replace(/['"\\]/g,'')}')">${esc(n)}</span>`).join('')}</div>`:'';
+  return `<div class="drawerbg" onclick="S.jobEdit=null;render()"></div>
+    <div class="exdlg jobdlg">
+      <div class="hd"><span class="tp">📌 ${c?'这件要做的事':'加一件要做的事'}</span>
+        <button class="btn ghost sm" onclick="S.jobEdit=null;render()">✕</button></div>
+      <div class="sub" style="margin:0 0 4px">${esc(where)}</div>
+      <label class="dfld"><span class="l">要做什么</span>
+        <input id="je_name" value="${esc(d.name)}" placeholder="如：预订场地 / 布置会场 / 借设备"></label>
+      <label class="dfld"><span class="l">谁来做（负责人）</span>
+        <input id="je_role" value="${esc(d.role||'')}" placeholder="从下面点，或直接写"></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
+      <label class="dfld"><span class="l">需要什么（资源）</span>
+        <input id="je_needs" value="${esc(d.needs||'')}" placeholder="从下面点添加，或直接写"></label>${pick(uniquePlanNames(e,'物'),'jeNeed')}
+      <label class="dfld"><span class="l">什么时候前完成（可选）</span>
+        <input id="je_due" type="date" value="${esc(d.due||'')}"></label>
+      ${c?`<div class="exseg" style="margin-top:12px">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="jeStatus(${i})">${l}</div>`).join('')}</div>`:''}
+      <div class="df"><button class="btn" style="flex:1" onclick="jobEditSave()">保存</button>
+        ${c?`<button class="btn danger sm" onclick="jeDelete()">删除</button>`:''}</div>
+    </div>`;
+}
+function jeRole(n){const el=document.getElementById('je_role');if(el)el.value=n;}
+function jeNeed(n){const el=document.getElementById('je_needs');if(el)el.value=el.value.trim()?el.value.trim()+'、'+n:n;}
+function jeStatus(i){document.querySelectorAll('.jobdlg .exseg .sb').forEach((s,j)=>s.classList.toggle('on',j===i));}
+function jobEditSave(){if(S.readonly||!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);if(!h)return;
+  const name=(document.getElementById('je_name').value||'').trim();if(!name){toast('先写要做什么');return;}
+  const role=(document.getElementById('je_role').value||'').trim();
+  const needs=(document.getElementById('je_needs').value||'').trim();
+  const due=document.getElementById('je_due').value||undefined;
+  const segEl=document.querySelector('.jobdlg .exseg');
+  const bi=segEl?[...segEl.querySelectorAll('.sb')].findIndex(s=>s.classList.contains('on')):0;
+  let c=je.cid?h.resources.find(x=>x.id===je.cid):null;
+  if(c){c.name=name;c.role=role;c.needs=needs;c.due=due;c.status=BUCKET_STATUS[Math.max(0,bi)];stampDone(c);}
+  else{h.resources.push({id:uid(),type:'任务',name:name,role:role,needs:needs,due:due,status:0});}
+  S.jobEdit=null;save();render();toast(c?'已更新':'已加到要做的事');}
+function jeDelete(){if(!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);
+  if(h&&je.cid)h.resources=h.resources.filter(x=>x.id!==je.cid);S.jobEdit=null;save();render();}
 function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
   const k=kind==='res'?'resources':'money';h[k]=h[k].filter(x=>x.id!==cid);save();render();}
 function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
@@ -1287,7 +1339,9 @@ function newEvent(){S.readonly=false;const e=instantiate(null);e.name='新活动
 // execution state, participants and the date are NOT carried (owner: copy assets, not the schedule)
 function cloneEvent(srcId){
   const src=STORE.events.find(x=>x.id===srcId)||ev();if(!src)return;
-  const cpR=c=>({id:uid(),refId:c.refId,name:c.name,type:c.type,role:c.role,status:0});   // reset to 待办
+  const cpR=c=>c.type==='任务'
+    ?{id:uid(),type:'任务',name:c.name,status:0}                                  // a job: keep the description; 人/资源/时间 re-allocated next time
+    :{id:uid(),refId:c.refId,name:c.name,type:c.type,role:c.role,status:0};   // reset to 待办
   const cpM=c=>({id:uid(),refId:c.refId,name:c.name,kind:c.kind,plan:c.plan,unit:c.unit,actual:null});
   const live=arr=>(arr||[]).filter(c=>!c.ignored);          // 搁置'd items don't carry over
   const noTask=arr=>(arr||[]).filter(c=>(c.type||'人')!=='任务');   // header one-off chores don't carry over
@@ -2321,7 +2375,9 @@ function applySaveBack(){
   const sb=S.saveBack,L=STORE.library,e=ev();let n=0;
   // whitelist-copy: a saved template must NOT carry execution state (status/due/ignored) or an
   // ad-hoc 任务 chip into future events (owner 2026-07-21 — a real leak the review caught)
-  const cpR=c=>({id:uid(),refId:c.refId,name:c.name,type:c.type,role:c.role,status:0});
+  const cpR=c=>c.type==='任务'
+    ?{id:uid(),type:'任务',name:c.name,status:0}                                  // a job: keep the description; 人/资源/时间 re-allocated
+    :{id:uid(),refId:c.refId,name:c.name,type:c.type,role:c.role,status:0};   // reset to 待办
   const cpM=c=>({id:uid(),refId:c.refId,name:c.name,kind:c.kind,plan:c.plan,unit:c.unit,actual:null});
   const noTask=arr=>(arr||[]).filter(c=>c.type!=='任务');   // header one-off chores don't belong in a template
   const live=arr=>(arr||[]).filter(c=>!c.ignored);          // 搁置'd items were set aside — don't seed the next event
@@ -2414,7 +2470,9 @@ function taskTap(cid){
   if(window.matchMedia&&window.matchMedia('(hover:hover)').matches){openTask(cid);return;}
   if(S.armed===cid){openTask(cid);}else{S.armed=cid;render();}
 }
-function openTask(cid){S.armed=null;S.exTask=cid;render();}
+function openTask(cid){S.armed=null;const c=chipById(cid);
+  if(c&&(c.type||'人')==='任务'){openJobEditor(findChipLoc(cid),cid);return;}   // a job → its rich task window
+  S.exTask=cid;render();}
 // place the floating detail next to the tapped node so the tree stays visible ("stay oriented")
 function positionExDlg(){
   const dlg=document.querySelector('.exdlg');if(!dlg)return;
@@ -2531,7 +2589,7 @@ function chipById(cid){const e=ev();let f=null;
   return f;}
 function exAdvance(cid){if(S.readonly)return;const c=chipById(cid);if(!c)return;
   const nb=(taskBucket(c)+1)%3;c.status=BUCKET_STATUS[nb];stampDone(c);save();render();}
-function exOpen(cid){S.exTask=cid;render();}
+function exOpen(cid){openTask(cid);}
 function exDetailCard(){
   const c=chipById(S.exTask);if(!c){S.exTask=null;return '';}
   const b=taskBucket(c),icon=c.type==='任务'?'📌':(c.type==='物'?'📦':'👤');
@@ -2558,9 +2616,7 @@ function exRestore(cid){const c=chipById(cid);if(!c)return;c.ignored=false;save(
 function exRemind(cid){const e=ev(),c=chipById(cid);if(!c)return;
   const txt='【'+e.name+'】'+fmtDate(e.date)+' 提醒：\n· '+c.name+(c.role?'（'+c.role+'）':'')+' — 请尽快确认/到位';
   share(txt);}
-function exAddTodo(){const name=prompt('待办内容（如：打电话确认场地、印名牌、续保险）');if(!name||!name.trim())return;
-  const e=ev();e.header.resources.push({id:uid(),type:'任务',name:name.trim(),role:'',status:0});
-  save();render();toast('已加到待办');}
+function exAddTodo(){openJobEditor('header',null);}
 function exDelTask(cid){const e=ev();
   e.header.resources=e.header.resources.filter(c=>c.id!==cid);
   e.rows.forEach(r=>{r.resources=r.resources.filter(c=>c.id!==cid);});
