@@ -295,45 +295,85 @@
   .deskcard .dc-t{font-size:14.5px;font-weight:700}
   .deskcard .dc-m{font-size:11.5px;color:var(--muted);margin-top:2px;letter-spacing:.04em}
   .deskcard .dc-m b{color:var(--alarm)}
-  /* ===== 执行 tree (owner 2026-07-21) ===== */
-  .exhero{text-align:center;padding:10px 0 16px;border-bottom:1px solid var(--line);margin-bottom:14px}
-  .exhero .cd{font-family:Oswald,sans-serif;font-size:40px;line-height:1;color:var(--brass);font-variant-numeric:tabular-nums}
-  .exhero .cd.over{color:var(--alarm)}
-  .exhero .cd.none{font-size:22px;color:var(--stock-dim)}
-  .exhero .lab{font-size:11px;letter-spacing:.2em;color:var(--muted);margin-top:6px}
-  .exhero .evn{font-size:14px;color:var(--stock);margin-top:4px;font-weight:500}
-  .exband{margin-bottom:14px}
-  .exband .bt{display:flex;justify-content:space-between;align-items:baseline;margin:0 2px 8px}
-  .exband .bt .lbl{font-size:11px;letter-spacing:.18em}
-  .exband.todo .bt .lbl{color:var(--alarm)}
-  .excols{display:flex;gap:10px}
-  .excols .exband{flex:1;min-width:0;margin-bottom:0}
-  .extask{display:flex;gap:9px;align-items:center;background:var(--felt-up);border:1px solid var(--line);
-    border-radius:6px;padding:9px 11px;margin-bottom:6px;width:100%;text-align:left}
-  .extask .bd{flex:1;min-width:0}
-  .extask .nm{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .extask .wh{font-size:10.5px;color:var(--muted);margin-top:1px}
-  .extask .due{font-size:10px;color:var(--brass);margin-left:5px}
-  .extask .due.over{color:var(--alarm);font-weight:700}
-  .exchip{font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:20px;flex:none;letter-spacing:.06em;cursor:pointer;white-space:nowrap}
-  .exchip.b0{background:#3a2420;color:var(--alarm);border:1px solid var(--alarm)}
-  .exchip.b1{background:var(--felt);color:var(--brass);border:1px solid var(--brass-dim)}
-  .exchip.b2{background:var(--stock);color:var(--ink)}
-  .extask.done{opacity:.6}
-  .exmoney{background:var(--felt-up);border:1px dashed var(--line);border-radius:6px;padding:9px 12px;
-    font-size:12px;color:var(--stock-dim);margin-bottom:12px}
-  .exignore{background:none;border:1px dashed var(--brass-dim);border-radius:6px;padding:8px 11px;margin-top:10px}
-  .exignore .it{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);padding:3px 0}
-  .exignore .it .rz{color:var(--brass);cursor:pointer;font-size:11px}
-  .exadd{width:100%;border:1px dashed var(--line);border-radius:6px;padding:10px;color:var(--muted);
-    font-size:12.5px;letter-spacing:.08em;margin:2px 0 14px}
+  /* ===== 执行 tree (owner 2026-07-21, redesigned) ===== */
+  .extree{max-width:600px;margin:0 auto;padding-bottom:96px}
+  .exback{font-size:11px;color:var(--muted);letter-spacing:.14em;padding:2px 2px 8px}
+  .exback .bk{color:var(--brass);cursor:pointer}
+  /* countdown hub */
+  .exhub{text-align:center;padding:4px 0 2px}
+  .exhub .evn{font-size:13px;color:var(--stock);font-weight:600;margin-bottom:10px}
+  .exring{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
+    width:128px;height:128px;border-radius:50%;border:2px solid var(--brass-dim);
+    background:radial-gradient(circle at 50% 34%,var(--felt-up),var(--felt) 76%);
+    box-shadow:inset 0 0 0 6px rgba(0,0,0,.16),0 4px 18px rgba(0,0,0,.28)}
+  .exring .cd{font-family:Oswald,sans-serif;font-size:46px;line-height:.92;color:var(--brass);font-variant-numeric:tabular-nums}
+  .exring .cd.over{color:var(--alarm)}
+  .exring.small{border-color:var(--line)} .exring.small .cd{font-size:19px;color:var(--stock-dim);letter-spacing:.04em}
+  .exring .lab{font-size:10px;letter-spacing:.14em;color:var(--muted);margin-top:4px}
+  /* progress ribbon */
+  .exsum{max-width:300px;margin:14px auto 2px}
+  .exbar{height:6px;border-radius:3px;background:var(--felt);border:1px solid var(--line);overflow:hidden}
+  .exbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--brass-dim),var(--brass));transition:width .35s ease}
+  .exsum .lg{display:flex;justify-content:center;gap:16px;font-size:11px;color:var(--muted);margin-top:7px}
+  .exsum .lg b{font-weight:700}
+  .exsum .lg .a b{color:var(--alarm)} .exsum .lg .g b{color:var(--ok)}
+  .extrunk{width:1px;height:16px;background:var(--line);margin:8px auto 4px}
+  /* bands */
+  .exband{margin-bottom:16px}
+  .exband .bt{display:flex;justify-content:space-between;align-items:center;margin:0 2px 8px}
+  .exband .bt .lbl{display:inline-flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.16em;font-weight:600}
+  .exband .bt .lbl .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .exband .bt .lbl .n{opacity:.6;font-weight:400}
+  .exband.todo  .bt .lbl{color:var(--alarm)}     .exband.todo  .dot{background:var(--alarm)}
+  .exband.doing .bt .lbl{color:var(--brass)}      .exband.doing .dot{background:var(--brass)}
+  .exband.done  .bt .lbl{color:var(--stock-dim)}  .exband.done  .dot{background:var(--ok)}
+  .excols{display:flex;flex-direction:column;gap:0}
+  @media(min-width:560px){.excols{flex-direction:row;gap:16px}.excols .exband{flex:1;min-width:0}}
+  /* task row (compact, colored spine) */
+  .extask{display:flex;gap:10px;align-items:center;background:var(--felt-up);border:1px solid var(--line);
+    border-left:3px solid var(--line);border-radius:8px;padding:8px 11px;margin-bottom:6px;width:100%;text-align:left}
+  .exband.todo  .extask{border-left-color:var(--alarm)}
+  .exband.doing .extask{border-left-color:var(--brass)}
+  .exband.done  .extask{border-left-color:var(--ok);opacity:.72}
+  .extask .bd{flex:1;min-width:0;cursor:pointer}
+  .extask .nm{font-size:13px;font-weight:500;color:var(--stock);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .extask .wh{font-size:10.5px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .extask .due{font-size:9.5px;color:var(--brass);margin-left:6px;font-weight:600;white-space:nowrap}
+  .extask .due.over{color:var(--alarm)}
+  .exchip{font-size:10px;font-weight:700;padding:5px 11px;border-radius:20px;flex:none;letter-spacing:.06em;cursor:pointer;white-space:nowrap}
+  .exchip.b0{background:rgba(210,96,74,.14);color:var(--alarm);border:1px solid var(--alarm)}
+  .exchip.b1{background:rgba(201,163,86,.13);color:var(--brass);border:1px solid var(--brass-dim)}
+  .exchip.b2{background:var(--ok);color:var(--ink);border:1px solid var(--ok)}
+  .exempty{font-size:11px;color:var(--stock-dim);padding:6px 2px 2px;opacity:.75}
+  .exadd{width:100%;border:1px dashed var(--line);border-radius:8px;padding:9px;color:var(--muted);
+    font-size:12px;letter-spacing:.04em;margin-top:2px}
   .exadd:hover{border-color:var(--brass);color:var(--brass)}
-  .exfold{font-size:11px;color:var(--brass);cursor:pointer}
-  /* floating task detail */
-  .exdetail .row2{display:flex;gap:7px;margin:10px 0}
-  .exdetail .sb{flex:1;text-align:center;padding:10px 4px;border-radius:6px;border:1px solid var(--line);
-    font-size:12.5px;font-weight:700;cursor:pointer;color:var(--stock-dim)}
-  .exdetail .sb.on{background:var(--brass);color:var(--ink);border-color:var(--brass)}
+  .exfold{font-size:11px;color:var(--brass);cursor:pointer;font-weight:600}
+  .exmoney{background:var(--felt-up);border:1px dashed var(--brass-dim);border-radius:8px;padding:9px 12px;
+    font-size:12px;color:var(--stock-dim);margin-bottom:12px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+  .exignore{background:none;border:1px dashed var(--line);border-radius:8px;padding:9px 11px;margin-top:2px}
+  .exignore .lbl{font-size:10px;letter-spacing:.14em;color:var(--muted);margin-bottom:5px}
+  .exignore .it{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);padding:3px 0}
+  .exignore .it .rz{color:var(--brass);cursor:pointer;font-size:11px;white-space:nowrap;margin-left:8px}
+  .exend{display:flex;gap:8px;margin-top:18px}
+  /* centered task detail dialog */
+  .exdlg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;
+    width:min(340px,calc(100vw - 40px));max-height:calc(100vh - 48px);overflow:auto;
+    background:var(--felt);border:1px solid var(--brass-dim);border-radius:16px;padding:16px 16px 14px;
+    box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .exdlg .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .exdlg .tp{display:inline-flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.14em;color:var(--brass)}
+  .exdlg .nm{font-size:16px;font-weight:600;color:var(--stock);line-height:1.35}
+  .exdlg .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .exseg{display:flex;margin:14px 0 4px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .exseg .sb{flex:1;text-align:center;padding:10px 4px;font-size:12.5px;font-weight:600;cursor:pointer;
+    color:var(--stock-dim);background:var(--felt-up);border-right:1px solid var(--line)}
+  .exseg .sb:last-child{border-right:0}
+  .exseg .sb.on{background:var(--brass);color:var(--ink)}
+  .exdlg .dfld{display:block;margin:12px 0 4px}
+  .exdlg .dfld .l{font-size:10px;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:4px}
+  .exdlg .dfld input{width:100%}
+  .exdlg .df{display:flex;gap:8px;margin-top:12px}
   /* 示例 (demo/tutorial) marker — shown wherever seeded data appears */
   .demotag{display:inline-block;font-size:9px;line-height:1.4;letter-spacing:.1em;
     color:var(--felt);background:var(--brass);border-radius:3px;padding:1px 5px;margin-left:6px;
@@ -2187,18 +2227,19 @@ function daysTo(e){if(!e.date)return null;return Math.round((Date.parse(e.date+'
 function heroHtml(e){
   const d=daysTo(e),ph=evPhase(e);
   if(ph==='hot'||ph==='archived')
-    return `<div class="cd none">已结束</div><div class="lab">${ph==='hot'?'仍在跟进期':'已归档'}</div>`;
-  if(d==null)return `<div class="cd none">日期未定</div><div class="lab">先在计划里定个日子</div>`;
-  if(d<0)return `<div class="cd over">已过 ${-d} 天</div><div class="lab">活动日已过</div>`;
-  return `<div class="cd${d<=3?' over':''}">${d===0?'今天':d}</div><div class="lab">${d===0?'就是今天':'还有 '+d+' 天'}</div>`;
+    return `<div class="exring small"><div class="cd">已结束</div><div class="lab">${ph==='hot'?'仍在跟进':'已归档'}</div></div>`;
+  if(d==null)return `<div class="exring small"><div class="cd">日期未定</div><div class="lab">先定个日子</div></div>`;
+  if(d<0)return `<div class="exring"><div class="cd over">${-d}</div><div class="lab">天前 · 已过</div></div>`;
+  return `<div class="exring"><div class="cd${d<=3?' over':''}">${d===0?'今天':d}</div><div class="lab">${d===0?'就是今天':'还有 '+d+' 天'}</div></div>`;
 }
 function taskCard(x){
   const c=x.c,b=x.bucket,icon=c.type==='任务'?'📌':(c.type==='物'?'📦':'👤');
   const due=c.due?`<span class="due${(c.due<todayStr()&&b<2)?' over':''}">截止${fmtDate(c.due)}</span>`:'';
-  return `<div class="extask ${b===2?'done':''}">
+  const sub=[esc(x.where),c.role?esc(c.role):''].filter(Boolean).join(' · ');
+  return `<div class="extask">
     <div class="bd" onclick="exOpen('${c.id}')">
       <div class="nm">${icon} ${esc(c.name)}${due}</div>
-      <div class="wh">${esc(x.where)}${c.role?' · '+esc(c.role):''}</div></div>
+      ${sub?`<div class="wh">${sub}</div>`:''}</div>
     <span class="exchip b${b}" onclick="event.stopPropagation();exAdvance('${c.id}')">${TASK_ST[b]}</span></div>`;
 }
 function viewExec(){
@@ -2208,30 +2249,34 @@ function viewExec(){
   const t=tasks(e),todo=t.filter(x=>x.bucket===0),doing=t.filter(x=>x.bucket===1),done=t.filter(x=>x.bucket===2);
   const mt=moneyTodo(e),ign=ignoredTasks(e);
   const card=x=>taskCard(x);
-  const doneBody=S.exShowDone?done.map(card).join(''):'';
-  return `<div class="main" style="max-width:600px;margin:0 auto;padding-bottom:120px">
-    <div class="d" style="font-size:11px;color:var(--muted);letter-spacing:.14em;padding:0 2px 6px">
-      <span class="bk" style="color:var(--brass);cursor:pointer" onclick="go('sheet')">← 计划</span> · 执行</div>
-    <div class="exhero">${heroHtml(e)}<div class="evn">${esc(e.name)}${dtag(e)}</div></div>
-    <div class="exband todo"><div class="bt"><span class="lbl">待办 ${todo.length}</span></div>
-      ${todo.map(card).join('')||'<div class="note9" style="margin:0 2px">没有待办 — 都在推进或已完成。</div>'}
+  const total=todo.length+doing.length+done.length,pct=total?Math.round(done.length/total*100):0;
+  return `<div class="main"><div class="extree">
+    <div class="exback"><span class="bk" onclick="go('sheet')">← 计划</span> · 执行看板</div>
+    <div class="exhub"><div class="evn">${esc(e.name)}${dtag(e)}</div>${heroHtml(e)}</div>
+    <div class="exsum">
+      <div class="exbar"><i style="width:${pct}%"></i></div>
+      <div class="lg"><span class="a">待办 <b>${todo.length}</b></span><span>进行中 <b>${doing.length}</b></span><span class="g">完成 <b>${done.length}</b></span></div>
+    </div>
+    <div class="extrunk"></div>
+    <div class="exband todo"><div class="bt"><span class="lbl"><i class="dot"></i>待办 <span class="n">${todo.length}</span></span></div>
+      ${todo.length?todo.map(card).join(''):'<div class="exempty">没有待办 — 都在推进或已完成 👍</div>'}
       <button class="exadd" onclick="exAddTodo()">＋ 加一个待办（如：打电话确认场地）</button></div>
     <div class="excols">
-      <div class="exband"><div class="bt"><span class="lbl">进行中 ${doing.length}</span></div>
-        ${doing.map(card).join('')||'<div class="note9" style="margin:0 2px">—</div>'}</div>
-      <div class="exband"><div class="bt"><span class="lbl">完成 ${done.length}</span>
+      <div class="exband doing"><div class="bt"><span class="lbl"><i class="dot"></i>进行中 <span class="n">${doing.length}</span></span></div>
+        ${doing.length?doing.map(card).join(''):'<div class="exempty">还没有推进中的</div>'}</div>
+      <div class="exband done"><div class="bt"><span class="lbl"><i class="dot"></i>完成 <span class="n">${done.length}</span></span>
         ${done.length?`<span class="exfold" onclick="S.exShowDone=!S.exShowDone;render()">${S.exShowDone?'收起':'展开'}</span>`:''}</div>
-        ${doneBody||(done.length?'':'<div class="note9" style="margin:0 2px">—</div>')}</div></div>
-    ${mt.length?`<div class="exmoney">💰 待记账 ${mt.length} 项：${mt.slice(0,3).map(x=>esc(x.c.name)).join('、')}${mt.length>3?' …':''}
-      <span class="exfold" style="float:right" onclick="go('sheet')">去收支填实际 →</span></div>`:''}
-    ${ign.length?`<div class="exignore"><div class="lbl" style="margin-bottom:4px">已搁置 ${ign.length}（保留为提示，不催办）</div>
+        ${done.length?(S.exShowDone?done.map(card).join(''):`<div class="exempty">已完成 ${done.length} 项 · 点「展开」查看</div>`):'<div class="exempty">还没有完成的</div>'}</div></div>
+    ${mt.length?`<div class="exmoney"><span>💰 待记账 ${mt.length} 项：${mt.slice(0,3).map(x=>esc(x.c.name)).join('、')}${mt.length>3?' …':''}</span>
+      <span class="exfold" onclick="go('sheet')">去填实际 →</span></div>`:''}
+    ${ign.length?`<div class="exignore"><div class="lbl">已搁置 ${ign.length} · 保留为提示，不催办</div>
       ${ign.map(x=>`<div class="it"><span>${esc(x.c.name)} · ${esc(x.where)}</span>
         <span class="rz" onclick="exRestore('${x.c.id}')">恢复为待办</span></div>`).join('')}</div>`:''}
-    <div style="display:flex;gap:8px;margin-top:16px">
+    <div class="exend">
       <button class="btn" style="flex:1" onclick="endExec('done')">✓ 完成活动</button>
       <button class="btn ghost sm" onclick="endExec('cancelled')">取消活动</button></div>
-    <p class="note9">点状态标签一下切换 待办→进行中→完成；点任务名看详情/催办/搁置/截止。</p>
-  </div>
+    <p class="note9">点右侧标签切换 待办→进行中→完成；点任务名看详情、催办、设截止或搁置。</p>
+  </div></div>
   ${S.exTask?exDetailCard():''}`;
 }
 function chipById(cid){const e=ev();let f=null;
@@ -2242,21 +2287,22 @@ function exAdvance(cid){const c=chipById(cid);if(!c)return;
 function exOpen(cid){S.exTask=cid;render();}
 function exDetailCard(){
   const c=chipById(S.exTask);if(!c){S.exTask=null;return '';}
-  const b=taskBucket(c);
+  const b=taskBucket(c),icon=c.type==='任务'?'📌':(c.type==='物'?'📦':'👤');
+  const kind=c.type==='任务'?'待办':(c.type==='物'?'物资':'人员');
   return `<div class="drawerbg" onclick="S.exTask=null;render()"></div>
-    <div class="modal-g exdetail"><div class="rvsec" style="margin:0">
-      <div class="hd"><span class="lbl">${c.type==='任务'?'待办':(c.type==='物'?'物资':'人员')}</span>
+    <div class="exdlg">
+      <div class="hd"><span class="tp">${icon} ${kind}</span>
         <button class="btn ghost sm" onclick="S.exTask=null;render()">✕</button></div>
-      <div style="font-size:15px;font-weight:600;margin:2px 0 2px">${esc(c.name)}</div>
-      ${c.role?`<div class="note9" style="margin:0 0 4px">${esc(c.role)}</div>`:''}
-      <div class="row2">${TASK_ST.map((l,i)=>`<button class="sb ${b===i?'on':''}" onclick="exSet('${c.id}',${i})">${l}</button>`).join('')}</div>
-      <label class="fld" style="display:block;margin:8px 0"><span class="lbl">截止日期（可选，只提醒不排期）</span>
+      <div class="nm">${esc(c.name)}</div>
+      ${c.role?`<div class="sub">${esc(c.role)}</div>`:''}
+      <div class="exseg">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="exSet('${c.id}',${i})">${l}</div>`).join('')}</div>
+      <label class="dfld"><span class="l">截止日期（可选 · 只提醒，不排期）</span>
         <input type="date" value="${esc(c.due||'')}" onchange="exDue('${c.id}',this.value)"></label>
-      <div style="display:flex;gap:8px;margin-top:6px">
-        ${b<2?`<button class="btn ghost sm" onclick="exRemind('${c.id}')">📤 催办</button>`:''}
+      <div class="df">
+        ${b<2?`<button class="btn ghost sm" style="flex:1" onclick="exRemind('${c.id}')">📤 催办</button>`:''}
         ${c.type==='任务'?`<button class="btn danger sm" onclick="exDelTask('${c.id}')">删除</button>`
-          :`<button class="btn ghost sm" onclick="exIgnore('${c.id}')">搁置（不催办）</button>`}</div>
-    </div></div>`;
+          :`<button class="btn ghost sm" onclick="exIgnore('${c.id}')">搁置</button>`}</div>
+    </div>`;
 }
 function exSet(cid,bucket){const c=chipById(cid);if(!c||taskBucket(c)===bucket)return;c.status=BUCKET_STATUS[bucket];save();render();}
 function exDue(cid,v){const c=chipById(cid);if(c){c.due=v||undefined;save();}}
