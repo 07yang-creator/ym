@@ -141,7 +141,13 @@ Re-read of the owner's complete execution spec against the code. ✅ built · �
   Build a light triage list (default 全部待处理, then 搁置 individually) — NOT an assignment grid.
 - ✅ **Donation-material inventory** = one enum field `inv` (spec 6).
 
-**Remaining build order (push):** ✅ ① anchored floating peek — DONE (cards show name+status only;
+**Remaining build order (push):** ✅ ② kickoff + gate + JOBS — DONE. Planning UI has a prominent
+「🚀 开始跟踪执行」 kickoff (→ '● 执行跟踪中 · 改计划随时改，跟踪不会重来'; plan stays editable, no
+re-kickoff). The gate prompts ONLY for missing (unfilled resources 待办/搁置 + 0-job 环节 忽略→note),
+silent when nothing's missing. **JOBS (要做的事)** = 任务 chips on rundown rows (＋事项 button, 📌
+chips, 3-state cycleJob); they feed the tree as tasks at the 环节's time, and buildSaveBack now KEEPS
+row jobs so the same 环节 auto-suggests them next event (搁置'd excluded, statuses reset). · ✅ ①
+anchored floating peek — DONE (cards show name+status only;
 hover(desktop)/tap-once(mobile) shows a 环节·负责 brief; click/tap-again opens an anchored,
 undimmed floating detail; desk cards open in ONE click, routed by phase; overlap killed by compact
 cards + a center gutter + height that grows with count) · ② gate per-item 待处理/搁置 triage +
