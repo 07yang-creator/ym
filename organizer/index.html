@@ -474,8 +474,10 @@
     color:var(--stock-dim);background:var(--felt-up);border-right:1px solid var(--line)}
   .exseg .sb:last-child{border-right:0}
   .exseg .sb.on{background:var(--brass);color:var(--ink)}
-  .exdlg .dfld{display:block;margin:12px 0 4px}
-  .exdlg .dfld .l{font-size:10px;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:4px}
+  /* not .exdlg-scoped: 计划 uses .dfld too (给嘉宾的通知), and unscoped is what every existing
+     in-dialog use already assumed */
+  .dfld{display:block;margin:12px 0 4px}
+  .dfld .l{font-size:10px;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:4px}
   .exdlg .dfld input{width:100%}
   .exdlg .df{display:flex;gap:8px;margin-top:12px}
   /* the natural task/job editor — a centered modal (not an anchored peek) */
@@ -640,9 +642,10 @@ function cloudPushAll(){
    invisible to the person who has to do it. Match by name — but deliberately DO NOT stamp refId
    onto a 任务 chip: refId is read by volSection/applyRes/guestHistory, and re-semantifying it
    while the host is mid-test is exactly the drift that keeps costing us. */
-function volNameIndex(){const m={};STORE.library.resources.forEach(r=>{
-  if(catOf(r)!=='volunteer')return;const n=String(r.name||'').trim();if(!n)return;
+function nameIndex(cat){const m={};STORE.library.resources.forEach(r=>{
+  if(catOf(r)!==cat)return;const n=String(r.name||'').trim();if(!n)return;
   m[n]=m[n]?'DUP':r.id;});return m;}
+function volNameIndex(){return nameIndex('volunteer');}
 function chipOwnedBy(c,p,idx){
   if(c.refId)return c.refId===p.id;                  // resource chip: hard link, unambiguous
   if((c.type||'')!=='任务')return false;
@@ -710,12 +713,21 @@ function pushShares(){
   // De-duplicate by address: ym_share's PK is (host, member_email), and two rows with the
   // same key in ONE upsert makes Postgres abort the whole statement ("cannot affect row a
   // second time") — which would silently freeze publishing for every other volunteer too.
-  const byEmail={};
+  // Two records claiming ONE address must publish NOTHING rather than an arbitrary winner: the
+  // payload SHAPE follows the record (volunteer vs 嘉宾), so guessing could hand a guest a
+  // volunteer payload — duties, 环节说明, and chipIds that would open the ym_submit write surface.
+  // grantIssue's clash check is client-side and per-device; two devices can each pass it and merge.
+  const byEmail={},dup={};
   linked.forEach(p=>{
     const em=String(p.shareEmail||'').trim().toLowerCase();
     if(!EMAIL_RE.test(em)||em.length>320)return;      // never send what the CHECK will reject
-    byEmail[em]=p;                                     // last record wins
+    if(byEmail[em]&&byEmail[em].id!==p.id)dup[em]=[byEmail[em].name,p.name];
+    byEmail[em]=p;
   });
+  const dups=Object.keys(dup);
+  dups.forEach(em=>{delete byEmail[em];});
+  if(dups.length){const d=dup[dups[0]];
+    toast('「'+d[0]+'」和「'+d[1]+'」用了同一个邮箱，两边都没发布 — 请先取消其中一个');}
   const rows=Object.keys(byEmail).map(em=>({host:SESSION.user.id,member_email:em,
     payload:shareDataFor(byEmail[em])}));
   const bad=linked.length-rows.length;
@@ -761,12 +773,15 @@ function grantPaint(){
     w.innerHTML=`<div class="drawerbg" onclick="grantClose()"></div>
       <div class="exdlg jobdlg askdlg"><div id="grantbody"></div></div>`;
     document.body.appendChild(w);}
-  const st=grantState(p),dup=volNameIndex()[String(p.name||'').trim()]==='DUP';
+  // cat-aware: a duplicate 嘉宾 name matters MORE than a duplicate volunteer one, because a merged
+  // 嘉宾 record would show the account holder somebody else's events and 号牌
+  const st=grantState(p),dup=nameIndex(catOf(p))[String(p.name||'').trim()]==='DUP';
   const cur=p.shareEmail||((p.contact||'').indexOf('@')>0?p.contact:'');
   const head=`<div class="hd"><span class="tp">🔑 授权 ${esc(p.name)}</span>
       <button class="btn ghost sm" onclick="grantClose()">✕</button></div>`;
   const warn=dup?`<div class="sub" style="color:var(--alarm);margin:0 0 8px">⚠ 名册里还有一位「${esc(p.name)}」——
-      用姓名指定负责人的事项两人都收不到，请改名或改用名册指派。</div>`:'';
+      ${catOf(p)==='guest'?'先确认这条记录就是 TA 本人，否则 TA 会看到另一个同名者的活动和号牌。'
+        :'用姓名指定负责人的事项两人都收不到，请改名或改用名册指派。'}</div>`:'';
   let body;
   if(g.taken){
     body=`${head}${warn}<div class="sub" style="line-height:1.9">这个邮箱已经有账号了。<br>
@@ -832,7 +847,7 @@ async function grantIssue(again){
 function grantSend(){
   const g=_grant;if(!g||!g.code)return;
   const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
-  share(['【缘满沙龙】'+p.name+' 你好，这是你的志愿者页面：',
+  share(['【缘满沙龙】'+p.name+' 你好，这是你的'+(catOf(p)==='guest'?'活动页':'志愿者页面')+'：',
     (g.linkOk&&g.link)?g.link:'',
     '打开 https://ym.jjconnect.tokyo/member/ ，输入邮箱 '+p.shareEmail+' 和授权码 '+g.code+'，',
     '首次登录请设置一个密码。24 小时内有效。请勿转发。'].filter(Boolean).join('\n'));
@@ -1497,8 +1512,8 @@ function chipsHtml(holder,loc){
   }).join('');
   const money=holder.money.map(c=>`<span class="chip money ${c.kind==='in'?'in':'out'}"
     onclick="event.stopPropagation();editMoney('${loc}','${c.id}')"
-    title="点击设金额${c.unit!=null?' / 单价':''}">${c.kind==='in'?'⊕':'⊖'} ${esc(c.name)}
-    <span class="amt">${c.unit!=null?yen(c.unit)+'/人 · ':''}${yen(c.plan)}${c.actual!=null?' → '+yen(c.actual):''}</span>
+    title="点击设金额${c.unit?' / 单价':''}">${c.kind==='in'?'⊕':'⊖'} ${esc(c.name)}
+    <span class="amt">${c.unit?yen(c.unit)+'/人 · ':''}${yen(c.plan)}${c.actual!=null?' → '+yen(c.actual):''}</span>
     <span class="x" onclick="event.stopPropagation();delChip('${loc}','money','${c.id}')">✕</span></span>`).join('');
   const addJob=S.readonly?'':`<button class="chipadd" onclick="event.stopPropagation();addJob('${loc}')" title="加一件要做的事">＋事项</button>`;
   return res+money+addJob;
@@ -1665,7 +1680,7 @@ function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
 // 计划金额 · 单价 · 实际 all live here, because 计划 is where the host sets a price — the money chip
 // is the only place a 门票 exists, and its 单价 had no editor at all before (owner: 我在哪里设置门票价格？)
 function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
-  const per=c.kind==='in'&&(String(c.name||'').indexOf('门票')>=0||c.unit!=null);
+  const per=c.kind==='in'&&(String(c.name||'').indexOf('门票')>=0||c.unit>0);
   const num=v=>v===''?null:(parseInt(String(v).replace(/[^\d]/g,''),10)||0);
   ask({title:(c.kind==='in'?'⊕ 收入':'⊖ 支出')+'「'+c.name+'」',
     note:per?'单价 × 到场人数 = 实收（在「日」页按「确认入账」结算）':'留空 = 还没发生',
@@ -1901,7 +1916,14 @@ function catOf(r){return r.cat||(r.type==='物'?'goods':'volunteer');}
 function fileGuest(p){
   if(p.libId&&STORE.library.resources.some(r=>r.id===p.libId))return p.libId;
   const key=(p.name||'').trim();if(!key)return null;
-  let rec=peoList('guest').find(r=>(r.name||'').trim()===key&&(!r.gender||!p.gender||r.gender===p.gender));
+  // Auto-merge on 姓名+性别 is how ONE person attending twice accumulates history. But 重名 is common,
+  // and a merged record can now hold an ACCOUNT — at which point the merge would show one guest the
+  // other's events and 号牌. So never auto-merge into a record that has been granted one; that
+  // person must be linked deliberately (从名册选), by the host's own hand.
+  let rec=peoList('guest').find(r=>!r.shareEmail&&(r.name||'').trim()===key
+    &&(!r.gender||!p.gender||r.gender===p.gender));
+  if(!rec&&peoList('guest').some(r=>r.shareEmail&&(r.name||'').trim()===key))
+    toast('名册里已有同名嘉宾（已授权账号）— 若是同一人，请改从名册选');
   if(!rec){
     rec={id:uid(),cat:'guest',type:'人',name:key,gender:p.gender||'',
       occupation:p.job||'',role:''};
@@ -1978,7 +2000,9 @@ function libEditSave(){
     const k=f[0];const el=$('le_'+k);if(!el)return;
     let v=el.value.trim();
     if(k==='resStr'){rec.res=v?v.split(/[,，、/]+/).map(x=>x.trim()).filter(Boolean):[];return;}
-    if(k==='dur'||k==='amount'||k==='unit'){rec[k]=parseInt(v.replace(/[^\d]/g,''),10)||0;return;}
+    // a blank 单价 means "no per-head price", NOT zero — storing 0 made every money chip claim ¥0/人
+    if(k==='unit'){const n=parseInt(v.replace(/[^\d]/g,''),10)||0;if(n)rec.unit=n;else delete rec.unit;return;}
+    if(k==='dur'||k==='amount'){rec[k]=parseInt(v.replace(/[^\d]/g,''),10)||0;return;}
     rec[k]=v;
   });
   if(!rec[nameKey]){toast('名称不能为空');return;}
@@ -2029,14 +2053,22 @@ function colHtml(e,g){
 }
 function ticketInfo(e){
   const t=[];allMoneyChips(e).forEach(x=>{const c=x.c;
-    if(c.kind==='in'&&c.unit&&c.name.indexOf('门票')>=0)t.push(c);});
+    if(c.kind==='in'&&c.unit>0&&c.name.indexOf('门票')>=0)t.push(c);});
   return t;
+}
+// A 门票 chip splits by gender only if its NAME says so. 「门票」/「早鸟门票」 bills EVERYONE who
+// showed up — the old two-way ternary fell through to 女, silently halving the take.
+function ticketHeads(e,c){const n=String(c.name||'');
+  const m=n.indexOf('男')>=0,w=n.indexOf('女')>=0;
+  if(m&&!w)return arrCount(e,'男');
+  if(w&&!m)return arrCount(e,'女');
+  return arrCount(e,'男')+arrCount(e,'女');
 }
 function dayBoard(e){
   const tickets=ticketInfo(e);
   let bar='';
   if(tickets.length){
-    const due=tickets.reduce((s,c)=>s+c.unit*arrCount(e,c.name.indexOf('男')>=0?'男':'女'),0);
+    const due=tickets.reduce((s,c)=>s+c.unit*ticketHeads(e,c),0);
     const done=tickets.every(c=>c.actual!=null)&&tickets.reduce((s,c)=>s+(c.actual||0),0)===due;
     bar=`<div class="ticketbar"><span>门票实收（按到场）</span>
       <span class="num" style="font-size:14px">${yen(due)}</span>
@@ -2060,7 +2092,7 @@ function dayBoard(e){
 function toggleArr(pid){const e=ev();const p=e.participants.find(x=>x.id===pid);if(!p)return;
   p.arrived=!p.arrived;p.at=p.arrived?nowHM():null;save();render();}
 function confirmTickets(){const e=ev();
-  ticketInfo(e).forEach(c=>{c.actual=c.unit*arrCount(e,c.name.indexOf('男')>=0?'男':'女');});
+  ticketInfo(e).forEach(c=>{c.actual=c.unit*ticketHeads(e,c);});
   save();render();toast('门票已入账（可在收支牌上修改）');}
 function addP(){const e=ev();
   ask({title:'＋ 加一位参加者',fields:[

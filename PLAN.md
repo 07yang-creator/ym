@@ -133,6 +133,26 @@ invisible to the person who had to do it. `chipOwnedBy()` matches by name **with
 `refId` (which `volSection`/`applyRes`/`guestHistory` read). A duplicate 名册 name **fails closed** —
 the item reaches nobody rather than the wrong person, and the 授权 window warns about the collision.
 
+**嘉宾 accounts — PUBLIC ONLY (owner, 2026-07-22).** The old rule was "a 嘉宾 can never be granted
+an account". The owner changed it: *「For participants, similar register flow as volunteer. but they
+could only see public pages.」* Same 授权码 flow, but `guestDataFor()` builds a **different payload
+shape** (`kind:'guest'`), never a filtered volunteer one — 公开信息 + 自己的号牌 + 当天流程
+(**时间和环节名 only**) + **主办方通知** (`e.notice`, a new field on 计划 with ✨ 补写).
+
+The 嘉宾资料仅主办方可见 rule did not go away; it became the load-bearing part. **A guest account is
+not a window onto their own record** — 职业/年龄/联系方式/简介/特长/评价/择偶 are all absent, as is
+every other attendee and volunteer. `r.desc` is excluded on purpose: 环节说明 is the *volunteer's*
+operating instruction (「把签到台摆在门口」) and is not for guests.
+
+**A guest has no write surface, enforced by the database.** Their payload carries no `duties[]` and
+therefore no `chipId` anywhere, so 0014's `ym_share_has_chip()` can never match and a `ym_submit`
+insert is refused server-side — not merely hidden in the UI.
+
+**门票单价 lives on the money chip in 计划** (owner: 我在哪里设置门票价格？应该在计划里面). It had no
+editor at all before: `editMoney` only asked for 实际金额, and the 资产库 收支项 editor changes the
+*template*, not this event's chip. The chip now shows `¥6,000/人 · ¥60,000` so the price is visible
+without a tap, and 单价 is offered only where it means something (门票, or a chip that already has one).
+
 **The email leg is the one thing not live.** Supabase's built-in sender refuses to deliver to
 addresses outside the Supabase org's team and caps ~2/hour, so today the host sends the 授权码 over
 the LINE/微信 share sheet the app already has. The endpoint's mail branch is written and dormant
