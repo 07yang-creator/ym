@@ -1861,9 +1861,30 @@ function participantsStrip(e){
       <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`).join(''):'<span class="note9">还没有参加者 — 从名册选，或导入名单。</span>'}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
       <button class="btn ghost sm" onclick="S.pickGuest=true;render()">＋ 从名册选</button>
-      <button class="btn ghost sm" onclick="S.showImport=true;S.importRows=null;render()">⬆ 导入名单</button></div>
+      <button class="btn ghost sm" onclick="S.showImport=true;S.importRows=null;render()">⬆ 导入名单</button>
+      <label class="btn ghost sm" style="cursor:pointer">📷 名单截图<input type="file" accept="image/*"
+        style="display:none" onchange="rosterShot(this)"></label></div>
     ${S.pickGuest?pickGuestHtml(e):''}</div>`;
 }
+// 📷 名单截图 → names → the SAME confirm/match list as ⬆导入名单.
+// The image is parsed in memory and never stored; nobody joins until the host confirms.
+function rosterShot(inp){if(S.readonly)return;const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+  toast('识别名单中…');
+  shrink(f,b64=>{
+    fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({image:b64,media_type:'image/jpeg',mode:'roster_shot',
+        user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
+    .then(r=>r.json()).then(res=>{
+      const people=((res&&res.people)||[]).map(p=>({name:(p.name||'').trim(),gender:p.gender})).filter(p=>p.name);
+      if((res&&res.is_roster===false)||!people.length){toast('没认出名字 — 换一张更清楚的截图，或用「⬆ 导入名单」贴文字');return;}
+      const seen={};
+      S.importRows=people.filter(p=>seen[p.name]?false:(seen[p.name]=1)).map(p=>{
+        const hit=matchGuestByName(p.name);
+        return {name:p.name,gender:(p.gender==='男'||p.gender==='女')?p.gender:(hit&&hit.gender?hit.gender:'男'),
+                matchId:hit?hit.id:null};});
+      S.showImport=true;render();toast('认出 '+S.importRows.length+' 人 — 请核对性别与匹配，再加入');})
+    .catch(e=>toast('识别失败：'+e.message));
+  });}
 function parseImport(){const t=$('imp_text');if(!t)return;
   S.importRows=(t.value||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
     let g='',name=l;const m=l.match(/^(男|女|♂|♀)\s*(.+)$/)||l.match(/^(.+?)[\s·,，]*(男|女|♂|♀)$/);
