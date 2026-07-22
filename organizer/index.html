@@ -324,6 +324,8 @@
   .deskcard{position:relative;display:block;width:100%;text-align:left;background:var(--felt-up);border:1px solid var(--line);
     border-radius:6px;padding:11px 13px;margin-bottom:7px}
   .deskcard:hover{border-color:var(--brass)}
+  /* 当前 (live) event sits darker so it reads apart from 筹备中 */
+  .deskcard.cur{background:var(--ink);border-color:var(--brass-dim);box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
   .deskcard .dc-t{font-size:14.5px;font-weight:700}
   .deskcard .dc-m{font-size:11.5px;color:var(--muted);margin-top:2px;letter-spacing:.04em}
   .deskcard .dc-m b{color:var(--alarm)}
@@ -2769,7 +2771,7 @@ function viewDesk(){
   Object.keys(groups).forEach(k=>groups[k].sort(sortByDate));
   const evCard=(e)=>{const f=followUps(e),ph=evPhase(e),mt=moneyTotals(e);
     const act=ph==='current'?'执行看板':(ph==='archived'?'只读回看':(ph==='hot'?'复盘 / 跟进':'计划'));
-    return `<button class="deskcard" onclick="deskOpen('${e.id}')">
+    return `<button class="deskcard${ph==='current'?' cur':''}" onclick="deskOpen('${e.id}')">
       ${ph==='plan'?`<span class="dc-del" onclick="event.stopPropagation();delEvent('${e.id}')" title="删除（仅筹备中可删）">✕</span>`:''}
       <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}</div>
