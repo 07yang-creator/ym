@@ -131,12 +131,19 @@
   .rowcard .rowsum .empty{color:var(--brass-dim)}
   .main.foldsheet .rowcard .rowdetail{display:none}
   .main.foldsheet .rowcard .rowsum{display:block}
-  .main.foldsheet .rowcard.sel .descsi,.main.foldsheet.showall .rowcard .descsi{display:block}
+  .main.foldsheet .rowcard.sel .descwrap,.main.foldsheet.showall .rowcard .descwrap{display:flex}
   .main.foldsheet .rowcard.sel .chips,.main.foldsheet.showall .rowcard .chips{display:flex}
   .main.foldsheet .rowcard.sel .rowfiles,.main.foldsheet.showall .rowcard .rowfiles{display:flex}
   .main.foldsheet .rowcard.sel .rowsum,.main.foldsheet.showall .rowcard .rowsum{display:none}
-  .descsi{width:100%;margin-top:6px;background:var(--felt);border:1px solid var(--line);border-radius:5px;
+  .descwrap{display:flex;gap:6px;align-items:center;margin-top:6px}
+  .descsi{flex:1;min-width:0;background:var(--felt);border:1px solid var(--line);border-radius:5px;
     color:var(--stock);font-size:12px;padding:6px 9px}
+  /* ✨ AI 补写 */
+  .aibtn{flex:none;font-size:13px;line-height:1;background:rgba(201,163,86,.1);border:1px solid var(--brass-dim);
+    border-radius:6px;color:var(--brass);cursor:pointer;padding:6px 9px}
+  .aibtn:hover{background:rgba(201,163,86,.2)}
+  .aibtn:disabled{opacity:.5;cursor:default}
+  .jobdlg .descwrap{margin-top:0}
   .rowfiles{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center}
   .filechip{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--stock-dim);
     background:var(--felt);border:1px solid var(--line);border-radius:12px;padding:3px 9px;cursor:pointer}
@@ -1213,8 +1220,11 @@ function viewSheet(){
         <input class="owni" value="${esc(r.owner)}" placeholder="负责人" list="peoplelist"
           onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','owner',this.value)">
       </div>
-      <input class="descsi rowdetail" value="${esc(r.desc||'')}" placeholder="这个环节的简介 / 说明（可选）"
-        onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','desc',this.value)">
+      <div class="descwrap rowdetail">
+        <input class="descsi" value="${esc(r.desc||'')}" placeholder="这个环节的简介 / 说明（写几个关键词，点 ✨ 补写）"
+          onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','desc',this.value)">
+        <button class="aibtn" title="AI 补写（先写几个关键词）"
+          onclick="event.stopPropagation();aiPhrase(this.parentElement.querySelector('.descsi'),'环节说明','${esc(r.seg||'环节')}')">✨</button></div>
       <div class="chips rowdetail">${chipsHtml(r,r.id)}</div>
       <div class="rowfiles rowdetail">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">📎 ${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
       <div class="rowsum" onclick="event.stopPropagation();selRow('${r.id}')">${rowSum(r)}</div>
@@ -1290,6 +1300,25 @@ function selRow(id,evt){
 // value, and none of the strips depend on these fields. Rendering would drop the cursor.
 function e_upd(f,v){const e=ev();e[f]=v;save();if(e.publicOn)syncEventPost(e);}
 function r_upd(id,f,v){const r=ev().rows.find(x=>x.id===id);if(r){r[f]=v;save();}}
+// ✨ AI 补写 — a few keywords → one natural line. Fills the field; the host still edits & saves
+// (assistive, confirm-first: the server prompt forbids inventing times/names/amounts).
+function aiPhrase(el,kind,ctx){
+  if(S.readonly)return;
+  if(typeof el==='string')el=document.getElementById(el);
+  if(!el)return;
+  const t=(el.value||'').trim();
+  if(!t){toast('先写几个关键词，再点 ✨');el.focus();return;}
+  const btn=el.parentElement&&el.parentElement.querySelector('.aibtn');
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  const done=()=>{if(btn){btn.disabled=false;btn.textContent='✨';}};
+  fetch(API+'/api/phrase',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({text:t,kind:kind||'',context:ctx||'',
+      user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
+  .then(r=>r.json()).then(res=>{done();
+    if(res&&res.text&&res.text!==t){el.value=res.text;el.dispatchEvent(new Event('change'));toast('已补写 — 可以再改');}
+    else toast((res&&res.note)||'没有需要补的');})
+  .catch(e=>{done();toast('补写失败：'+e.message);});
+}
 // 环节 attachments — small files inline (data URL); big ones keep the name only until the Drive proxy is wired
 function rowAttach(rid,input){if(S.readonly)return;const f=input.files&&input.files[0];if(!f)return;
   const r=ev().rows.find(x=>x.id===rid);if(!r)return;if(!r.files)r.files=[];const fid=uid();
@@ -1339,7 +1368,9 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
         <button class="btn ghost sm" onclick="S.jobEdit=null;render()">✕</button></div>
       <div class="sub" style="margin:0 0 4px">${esc(where)}</div>
       <label class="dfld"><span class="l">要做什么</span>
-        <input id="je_name" value="${esc(d.name)}" placeholder="如：预订场地 / 布置会场 / 借设备"></label>
+        <div class="descwrap"><input id="je_name" value="${esc(d.name)}" placeholder="几个关键词即可，点 ✨ 补写">
+          <button class="aibtn" title="AI 补写（先写几个关键词）"
+            onclick="aiPhrase('je_name','要做的事','${esc(where)}')">✨</button></div></label>
       <label class="dfld"><span class="l">谁来做（负责人）</span>
         <input id="je_role" value="${esc(d.role||'')}" placeholder="选一个人，或直接写新名字" list="peoplelist"></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
       <label class="dfld"><span class="l">需要什么（资源）</span>
