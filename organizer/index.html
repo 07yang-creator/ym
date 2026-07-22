@@ -567,10 +567,15 @@
 <script>
 'use strict';
 /* ================= helpers ================= */
-// ' is escaped too: volunteer-authored text (备注 / 文件名) now reaches the host's DOM, and a bare
-// quote there would break out of an attribute. No call site depends on the raw quote.
+// For HTML TEXT and double-quoted attribute values. ' is escaped too because volunteer-authored
+// text (备注 / 文件名) now reaches the host's DOM.
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
   .replace(/'/g,'&#39;').replace(/</g,'&lt;');}
+// esc() is NOT enough inside an on*="…f('HERE')…" handler: the parser entity-decodes the attribute
+// BEFORE the body is compiled as JS, so &#39; becomes a live quote and closes the string (a 环节
+// named 「Guest's talk」 breaks the ✨ button today). Backslash-escape FIRST, then esc() — the
+// backslash survives decoding, so the JS source sees \'.
+function escJs(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));}
 // 示例 badge for any seeded/demo record, shown on every screen so the host never mistakes it for real data
 function dtag(x,dim){return x&&x.demo?`<span class="demotag${dim?' dim':''}">示例</span>`:'';}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
@@ -757,9 +762,9 @@ function grantPaint(){
   }
   const el=$('grantbody');const foc=document.activeElement;
   // don't rebuild the field the host is typing in (the L1327 focus discipline)
-  if(foc&&foc.id==='g_em'&&el.querySelector('#g_em')&&!g.code&&!g.taken)return;
+  if(foc&&foc.id==='g_em'&&el.querySelector('#g_em')&&!g.code&&!g.taken&&!g.busy)return;
   el.innerHTML=body;
-  const inp=el.querySelector('#g_em');if(inp&&!g.code){inp.focus();inp.select();}
+  const inp=el.querySelector('#g_em');if(inp&&!g.code&&!g.busy){inp.focus();inp.select();}
 }
 async function grantIssue(again){
   const g=_grant;if(!g||g.busy)return;
@@ -769,7 +774,9 @@ async function grantIssue(again){
   const clash=STORE.library.resources.find(x=>x.id!==p.id&&String(x.shareEmail||'').toLowerCase()===v);
   if(clash){toast('这个邮箱已授权给「'+clash.name+'」，请先取消那边');return;}
   const old=p.shareEmail;
-  if(old&&old.toLowerCase()!==v)dropShare(old);       // don't leave the old address readable
+  if(old&&old.toLowerCase()!==v){dropShare(old);      // don't leave the old address readable
+    if(canCloud())sb.from('ym_submit').delete()       // …and don't strand TA's uploads either
+      .match({host:SESSION.user.id,member_email:old.toLowerCase()}).then(()=>{});}
   p.shareEmail=v;save();
   g.busy=true;grantPaint();
   try{
@@ -799,6 +806,7 @@ function grantRevoke(){
   const g=_grant;if(!g)return;
   const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
   const old=p.shareEmail;
+  grantClose();                                   // one window at a time — never stack two cards
   ask({title:'取消 '+p.name+' 的授权？',note:'TA 会立刻看不到任何内容，已上传的票据也一并撤下。',
     fields:[],ok:'取消授权',fn:()=>{
       if(old){dropShare(old);
@@ -1247,6 +1255,9 @@ function recheck(){
   cloudLoad().then(()=>{if(!canCloud())toast('还没有被批准 — 请稍后再试');});
 }
 function doSignOut(){clearPendingCode();   // never carry a code across identities
+  // …and never carry the previous host's volunteer data either: PENDING holds their members'
+  // names and 确认完成 stays wired, so the next person on this device could flip a chip.
+  PENDING=[];SHARE_ST={};if(_pendT){clearInterval(_pendT);_pendT=null;}
   if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
 
 /* ---------- reuse prompts (read-time projections — the assets remember themselves) ---------- */
@@ -1400,7 +1411,7 @@ function viewSheet(){
         <input class="descsi" value="${esc(r.desc||'')}" placeholder="这个环节的简介 / 说明（写几个关键词，点 ✨ 补写）"
           onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','desc',this.value)">
         <button class="aibtn" title="AI 补写（先写几个关键词）"
-          onclick="event.stopPropagation();aiPhrase(this.parentElement.querySelector('.descsi'),'环节说明','${esc(r.seg||'环节')}')">✨</button></div>
+          onclick="event.stopPropagation();aiPhrase(this.parentElement.querySelector('.descsi'),'环节说明','${escJs(r.seg||'环节')}')">✨</button></div>
       <div class="chips">${chipsHtml(r,r.id)}</div>
       <div class="rowfiles">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">📎 ${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" multiple style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
     </div>
@@ -1536,7 +1547,10 @@ function openJobEditor(loc,cid){if(S.readonly)return;S.exTask=null;S.armed=null;
   const el=document.getElementById('je_name');if(el&&!cid)el.focus();}
 function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
   const h=jobHolder(je.loc);const c=je.cid&&h?h.resources.find(x=>x.id===je.cid):null;
-  const d=c||{name:'',role:'',needs:'',due:''};const b=c?taskBucket(c):0;
+  // je.draft holds what the host has TYPED but not saved. Anything inside the dialog that
+  // triggers render() (确认完成 / 退回 on a 志愿者 submission) would otherwise rebuild the fields
+  // from the stored chip and silently discard it.
+  const d=je.draft||c||{name:'',role:'',needs:'',due:''};const b=c?taskBucket(c):0;
   const where=je.loc==='header'?'活动全场':(()=>{const r=e.rows.find(x=>x.id===je.loc);return r?((r.time?r.time+' ':'')+(r.seg||'环节')):'环节';})();
   const pick=(arr,fn)=>arr.length?`<div class="jepick">${arr.map(n=>`<span onclick="${fn}(this.textContent)">${esc(n)}</span>`).join('')}</div>`:'';
   return `<div class="drawerbg" onclick="S.jobEdit=null;render()"></div>
@@ -1545,15 +1559,15 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
         <button class="btn ghost sm" onclick="S.jobEdit=null;render()">✕</button></div>
       <div class="sub" style="margin:0 0 4px">${esc(where)}</div>
       <label class="dfld"><span class="l">要做什么</span>
-        <div class="descwrap"><input id="je_name" value="${esc(d.name)}" placeholder="几个关键词即可，点 ✨ 补写">
+        <div class="descwrap"><input id="je_name" value="${esc(d.name)}" oninput="jeKeep()" placeholder="几个关键词即可，点 ✨ 补写">
           <button class="aibtn" title="AI 补写（先写几个关键词）"
-            onclick="aiPhrase('je_name','要做的事','${esc(where)}')">✨</button></div></label>
+            onclick="aiPhrase('je_name','要做的事','${escJs(where)}')">✨</button></div></label>
       <label class="dfld"><span class="l">谁来做（负责人）</span>
-        <input id="je_role" value="${esc(d.role||'')}" placeholder="选一个人，或直接写新名字" list="peoplelist"></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
+        <input id="je_role" value="${esc(d.role||'')}" oninput="jeKeep()" placeholder="选一个人，或直接写新名字" list="peoplelist"></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
       <label class="dfld"><span class="l">需要什么（资源）</span>
-        <input id="je_needs" value="${esc(d.needs||'')}" placeholder="从下面点添加，或直接写"></label>${pick(uniquePlanNames(e,'物'),'jeNeed')}
+        <input id="je_needs" value="${esc(d.needs||'')}" oninput="jeKeep()" placeholder="从下面点添加，或直接写"></label>${pick(uniquePlanNames(e,'物'),'jeNeed')}
       <label class="dfld"><span class="l">什么时候前完成（可选）</span>
-        <input id="je_due" type="date" value="${esc(d.due||'')}"></label>
+        <input id="je_due" type="date" value="${esc(d.due||'')}" oninput="jeKeep()"></label>
       ${c?pendBlock(c.id):''}
       ${c?`<div class="exseg" style="margin-top:12px">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="jeStatus(${i})">${l}</div>`).join('')}</div>`:''}
       <div class="df"><button class="btn" style="flex:1" onclick="jobEditSave()">保存</button>
@@ -1587,8 +1601,10 @@ function askFill(i,v){const el=$('ask_'+i);if(el)el.value=v;}
 function askOk(){const o=_ask;if(!o)return;
   const vals=(o.fields||[]).map((f,i)=>{const el=$('ask_'+i);return el?el.value.trim():'';});
   askClose();o.fn(vals);}
-function jeRole(n){const el=document.getElementById('je_role');if(el)el.value=n;}
-function jeNeed(n){const el=document.getElementById('je_needs');if(el)el.value=el.value.trim()?el.value.trim()+'、'+n:n;}
+function jeKeep(){const je=S.jobEdit;if(!je)return;const g=i=>{const el=$(i);return el?el.value:'';};
+  je.draft={name:g('je_name'),role:g('je_role'),needs:g('je_needs'),due:g('je_due')};}
+function jeRole(n){const el=document.getElementById('je_role');if(el)el.value=n;jeKeep();}
+function jeNeed(n){const el=document.getElementById('je_needs');if(el)el.value=el.value.trim()?el.value.trim()+'、'+n:n;jeKeep();}
 function jeStatus(i){document.querySelectorAll('.jobdlg .exseg .sb').forEach((s,j)=>s.classList.toggle('on',j===i));}
 function jobEditSave(){if(S.readonly||!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);if(!h)return;
   const name=(document.getElementById('je_name').value||'').trim();if(!name){toast('先写要做什么');return;}
@@ -2670,7 +2686,7 @@ function viewReview(){
     ${volSection(e)}
     <div class="rvsec"><div class="hd"><span class="lbl">复盘小结</span>
         ${!S.readonly?`<button class="aibtn for-rv_summary" title="AI 补写（先写几个关键词）"
-          onclick="aiPhrase('rv_summary','复盘小结','${esc(e.name)}',true)">✨</button>`:''}</div>
+          onclick="aiPhrase('rv_summary','复盘小结','${escJs(e.name)}',true)">✨</button>`:''}</div>
       <textarea id="rv_summary" class="rvsum" rows="4" ${S.readonly?'readonly':''}
         placeholder="写几个关键词就行，例如：女生到得早 · 快问快答最热 · 茶歇偏少 —— 再点 ✨ 补成一段。"
         onchange="e_upd('summary',this.value)">${esc(e.summary||'')}</textarea>
@@ -3042,61 +3058,93 @@ function loadPending(){
   // never select file_data — the poll would drag base64 receipts across the wire every minute
   sb.from('ym_submit').select('id,member_email,event_id,chip_id,kind,note,file_name,file_mime,created_at')
     .eq('status','pending').order('created_at')
-    .then(({data,error})=>{if(error)return;PENDING=data||[];render();});
+    .then(({data,error})=>{if(error)return;
+      const next=data||[],same=JSON.stringify(next)===JSON.stringify(PENDING);
+      PENDING=next;
+      // A minute-timer that repaints is a minute-timer that eats whatever the host was typing:
+      // render() rebuilds every editor from SAVED state. Repaint only on real change, never
+      // while an editor is open — each of those closes with its own render().
+      if(!same&&!S.postEdit&&!S.jobEdit&&!$('askwrap')&&!$('grantwrap'))render();});
   if(!_pendT)_pendT=setInterval(()=>{if(canCloud())loadPending();else{clearInterval(_pendT);_pendT=null;}},60000);
 }
-function pendFor(cid){const e=ev();return PENDING.filter(r=>r.chip_id===cid&&(!e||r.event_id===e.id));}
+// em filters to ONE submitter: two volunteers can report on the same chip, and the host must not
+// accept B's receipt under A's name with a single tap.
+function pendFor(cid,em){const e=ev();
+  return PENDING.filter(r=>r.chip_id===cid&&(!e||r.event_id===e.id)
+    &&(!em||String(r.member_email||'').toLowerCase()===em));}
 function pendCount(e){return e?PENDING.filter(r=>r.event_id===e.id).length:0;}
 // the roster name behind an address, so the host reads 「小林 说完成了」 not an email
 function pendWho(r){const p=STORE.library.resources.find(x=>
   String(x.shareEmail||'').toLowerCase()===String(r.member_email||'').toLowerCase());
   return p?p.name:(r.member_email||'志愿者');}
+// one box PER SUBMITTER — never one box labelled with rows[0]'s name covering everyone's rows
 function pendBlock(cid){
   const rows=pendFor(cid);if(!rows.length)return '';
-  const done=rows.filter(r=>r.kind==='done'),files=rows.filter(r=>r.kind==='file');
-  const who=pendWho(rows[0]);
-  return `<div class="pendbox">
-    <div class="ph">● ${esc(who)} ${done.length?'说完成了':'传了票据'}</div>
-    ${done.filter(r=>r.note).map(r=>`<div class="pn">「${esc(r.note)}」</div>`).join('')}
-    ${files.map(r=>`<div class="pf" onclick="pendOpenFile('${r.id}')">📎 ${esc(r.file_name||'附件')}</div>`).join('')}
-    <div id="pendview_${esc(cid)}"></div>
-    <div class="df" style="margin-top:8px">
-      <button class="btn sm" style="flex:1" onclick="pendAccept('${esc(cid)}')">确认完成</button>
-      <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px;align-self:center;padding:0 8px"
-        onclick="pendReject('${esc(cid)}')">退回</span></div></div>`;
+  const ems=[];rows.forEach(r=>{const e=String(r.member_email||'').toLowerCase();
+    if(ems.indexOf(e)<0)ems.push(e);});
+  return ems.map(em=>{
+    const mine=pendFor(cid,em),done=mine.filter(r=>r.kind==='done'),files=mine.filter(r=>r.kind==='file');
+    return `<div class="pendbox">
+      <div class="ph">● ${esc(pendWho(mine[0]))} ${done.length?'说完成了':'传了票据'}</div>
+      ${done.filter(r=>r.note).map(r=>`<div class="pn">「${esc(r.note)}」</div>`).join('')}
+      ${files.map(r=>`<div class="pf" onclick="pendOpenFile('${esc(r.id)}')">📎 ${esc(r.file_name||'附件')}</div>`).join('')}
+      <div id="pendview_${esc(cid)}"></div>
+      <div class="df" style="margin-top:8px">
+        <button class="btn sm" style="flex:1" onclick="pendAccept('${escJs(cid)}','${escJs(em)}')">确认完成</button>
+        <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px;align-self:center;padding:0 8px"
+          onclick="pendReject('${escJs(cid)}','${escJs(em)}')">退回</span></div></div>`;}).join('');
 }
-async function pendAccept(cid){
-  if(S.readonly)return;
-  const rows=pendFor(cid);if(!rows.length)return;
+async function pendAccept(cid,em){
+  if(S.readonly||!canCloud())return;
+  const rows=pendFor(cid,em);if(!rows.length)return;
   const evId=rows[0].event_id;
   // local-first: confirming from a second device whose copy of this event is stale would push the
   // stale doc over the 800ms debounce and quietly undo work done elsewhere.
   if(!ev()||ev().id!==evId){await cloudLoad();S.evId=evId;}
   if(!chipById(cid)){toast('这项已经不在台本里了');loadPending();return;}
   exSet(cid,2);                                   // the host's own hand — RES_ST semantics untouched
-  const ids=pendFor(cid).map(r=>r.id);            // 确认 accepts that chip's 票据 too: one tap, not four
+  const ids=pendFor(cid,em).map(r=>r.id);         // 确认 accepts THAT person's 票据 too: one tap, not four
   const {error}=await sb.from('ym_submit').update({status:'accepted'}).in('id',ids);
   if(error)toast('已翻状态，但回执未标记：'+error.message);
   loadPending();
 }
-async function pendReject(cid){
-  if(S.readonly)return;
-  const ids=pendFor(cid).map(r=>r.id);if(!ids.length)return;
+async function pendReject(cid,em){
+  if(S.readonly||!canCloud())return;
+  const rows=pendFor(cid,em);if(!rows.length)return;
+  // 退回 the CLAIM only. Rejecting the 票据 too would strand them: the member has no UPDATE policy
+  // (by design) and re-submitting only replaces the done row, so the receipts would leave the
+  // host's inbox forever while the volunteer's page still shows them attached.
+  const done=rows.filter(r=>r.kind==='done');
+  const ids=(done.length?done:rows).map(r=>r.id);
   const {error}=await sb.from('ym_submit').update({status:'rejected'}).in('id',ids);
   if(error){toast('退回失败：'+error.message);return;}
   toast('已退回 —— TA 可以改完再报一次');loadPending();
 }
 // fetch the bytes for ONE row, only when the host actually asks to look
 function pendOpenFile(sid){
+  if(!canCloud())return;
   const box=$('pendview_'+((PENDING.find(r=>r.id===sid)||{}).chip_id||''));if(!box)return;
   box.textContent='读取中…';
   sb.from('ym_submit').select('file_name,file_mime,file_data').eq('id',sid).maybeSingle()
     .then(({data,error})=>{
       if(error||!data){box.textContent='读取失败';return;}
-      const src='data:'+(data.file_mime||'image/jpeg')+';base64,'+(data.file_data||'');
-      box.innerHTML=(data.file_mime==='application/pdf')
-        ? `<a class="pf" href="${src}" download="${esc(data.file_name||'票据.pdf')}">⬇ ${esc(data.file_name||'票据.pdf')}</a>`
-        : `<img src="${src}" style="max-width:100%;border-radius:6px;margin-top:6px">`;});
+      // file_data is MEMBER-controlled. Interpolating it into src="…" let a quote inside the
+      // "base64" break out of the attribute and run script on the host's origin — i.e. the host's
+      // session token. Strip to the base64 charset, re-pin the mime, and BUILD THE NODE rather
+      // than assembling attribute HTML. (0014 also CHECKs the charset server-side.)
+      const b64=String(data.file_data||'').replace(/[^A-Za-z0-9+/=]/g,'');
+      const mime=/^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/.test(data.file_mime||'')
+        ? data.file_mime : 'image/jpeg';
+      const src='data:'+mime+';base64,'+b64;
+      const name=data.file_name||'票据';
+      box.textContent='';
+      if(mime==='application/pdf'){
+        const a=document.createElement('a');a.className='pf';a.href=src;
+        a.download=name;a.textContent='⬇ '+name;box.appendChild(a);
+      }else{
+        const im=document.createElement('img');im.src=src;
+        im.style.cssText='max-width:100%;border-radius:6px;margin-top:6px';box.appendChild(im);
+      }});
 }
 function exDue(cid,v){const c=chipById(cid);if(c){c.due=v||undefined;save();}}
 function exOwner(cid,v){if(S.readonly)return;const c=chipById(cid);if(c){c.owner=(v||'').trim()||undefined;save();render();}}
@@ -3171,7 +3219,7 @@ function viewDesk(){
     return `<button class="deskcard${ph==='current'?' cur':''}" onclick="deskOpen('${e.id}')">
       ${ph==='plan'?`<span class="dc-del" onclick="event.stopPropagation();delEvent('${e.id}')" title="删除（仅筹备中可删）">✕</span>`:''}
       <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
-      <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}</div>
+      <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}${pendCount(e)?` · <span style="color:var(--brass)">● 待确认 ${pendCount(e)}</span>`:''}</div>
       <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">🔁 再办一场</span>`:''}</div></button>`;};
   const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
     (groups[k].length?groups[k].map(evCard).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);

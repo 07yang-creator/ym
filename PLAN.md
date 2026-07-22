@@ -99,6 +99,46 @@ it comes back empty. So the UI stops asserting one: an unstated gender renders a
 
 APPI / 委託契約 is the **owner's** track (owner: "you leave APPI to me"), not a build gate.
 
+### E.5b 志愿者通道 — **BUILT (2026-07-22)**, needs `0014` applied
+Owner: *「输入该用户的邮箱，生成授权码，点击发送。用户收到注册邮件，内涵链接。首次登陆需设置密码。然后…
+志愿者界面，他们只需要看到公共界面，rundown（包含内容描述），需要他们负责的事项。他们将可以上传票据和附件
+（对应到相应的task），点击完成（仍然需要主持人确认才翻转状态）。」*
+
+**授权码 = GoTrue's own 6-digit `email_otp`**, minted by `POST /api/ym_invite` via
+`admin/generate_link` (which sends no mail and burns no rate limit). We keep **no code table of our
+own**: a parallel credential store would have to duplicate expiry / single-use / revocation that
+GoTrue already owns, and then agree with it. Revocation is instead **structural** — `dropShare()`
+deletes the `ym_share` row, so a session redeemed after revoke lands on a page with zero rows and
+zero write surface (`ym_linked()` is false).
+
+**That endpoint holds the service key**, so it gates twice: the caller must present a JWT that
+resolves to an **approved `ym_member`**, and `ym_grant_target()` (0014 §6) refuses any address that
+already belongs to somebody else's account. Without the second gate an approved 主办方 could type a
+stranger's address into 名册, save (which publishes a share row and satisfies "do you own this
+address"), and collect a working login link for that person's **existing** account.
+
+**The volunteer writes to exactly one table.** `ym_submit` holds additive `done` / `file` rows;
+`chip.status` is not in that schema and cannot be reached from a member session. The single
+conversion point is `pendAccept()` → the host's own existing `exSet()`. RES_ST's 4-state enum and
+`taskBucket()` are untouched. A member may only file against a chip the host **already published to
+them** (`ym_share_has_chip()` reads the payload they cannot forge), there is **no member UPDATE
+policy** at all (edit = delete + re-insert), and 取消授权 takes their uploads with it.
+
+**Hub-and-spoke held at the payload.** The published rundown carries 时间 · 环节 · 说明 and one
+boolean (`mine`). `r.owner` and `r.resources` are deliberately absent — either would show one
+volunteer another volunteer's name. No money, no 嘉宾, no 教学示例.
+
+**Fixed on the way:** 任务 chips carry a free-text 负责人 and no `refId`, so every 要做的事 was
+invisible to the person who had to do it. `chipOwnedBy()` matches by name **without** stamping
+`refId` (which `volSection`/`applyRes`/`guestHistory` read). A duplicate 名册 name **fails closed** —
+the item reaches nobody rather than the wrong person, and the 授权 window warns about the collision.
+
+**The email leg is the one thing not live.** Supabase's built-in sender refuses to deliver to
+addresses outside the Supabase org's team and caps ~2/hour, so today the host sends the 授权码 over
+the LINE/微信 share sheet the app already has. The endpoint's mail branch is written and dormant
+behind `YM_SMTP_LIVE=1`: configure custom SMTP (Resend free tier, ~15 min) and the flow becomes
+literally the one the owner described, **with no code change**.
+
 ### E.6 Build order (each step additive to the live app; ljzhujudy is mid-test — never rewrite `chip.status`)
 1. **Read-only 执行 tree** — project `followUps()`+chips into 待办/进行中/完成 + countdown hero +
    日期未定 fallback. Zero new fields, zero writes, zero migration. Delivers the core ask alone.
