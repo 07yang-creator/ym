@@ -85,13 +85,19 @@ One enum on the **existing goods record** — `INV_ST = [待入库 · 已入库 
 *(labels = OPEN DECISION #C)*, tap-to-cycle like `cycleRes`, linked to a 捐赠人. **One field, not
 a CRM** — hold that line literally.
 
-### E.5 Participant-absorb by screenshot — **SEPARATE TRACK, gated, maybe cut from v1**
-New `/api/parse` mode `roster_shot` → `[{platform, handle, display_name, conf}]` from a chat
-screenshot (mirror `payslip`: **process in memory, never store the image**). A `guest.aliases[]`
-holds the cross-platform username↔person map. A floating confirm-first match modal (with a per-row
-男/女 toggle — **the screenshot has no gender; that's an unsolved source**). **Blocked on the APPI
-委託契約** (a screenshot is third-party PII, same gate as a real roster). Do **not** block the tree
-on this; sequence independently or cut for v1.
+### E.5 Participant-absorb by screenshot — **BUILT (2026-07-22)**
+`/api/parse` mode `roster_shot` → `{is_roster, people:[{name, gender}]}` from a chat screenshot
+(mirrors `payslip`: shrunk client-side, **processed in memory, never stored**). 📷 名单截图 sits
+next to ⬆ 导入名单 and drops straight into the **same** confirm/match list the paste path uses —
+`guest.aliases[]` still holds the username↔person map, a manual match records the alias.
+
+Two rules the prompt enforces, both verified against a real screenshot (6/6 display names, 0 message
+text): **never transcribe message bodies / timestamps / group names**, and **never guess gender** —
+it comes back empty. So the UI stops asserting one: an unstated gender renders a dim `♂?`
+(`row.gq`) until the host taps it. Silently defaulting a roster to 男 would quietly break the
+十对十 balance — that was the "unsolved source" and this is the answer: don't solve it, show it.
+
+APPI / 委託契約 is the **owner's** track (owner: "you leave APPI to me"), not a build gate.
 
 ### E.6 Build order (each step additive to the live app; ljzhujudy is mid-test — never rewrite `chip.status`)
 1. **Read-only 执行 tree** — project `followUps()`+chips into 待办/进行中/完成 + countdown hero +
@@ -126,8 +132,8 @@ Re-read of the owner's complete execution spec against the code. ✅ built · �
 - ✅ **Tree shape** — vertical trunk (计划开始→活动日, 今天 descends), 完成 left / 进行中 right /
   待办 canopy / 搁置 roots (spec 2).
 - ✅ **Tasks from planning; unfilled → 待办; ignore → non-dismissible 搁置 note** (spec 3).
-- ❌ **Participant screenshot-absorb** + manual username→person match kept in memory
-  (`roster_shot` OCR + `guest.aliases[]`) (spec 4). APPI-委託契約-gated → SEPARATE TRACK / maybe v2.
+- ✅ **Participant screenshot-absorb** + manual username→person match kept in memory
+  (`roster_shot` OCR + `guest.aliases[]`) (spec 4) — see §E.5. Names only; gender never guessed.
 - 🟡 **Folding "major items only" + 「全部展开 / show me all at once」** (spec 5) — only 完成 folds
   today; desktop shows all. Need a fold-to-major-item default + a show-all toggle.
 - 🟡 **Floating windows for detail (hover desktop / tap mobile), stay-oriented** (spec 5, 5.2) —
@@ -156,9 +162,16 @@ absorbed into templates so they auto-reappear; a 环节 with 0 jobs = no task; t
 0-job 环节, host can 忽略→a note beneath the tree) · ✅ ③ fold-to-major + 全部展开 — DONE (台本
 shows 环节 + a 资源/要做/收支 summary; tap a 环节 to expand its chips in-place—render-free so typing
 keeps focus—or 全部展开; header stays open) · ④ pre/post advisory links (last, Gantt-guarded —
-likely unnecessary since tasks already sit on a day-axis) · ⑤ participant screenshot-absorb
-(separate, APPI-gated).
+likely unnecessary since tasks already sit on a day-axis) · ✅ ⑤ participant screenshot-absorb —
+DONE 2026-07-22 (§E.5; APPI is the owner's track, not a build gate).
 Owner also confirmed: leave the 活动 tab as-is for now (demo-stage, unsure of use).
+
+**Superseded since (owner, 2026-07-22):** folding is GONE from the planning UI — "no need to fold,
+save a click; it is planning stage, host wants to see everything". The 活动 tab was renamed **计划**
+and the landing view is **工作台**. The tree was rebuilt as the **日段树** (a CSS-Grid walk of days,
+each day a row as tall as its own content, empty runs collapsing into one elastic 「空 N 天」) after
+"still very condensed… on mobile I can't even see the tree" — overlap is now a layout invariant,
+not something to police.
 
 **The execution revision (PRIORITY #1) is now substantially complete** (tree · peek · desk · kickoff ·
 gate · jobs · fold). Natural next per the owner's own stated priority = DATA-REUSE — 一键复办 (clone
