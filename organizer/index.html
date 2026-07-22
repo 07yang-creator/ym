@@ -53,17 +53,19 @@
     border-right:1px solid var(--line);overflow:auto;padding:14px 12px 30px;
     animation:slidein .18s ease}
   @keyframes slidein{from{transform:translateX(-40px);opacity:0}to{transform:none;opacity:1}}
-  .fab{position:fixed;bottom:20px;left:16px;z-index:30;background:var(--brass);color:var(--ink);
-    border-radius:6px;padding:11px 16px;font-size:13px;font-weight:700;letter-spacing:.08em;
-    box-shadow:0 8px 20px -6px rgba(0,0,0,.7)}
-  /* round corner fabs (📷/🎤) — jjcashflow accountant pattern, ym palette.
-     position:fixed directly (iOS absolute-in-fixed bug); right hugs app edge on desktop */
-  .rfab{position:fixed;z-index:38;width:52px;height:52px;border-radius:50%;
+  /* light, not heavy: quiet icon affordances rather than solid buttons (owner) */
+  .fab{position:fixed;bottom:20px;left:16px;z-index:30;background:rgba(201,163,86,.10);color:var(--brass);
+    border:1px solid var(--brass-dim);border-radius:6px;padding:8px 13px;font-size:12.5px;
+    font-weight:600;letter-spacing:.06em;box-shadow:none;opacity:.85}
+  .fab:hover{opacity:1;background:rgba(201,163,86,.18)}
+  /* round corner fabs (📷/🎤) — light icons; position:fixed directly (iOS absolute-in-fixed bug) */
+  .rfab{position:fixed;z-index:38;width:42px;height:42px;border-radius:50%;
     right:max(16px,calc(50vw - var(--w)/2 + 16px));
-    background:var(--felt-up);border:1.5px solid var(--brass-dim);color:var(--brass);
-    display:grid;place-items:center;font-size:22px;cursor:pointer;
-    box-shadow:0 4px 14px rgba(0,0,0,.45);transition:transform .12s;
+    background:transparent;border:1px solid var(--line);color:var(--brass);
+    display:grid;place-items:center;font-size:18px;cursor:pointer;opacity:.7;
+    box-shadow:none;transition:transform .12s,opacity .12s,background .12s;
     -webkit-user-select:none;user-select:none}
+  .rfab:hover{opacity:1;background:rgba(201,163,86,.08);border-color:var(--brass-dim)}
   .rfab:active{transform:scale(.92)}
   .rfab.rec{background:var(--alarm);border-color:var(--alarm);color:#fff;animation:rfabpulse 1.1s infinite}
   @keyframes rfabpulse{0%,100%{box-shadow:0 0 0 0 rgba(210,96,74,.5),0 4px 14px rgba(0,0,0,.45)}
@@ -144,6 +146,14 @@
   .aibtn:hover{background:rgba(201,163,86,.2)}
   .aibtn:disabled{opacity:.5;cursor:default}
   .jobdlg .descwrap{margin-top:0}
+  /* 牵手成功 — the event's headline result */
+  .matchsec{border-color:var(--brass-dim)}
+  .matchrow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .matchin{width:112px;font-family:Oswald,sans-serif;font-size:40px;line-height:1;color:var(--brass);
+    background:transparent;border:none;border-bottom:2px solid var(--brass-dim);padding:0 4px;text-align:center}
+  .matchin:focus{outline:none;border-bottom-color:var(--brass)}
+  .matchrow .mu{font-size:15px;color:var(--brass);font-weight:700}
+  .matchrow .mrate{font-size:11.5px;color:var(--muted);margin-left:auto}
   .rvsum{width:100%;background:var(--felt);border:1px solid var(--line);border-radius:6px;
     color:var(--stock);font-size:13px;padding:9px 11px;line-height:1.7;resize:vertical;font-family:inherit}
   .rvsum:focus{border-color:var(--brass-dim);outline:none}
@@ -2424,6 +2434,13 @@ function viewReview(){
   return `<div class="main" style="max-width:640px;margin:0 auto">
     <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('sheet')">← 计划</span> · 复盘</div>
       <div class="t">${esc(e.name)}${dtag(e)} · ${fmtDate(e.date)}</div></div></div>
+    <div class="rvsec matchsec"><div class="hd"><span class="lbl">牵手成功 · 这场最重要的成果</span></div>
+      <div class="matchrow">
+        <input type="number" min="0" class="matchin" value="${Number(e.matched)||0}" ${S.readonly?'readonly':''}
+          onchange="e_upd('matched',Math.max(0,Number(this.value)||0));render()">
+        <span class="mu">对</span>
+        <span class="mrate">${am+aw?`到场 ${am+aw} 人${(Number(e.matched)||0)?` · ${Math.round((Number(e.matched)||0)*2/(am+aw)*100)}% 的人牵手`:''}`:'还没有到场记录'}</span></div>
+      <p class="note9" style="margin-top:6px">记下来，下一场就有得比 — 这是判断一场活动办得好不好的第一个数字。</p></div>
     <div class="rvsec"><div class="hd"><span class="lbl">台本 · 计划 → 实际</span></div>${rows||'<div class="empty">无环节</div>'}</div>
     <div class="rvsec"><div class="hd"><span class="lbl">收支 · 预算 → 实际</span></div>
       ${mline('收入',mt.inPlan,mt.inActual)}${mline('支出',mt.outPlan,mt.outActual)}
