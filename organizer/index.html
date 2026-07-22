@@ -408,13 +408,25 @@
   .exband.doing .extask{border-left-color:var(--brass)}
   .exband.done  .extask{border-left-color:var(--ok);opacity:.72}
   .extask .nm{flex:1;min-width:0;font-size:13px;font-weight:500;color:var(--stock);display:flex;align-items:baseline;gap:5px}
-  .extask .nm .nmt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  /* phone: names wrap to 2 lines (a long name grows the card TALLER, never wider → no bleed across the trunk) */
+  .extask .nm .nmt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    overflow:hidden;min-width:0;line-height:1.35;white-space:normal}
   .extask .due{font-size:9.5px;color:var(--brass);font-weight:600;white-space:nowrap;flex:none}
   .extask .due.over{color:var(--alarm)}
   /* hover(desktop) / tap(mobile) brief — 环节·负责，keep the card itself just name+status */
-  .extask .brief{display:none;position:absolute;left:8px;right:8px;top:calc(100% - 2px);z-index:14;
-    background:var(--felt);border:1px solid var(--brass-dim);border-radius:8px;padding:7px 10px;
-    font-size:10.5px;color:var(--stock-dim);box-shadow:0 8px 26px rgba(0,0,0,.5);pointer-events:none;line-height:1.55;white-space:normal}
+  .extask{flex-wrap:wrap}
+  .extask .brief{display:none;position:static;flex:0 0 100%;width:100%;left:auto;right:auto;top:auto;z-index:14;
+    margin-top:6px;background:var(--felt);border:1px solid var(--brass-dim);border-radius:8px;padding:7px 10px;
+    font-size:10.5px;color:var(--stock-dim);box-shadow:none;pointer-events:none;line-height:1.55;white-space:normal}
+  @media(min-width:760px){
+    .extask{flex-wrap:nowrap}
+    .extask .nm .nmt{display:block;-webkit-line-clamp:none;white-space:nowrap;text-overflow:ellipsis;line-height:normal}
+    .extask .brief{position:absolute;flex:none;top:calc(100% - 2px);margin-top:0;
+      width:min(280px,60vw);box-shadow:0 8px 26px rgba(0,0,0,.5)}
+    .tlcell.l .extask .brief{right:0;left:auto}
+    .tlcell.r .extask .brief{left:0;right:auto}
+    .tlcanopy .extask .brief{left:8px;right:8px;width:auto}
+  }
   @media(hover:hover){.extask:hover .brief{display:block}}
   /* armed = mobile tap: the brief catches taps (bubbles to the card → 2nd tap opens) so they never fall through to the covered card */
   .extask.armed .brief{display:block;pointer-events:auto}
@@ -468,10 +480,9 @@
   .improw .inm{flex:none;font-size:13px;min-width:64px;color:var(--stock)}
   .improw .imok{font-size:11.5px;color:var(--ok)}
   .improw .immatch{flex:1;min-width:0;font-size:12px;background:var(--felt);border:1px solid var(--line);border-radius:5px;color:var(--stock);padding:5px 8px}
-  /* ===== desktop tree: vertical trunk = time axis (owner 2026-07-21) ===== */
-  .exmob{display:block}
-  .exdesk{display:none}
-  @media(min-width:760px){ .extree{max-width:900px} .exmob{display:none} .exdesk{display:block} .rfab.exhide{display:none} }
+  /* ===== 日段树 — ONE flow-grid tree at every width (owner 2026-07-22; phone must see the tree) ===== */
+  @media(min-width:900px){ .extree{max-width:900px} }
+  @media(min-width:760px){ .rfab.exhide{display:none} }
   .exchase{display:flex;align-items:center;justify-content:center;gap:10px;margin:2px auto 14px;max-width:520px;
     background:rgba(210,96,74,.1);border:1px solid var(--alarm);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--alarm)}
   .exchase .go{color:var(--brass);cursor:pointer;font-weight:700;white-space:nowrap}
@@ -479,35 +490,59 @@
   .tlcanopy .hd{display:inline-flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.16em;font-weight:600;color:var(--alarm);margin-bottom:10px}
   .tlcanopy .hd .dot{width:7px;height:7px;border-radius:50%;background:var(--alarm)}
   .tlcanopy .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-  .tlcanopy .extask{width:auto;max-width:270px;margin-bottom:0;border-left-color:var(--alarm)}
+  .tlcanopy .extask{width:auto;max-width:min(270px,100%);margin-bottom:0;border-left-color:var(--alarm)}
   .tlcanopy .exadd{max-width:270px;margin:12px auto 0}
-  .extl{position:relative;margin:0 auto;width:100%}
-  /* column headers spread over each side; no arrows crossing the trunk */
-  .extl .shd{position:absolute;top:-22px;font-size:11px;letter-spacing:.16em;font-weight:600}
-  .extl .shd.l{left:0;width:44%;text-align:center;color:var(--ok)}
-  .extl .shd.r{right:0;width:44%;text-align:center;color:var(--brass)}
-  .extl .top{position:absolute;left:50%;top:-22px;transform:translateX(-50%);font-size:10px;color:var(--brass-dim);white-space:nowrap}
-  .tltrunk{position:absolute;left:50%;top:0;bottom:0;width:26px;transform:translateX(-50%);border-radius:6px;
-    background:var(--felt-up);border:1px solid var(--line);overflow:hidden;z-index:1}
-  .tltrunk .el{position:absolute;left:0;right:0;top:0;background:linear-gradient(180deg,#7a6636,var(--brass-dim))}
-  /* 今天 = a small marker ON the trunk (a short tick + a pill to the side), NOT a full-width line */
-  .tltoday{position:absolute;left:50%;height:0;z-index:6}
-  .tltoday::before{content:"";position:absolute;left:-15px;width:30px;height:3px;top:-1px;background:var(--brass);border-radius:2px}
-  .tltoday .tg{position:absolute;left:50%;top:5px;transform:translateX(-50%);background:var(--brass);color:var(--ink);
-    font-size:9px;font-weight:700;padding:1px 7px;border-radius:20px;white-space:nowrap;letter-spacing:.04em}
-  .tldl{position:absolute;left:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;
-    background:var(--brass);border:2px solid var(--felt);box-shadow:0 0 0 1px var(--brass);z-index:5}
+  /* trunk continuity depends on row-gap:0 + padding-only spacing — NEVER add margin to a grid child */
+  .extop{text-align:center;font-size:10px;color:var(--brass-dim);margin:0 0 6px}
+  .extl{display:grid;grid-template-columns:minmax(0,.84fr) 44px minmax(0,1.16fr);
+        column-gap:0;row-gap:0;align-items:stretch;margin:0 auto;width:100%}
+  .tlhdr{font-size:10px;letter-spacing:.16em;font-weight:600;padding-bottom:6px;text-align:center}
+  .tlhdr.l{color:var(--ok)} .tlhdr.r{color:var(--brass)}
+  .tlcell{min-width:0;overflow:visible;display:flex;flex-direction:column;gap:8px;padding:8px 0}
+  .tlcell.l{align-items:flex-end;padding-right:8px}
+  .tlcell.r{align-items:flex-start;padding-left:8px}
+  .tlcell.gapc{padding:0}
+  .tlwrap{position:relative;width:100%;display:flex}
+  .tlcell.l .tlwrap{justify-content:flex-end}
+  .tlcell .extask{width:100%;max-width:100%;box-sizing:border-box;margin:0}
+  .tlcell.l .extask{border-left-color:var(--ok);opacity:.78}
+  .tlcell.r .extask{border-left-color:var(--brass)}
+  .tlcell.l .stem{position:absolute;top:50%;right:-8px;width:8px;height:1px;background:var(--line)}
+  .tlcell.r .stem{position:absolute;top:50%;left:-8px;width:8px;height:1px;background:var(--line)}
+  .tlspine{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;
+           gap:4px;padding:6px 0;min-height:40px}
+  .tlspine::before{content:"";position:absolute;left:50%;transform:translateX(-50%);top:0;bottom:0;
+           width:14px;background:var(--felt-up);border-left:1px solid var(--line);
+           border-right:1px solid var(--line);z-index:-1}
+  .tlspine.past::before{background:linear-gradient(180deg,#7a6636,var(--brass-dim));border-color:transparent}
+  .tlspine.gap{min-height:var(--gh,22px);justify-content:center;padding:0}
+  .tlspine.gap::before{width:6px;border:0;opacity:.55;
+           background:repeating-linear-gradient(180deg,var(--line) 0 4px,transparent 4px 10px)}
+  .tlspine.gap.past::before{background:repeating-linear-gradient(180deg,var(--brass-dim) 0 4px,transparent 4px 10px)}
+  .extl>.tlspine:nth-of-type(2)::before{border-radius:6px 6px 0 0}
+  .extl>.tlspine:last-of-type::before{border-radius:0 0 6px 6px}
+  .dlab{font-size:9px;line-height:1.5;padding:1px 6px;border-radius:20px;white-space:nowrap;max-width:44px;
+        background:var(--felt);border:1px solid var(--line);color:var(--brass-dim);font-variant-numeric:tabular-nums}
+  .dlab.now{background:var(--brass);border-color:var(--brass);color:var(--ink);font-weight:700}
+  .tltick{width:30px;height:3px;border-radius:2px;background:var(--brass);flex:none}
+  .tldl{width:11px;height:11px;border-radius:50%;background:var(--brass);flex:none;
+        border:2px solid var(--felt);box-shadow:0 0 0 1px var(--brass)}
   .tldl.over{background:var(--alarm);box-shadow:0 0 0 1px var(--alarm)}
-  .tlitem{position:absolute;transform:translateY(-50%);z-index:2;display:flex;align-items:center;max-width:calc(50% - 40px)}
-  .tlitem.l{right:calc(50% + 26px);justify-content:flex-end}
-  .tlitem.r{left:calc(50% + 26px)}
-  .tlitem .extask{width:auto;max-width:280px;margin-bottom:0}
-  .tlitem:hover{z-index:15}
-  .tlitem.done .extask{border-left-color:var(--ok);opacity:.78}
-  .tlitem.doing .extask{border-left-color:var(--brass)}
-  .tlitem .stem{position:absolute;top:50%;height:1px;background:var(--line);z-index:0}
-  .tlitem.l .stem{right:-26px;width:26px}
-  .tlitem.r .stem{left:-26px;width:26px}
+  .tlmore{width:100%;min-height:34px;font-size:11px;color:var(--brass);background:none;
+          border:1px dashed var(--brass-dim);border-radius:16px;padding:6px 8px;cursor:pointer}
+  @media(max-width:559px){ .tlcell.l .exchip{font-size:9px;padding:4px 8px} }
+  @media(max-width:359px){ .extask .nm{font-size:12px} .tlcell.l .exchip{padding:4px 6px} }
+  @media(min-width:560px){
+    .extl{grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr)}
+    .tlcell{gap:10px;padding:10px 0}
+    .tlcell.l{padding-right:14px} .tlcell.r{padding-left:14px}
+    .tlcell .extask{max-width:280px}
+    .tlcell.l .stem{right:-14px;width:14px} .tlcell.r .stem{left:-14px;width:14px}
+    .tlspine{min-height:46px} .tlspine::before{width:26px}
+    .tlspine.gap{min-height:max(28px,var(--gh,28px))} .tlspine.gap::before{width:10px}
+    .dlab{font-size:10px} .tlhdr{font-size:11px}
+  }
+  @media(min-width:900px){ .tlcell .extask{max-width:320px} }
   .tlbase{width:158px;margin:16px auto 0;text-align:center;border:1px solid var(--brass-dim);border-radius:12px;
     padding:9px 0 11px;background:radial-gradient(circle at 50% 30%,var(--felt-up),var(--felt))}
   .tlbase .cd{font-family:Oswald,sans-serif;font-size:38px;line-height:.9;color:var(--brass);font-variant-numeric:tabular-nums}
@@ -2639,13 +2674,17 @@ function taskTap(cid){
   if(window.matchMedia&&window.matchMedia('(hover:hover)').matches){openTask(cid);return;}
   if(S.armed===cid){openTask(cid);}else{S.armed=cid;render();}
 }
+function exDay(k){S.exOpen=S.exOpen||{};S.exOpen[k]=!S.exOpen[k];render();}   // per-day 「＋还有 N 项」 toggle
 function openTask(cid){S.armed=null;const c=chipById(cid);
   if(c&&(c.type||'人')==='任务'){openJobEditor(findChipLoc(cid),cid);return;}   // a job → its rich task window
   S.exTask=cid;render();}
 // place the floating detail next to the tapped node so the tree stays visible ("stay oriented")
 function positionExDlg(){
   const dlg=document.querySelector('.exdlg');if(!dlg)return;
-  if(!window._exReflow){window._exReflow=1;window.addEventListener('resize',()=>{if(S.exTask)positionExDlg();});}
+  if(!window._exReflow){window._exReflow=1;window._exWide=window.innerWidth>=900;
+    window.addEventListener('resize',()=>{
+      const w=window.innerWidth>=900;if(w!==window._exWide){window._exWide=w;render();return;}  // CAP changes at 900
+      if(S.exTask)positionExDlg();});}
   // both the mobile stack and the desktop tree render the same data-cid; pick the VISIBLE one (hidden has offsetWidth 0)
   let node=null;document.querySelectorAll('.extask[data-cid="'+S.exTask+'"]').forEach(n=>{if(n.offsetWidth>0)node=n;});
   if(!node){   // node folded away (e.g. just marked 完成 under the collapsed fold) → keep last position, don't snap to center
@@ -2685,10 +2724,9 @@ function viewExec(){
     <div class="exback"><span class="bk" onclick="go('sheet')">← 计划</span> · 执行看板</div>
     <div style="text-align:center"><span style="font-size:13px;color:var(--stock);font-weight:600">${esc(e.name)}${dtag(e)}</span></div>
     ${od.length?`<div class="exchase">⚠ ${od.length} 项已过截止还没完成 <span class="go" onclick="exRemindOverdue()">去催 →</span></div>`:''}
-    <div class="exmob">${execMobile(e,todo,doing,done)}</div>
-    <div class="exdesk">${execDesktop(e,todo,doing,done)}</div>
+    ${execTree(e,todo,doing,done)}
     ${execFooter(e,mt,ign)}
-    <p class="note9">桌面＝时间树：树干顶＝计划开始、根＝活动日，「今天」每天下移；右(进行中)做好当天滑到左(完成)，有截止的钉 ● 标记。点任务看详情、催办、设截止或搁置。</p>
+    <p class="note9">时间树：树干顶＝计划开始、根＝活动日，「今天」每天下移；右(进行中)做好当天滑到左(完成)，有截止的钉 ● 标记。空白日子会收成「空 N 天」。点任务看详情、催办、设截止或搁置。</p>
   </div></div>
   ${S.exTask?exDetailCard():''}`;
 }
@@ -2709,36 +2747,61 @@ function execMobile(e,todo,doing,done){
         ${done.length?`<span class="exfold" onclick="S.exShowDone=!S.exShowDone;render()">${S.exShowDone?'收起':'展开'}</span>`:''}</div>
         ${done.length?(S.exShowDone?done.map(card).join(''):`<div class="exempty">已完成 ${done.length} 项 · 点「展开」查看</div>`):'<div class="exempty">还没有完成的</div>'}</div></div>`;
 }
-function execDesktop(e,todo,doing,done){
-  const card=x=>taskCard(x),d=daysTo(e);
-  // degenerate window (no event date, or event day not after 计划开始) → the trunk can't position by day; fall back to the stack
-  const a=Date.parse(planStart(e)+'T00:00:00'),b=Date.parse((e.date||'')+'T00:00:00');
-  if(isNaN(b)||!(b>a))return execMobile(e,todo,doing,done);
-  const PAD=10,ROW=46;   // grow the field so crowded/same-day columns never clamp onto one line (cards are compact now)
-  const H=Math.max(400,Math.max(doing.length,done.length)*ROW+PAD*2);
-  const span=H-PAD*2, y=f=>Math.round(PAD+f*span);
-  const place=(items)=>{const arr=items.map(x=>({x,f:dayFrac(e,taskDay(e,x))})).sort((p,q)=>p.f-q.f);
-    let last=-999;const gap=Math.min(ROW,arr.length>1?span/(arr.length-1):ROW);
-    arr.forEach(o=>{let tp=y(o.f);if(tp<last+gap)tp=last+gap;o.top=Math.min(tp,H-PAD);last=o.top;});return arr;};
-  const L=place(done),R=place(doing),tpx=y(dayFrac(e,todayStr()));
-  const marks=[...todo,...doing,...done].filter(x=>x.c.due).map(x=>({top:y(dayFrac(e,x.c.due)),over:x.c.due<todayStr()&&x.bucket<2}));
-  const item=(o,side)=>`<div class="tlitem ${side==='l'?'done':'doing'} ${side}" style="top:${o.top}px">${card(o.x)}</div>`;
+/* 日段树 — walk the calendar day by day. Each day is a GRID ROW as tall as its own content, and
+   runs of empty days collapse into one elastic segment. Nothing is absolutely positioned, so two
+   same-day cards simply stack: overlap is a layout invariant, not a tuned gap. One layout at every
+   width (375px → desktop); execMobile survives only as the no-date fallback. */
+function execTree(e,todo,doing,done){
+  const A=planStart(e),B=e.date||'',T=todayStr(),d=daysTo(e);
+  if(!B||!(B>A))return execMobile(e,todo,doing,done);          // degenerate window → old stack
+  const cl=s=>s<A?A:(s>B?B:s), md=s=>(+s.slice(5,7))+'/'+(+s.slice(8,10));
+  const addDays=(s,n)=>{const q=new Date(s+'T00:00:00');q.setDate(q.getDate()+n);
+    return q.getFullYear()+'-'+String(q.getMonth()+1).padStart(2,'0')+'-'+String(q.getDate()).padStart(2,'0');};
+  const L={},R={},DUE={};
+  done .forEach(x=>{const k=cl(taskDay(e,x));(L[k]=L[k]||[]).push(x);});
+  doing.forEach(x=>{const k=cl(taskDay(e,x));(R[k]=R[k]||[]).push(x);});
+  [...todo,...doing,...done].forEach(x=>{if(x.c.due){const k=cl(x.c.due);
+    DUE[k]=Math.max(DUE[k]||1,(x.c.due<T&&x.bucket<2)?2:1);}});   // 2 = 逾期 → red ●
+  const rows=[];let gap=0,gPast=true,k=A,guard=0;
+  while(k<=B&&guard++<2000){                                    // ISO strings compare correctly — no Date math here
+    if(L[k]||R[k]||DUE[k]||k===T||k===A||k===B){
+      if(gap){rows.push({gap:gap,past:gPast});gap=0;gPast=true;}
+      rows.push({day:k,l:L[k]||[],r:R[k]||[],due:DUE[k],today:k===T,past:k<T});
+    }else{gap++;if(k>=T)gPast=false;}
+    k=addDays(k,1);
+  }
+  if(gap)rows.push({gap:gap,past:gPast});
+  const CAP=window.innerWidth>=900?{l:6,r:12}:{l:4,r:8};
+  const cell=(arr,day,side)=>{const key=day+side,open=(S.exOpen||{})[key],
+      show=open?arr:arr.slice(0,CAP[side]);
+    return show.map(x=>`<div class="tlwrap"><i class="stem"></i>${taskCard(x)}</div>`).join('')
+      +(arr.length>CAP[side]?`<button class="tlmore" onclick="exDay('${key}')">${open?'收起 ▴':'＋ 还有 '+(arr.length-CAP[side])+' 项 ▾'}</button>`:'');};
+  const row=r=>r.gap
+    ? `<div class="tlcell l gapc"></div>`
+     +`<div class="tlspine gap${r.past?' past':''}" style="--gh:${Math.min(84,Math.max(22,r.gap*6))}px">`
+     +`${r.gap>=2?`<span class="dlab">空 ${r.gap} 天</span>`:''}</div>`
+     +`<div class="tlcell r gapc"></div>`
+    : `<div class="tlcell l" data-day="${r.day}">${cell(r.l,r.day,'l')}</div>`
+     +`<div class="tlspine${r.past?' past':''}" data-day="${r.day}">`
+     +`${r.today?'<i class="tltick"></i>':''}`
+     +`<span class="dlab${r.today?' now':''}">${r.today?'今天':md(r.day)}</span>`
+     +`${r.due?`<i class="tldl${r.due===2?' over':''}"></i>`:''}</div>`
+     +`<div class="tlcell r" data-day="${r.day}">${cell(r.r,r.day,'r')}</div>`;
+  const total=todo.length+doing.length+done.length,pct=total?Math.round(done.length/total*100):0;
   const canopy=`<div class="tlcanopy"><div class="hd"><i class="dot"></i>待办 <span style="opacity:.6;font-weight:400">${todo.length}</span></div>
-    ${todo.length?`<div class="row">${todo.map(card).join('')}</div>`:'<div class="exempty" style="opacity:.7">没有待办 — 都在推进或已完成 👍</div>'}
+    ${todo.length?`<div class="row">${todo.map(taskCard).join('')}</div>`:'<div class="exempty" style="opacity:.7">没有待办 — 都在推进或已完成 👍</div>'}
     <button class="exadd" onclick="exAddTodo()">＋ 加一个待办</button></div>`;
-  // base countdown: mirror heroHtml so a past-dated event still 'run' shows 已过, not a negative number
-  const cd=d<0?String(-d):(d===0?'今天':String(d)),lab=d<0?(-d)+' 天前 · 已过':(d===0?'就是今天':'还有 '+d+' 天');
-  const tl=`<div class="extl" style="height:${H}px">
-    <div class="shd l">完成</div><div class="shd r">进行中</div>
-    <div class="top">▲ 计划开始 ${fmtDate(planStart(e))}</div>
-    <div class="tltrunk"><div class="el" style="height:${tpx}px"></div></div>
-    ${marks.map(m=>`<div class="tldl${m.over?' over':''}" style="top:${m.top}px"></div>`).join('')}
-    <div class="tltoday" style="top:${tpx}px"><div class="tg">今天</div></div>
-    ${L.map(o=>item(o,'l')).join('')}${R.map(o=>item(o,'r')).join('')}
-  </div>
-  <div class="tlbase"><div class="cd${(d<0||d<=3)?' over':''}">${cd}</div>
-    <div class="lab">${lab} · ${fmtDate(e.date)} 活动日</div></div>`;
-  return canopy+tl;
+  const cd=d<0?String(-d):(d===0?'今天':String(d)),
+        lab=d<0?(-d)+' 天前 · 已过':(d===0?'就是今天':'还有 '+d+' 天');
+  return `<div style="text-align:center;margin-top:8px">${heroHtml(e)}</div>
+    <div class="exsum"><div class="exbar"><i style="width:${pct}%"></i></div>
+      <div class="lg"><span class="a">待办 <b>${todo.length}</b></span><span>进行中 <b>${doing.length}</b></span><span class="g">完成 <b>${done.length}</b></span></div></div>
+    ${canopy}
+    <div class="extop">▲ 计划开始 ${fmtDate(A)}</div>
+    <div class="extl"><div class="tlhdr l">完成</div><div class="tlhdr c"></div><div class="tlhdr r">进行中</div>
+      ${rows.map(row).join('')}</div>
+    <div class="tlbase"><div class="cd${(d<0||d<=3)?' over':''}">${cd}</div>
+      <div class="lab">${lab} · ${fmtDate(e.date)} 活动日</div></div>`;
 }
 function execFooter(e,mt,ign){
   return `${mt.length?`<div class="exmoney" style="max-width:520px;margin:18px auto 0"><span>💰 待记账 ${mt.length} 项：${mt.slice(0,3).map(x=>esc(x.c.name)).join('、')}${mt.length>3?' …':''}</span>
