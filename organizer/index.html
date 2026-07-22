@@ -109,6 +109,12 @@
   .libitem:active{transform:translateY(-2px)}
   .libitem .t{font-size:13px}
   .libitem .m{font-size:10.5px;color:var(--muted);margin-top:2px}
+  /* light icons on a 名册 card — never heavy buttons (owner's creed) */
+  .libitem .ic{color:var(--brass-dim);cursor:pointer;font-size:13px;line-height:1;padding:2px 5px;
+    margin-left:2px;border-radius:3px;opacity:.8}
+  .libitem .ic:hover{opacity:1;color:var(--brass);background:rgba(201,163,86,.10)}
+  .libitem .ic.on{opacity:1}   /* granted: the card already says ☁ <email> — the icon just brightens */
+  .libitem .ic.del:hover{color:var(--alarm);background:rgba(210,96,74,.10)}
   .libhint{font-size:10.5px;color:var(--muted);line-height:1.7;margin:10px 2px}
   /* sheet */
   .evhead{background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:13px 14px;margin-bottom:12px}
@@ -439,6 +445,8 @@
   .exend{display:flex;gap:8px;margin-top:18px}
   /* task detail — floating, anchored near the tapped node (JS positions it); stays oriented (no dimming) */
   .exdlgcatch{position:fixed;inset:0;z-index:49}
+  /* ask() mounts on <body>, so pin it to the viewport rather than an ancestor */
+  .askdlg{position:fixed;width:min(400px,calc(100vw - 24px))}
   .exdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;
     width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 48px);overflow:auto;
     background:var(--felt);border:1px solid var(--brass-dim);border-radius:16px;padding:16px 16px 14px;
@@ -474,7 +482,7 @@
   .improw .immatch{flex:1;min-width:0;font-size:12px;background:var(--felt);border:1px solid var(--line);border-radius:5px;color:var(--stock);padding:5px 8px}
   /* ===== 日段树 — ONE flow-grid tree at every width (owner 2026-07-22; phone must see the tree) ===== */
   @media(min-width:900px){ .extree{max-width:900px} }
-  @media(min-width:760px){ .rfab.exhide{display:none} }
+  @media(min-width:760px){ .rfab.exhide{display:none} .fabspace.exhide{height:0 !important} }
   .exchase{display:flex;align-items:center;justify-content:center;gap:10px;margin:2px auto 14px;max-width:520px;
     background:rgba(210,96,74,.1);border:1px solid var(--alarm);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--alarm)}
   .exchase .go{color:var(--brass);cursor:pointer;font-weight:700;white-space:nowrap}
@@ -1016,7 +1024,9 @@ function fabsHtml(){
       <label>📷 报名表 → 名册<input type="file" accept="image/*" capture="environment"
         style="display:none" onchange="S.fabMenu=false;formPhoto(this)"></label></div>`:'';
   const hide=S.view==='exec'?' exhide':'';   // desktop 执行 tree: fabs would cover the 进行中 column (CSS hides ≥760px)
-  return `${menu}
+  // the fabs are position:fixed in the bottom-right — without this the last row of content
+  // (e.g. ＋新建 on 日) ends UNDERNEATH them at full scroll. No overlapping, ever.
+  return `<div class="fabspace${hide}" style="height:${base+116}px"></div>${menu}
     <button class="rfab${hide}" style="bottom:${base+62}px" title="拍照（票据/报名表）"
       onclick="S.fabMenu=!S.fabMenu;render()">📷</button>
     ${recTab?'':`<button class="rfab${hide}" id="micfab" style="bottom:${base}px" title="按住说话（签到/翻状态/评价/记账）"
@@ -1423,6 +1433,33 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
         ${c?`<button class="btn danger sm" onclick="jeDelete()">删除</button>`:''}</div>
     </div>`;
 }
+/* ---------- ask(): ONE natural in-app window, so no native prompt()/confirm() is ever shown ----------
+   Mounted as a DETACHED overlay on <body>, never through render(): the 发布 editor is a
+   contenteditable holding unsaved typing, and a re-render mid-edit would throw it away. */
+let _ask=null;
+function ask(o){
+  askClose();_ask=o;
+  const w=document.createElement('div');w.id='askwrap';
+  w.innerHTML=`<div class="drawerbg" onclick="askClose()"></div>
+    <div class="exdlg jobdlg askdlg">
+      <div class="hd"><span class="tp">${esc(o.title||'')}</span>
+        <button class="btn ghost sm" onclick="askClose()">✕</button></div>
+      ${o.note?`<div class="sub" style="margin:0 0 8px">${esc(o.note)}</div>`:''}
+      ${(o.fields||[]).map((f,i)=>`<label class="dfld"><span class="l">${esc(f.label||'')}</span>
+          <input id="ask_${i}"${f.type==='num'?' inputmode="numeric"':''}${f.type==='date'?' type="date"':''}
+            value="${esc(f.val==null?'':f.val)}" placeholder="${esc(f.ph||'')}"
+            onkeydown="if(event.key==='Enter')askOk()"></label>
+        ${f.opts?`<div class="jepick">${f.opts.map(v=>`<span onclick="askFill(${i},this.textContent)">${esc(v)}</span>`).join('')}</div>`:''}`).join('')}
+      <div class="df"><button class="btn" style="flex:1" onclick="askOk()">${esc(o.ok||'确定')}</button></div>
+    </div>`;
+  document.body.appendChild(w);
+  const el=w.querySelector('input');if(el){el.focus();if(el.select)el.select();}
+}
+function askClose(){const w=$('askwrap');if(w)w.remove();_ask=null;}
+function askFill(i,v){const el=$('ask_'+i);if(el)el.value=v;}
+function askOk(){const o=_ask;if(!o)return;
+  const vals=(o.fields||[]).map((f,i)=>{const el=$('ask_'+i);return el?el.value.trim():'';});
+  askClose();o.fn(vals);}
 function jeRole(n){const el=document.getElementById('je_role');if(el)el.value=n;}
 function jeNeed(n){const el=document.getElementById('je_needs');if(el)el.value=el.value.trim()?el.value.trim()+'、'+n:n;}
 function jeStatus(i){document.querySelectorAll('.jobdlg .exseg .sb').forEach((s,j)=>s.classList.toggle('on',j===i));}
@@ -1442,9 +1479,10 @@ function jeDelete(){if(!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je
 function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
   const k=kind==='res'?'resources':'money';h[k]=h[k].filter(x=>x.id!==cid);save();render();}
 function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
-  const v=prompt((c.kind==='in'?'收入':'支出')+'「'+c.name+'」实际金额（计划 '+yen(c.plan)+'；留空=未发生）',
-    c.actual!=null?c.actual:'');
-  if(v===null)return;c.actual=v===''?null:(parseInt(v.replace(/[^\d]/g,''),10)||0);save();render();}
+  ask({title:(c.kind==='in'?'⊕ 收入':'⊖ 支出')+'「'+c.name+'」',
+    note:'计划 '+yen(c.plan)+' · 留空 = 还没发生',
+    fields:[{label:'实际金额',type:'num',val:c.actual!=null?c.actual:'',ph:yen(c.plan).replace(/[^\d]/g,'')}],
+    ok:'记下',fn:v=>{c.actual=v[0]===''?null:(parseInt(v[0].replace(/[^\d]/g,''),10)||0);save();render();}});}
 // the host may well rename the tutorial into their real event — give that an exit
 function promoteDemo(){S.readonly=false;const e=ev();if(!e||!e.demo)return;
   if(!confirm('把「'+e.name+'」转为正式活动？转正后会上云备份，也可以公开到官网。'))return;
@@ -1526,12 +1564,12 @@ function viewLib(){
   if(S.libTab==='tpl'){
     list=L.templates.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('templates','${x.id}')"><div class="t">${esc(x.name)}${dtag(x)}</div>
       <div class="m">${esc(x.note||'')} · ${x.rows.length}环节
-      <button class="btn danger sm" style="float:right" onclick="event.stopPropagation();libDel('templates','${x.id}')">删除</button></div></div>`).join('');
+      <span class="ic del" style="float:right" title="删除" onclick="event.stopPropagation();libDel('templates','${x.id}')">✕</span></div></div>`).join('');
     form=`<div class="libhint">模板来自活动：Y3 的「保存回资产库」把办完的活动一键存为模板。现阶段由种子提供。</div>`;
   }else if(S.libTab==='idea'){
     list=L.ideas.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('ideas','${x.id}')"><div class="t">${esc(x.seg)}${dtag(x)}</div>
       <div class="m">约${x.dur}分 · ${esc((x.res||[]).join('/'))||'无需资源'}${x.desc?' · '+esc(x.desc.slice(0,12)):''}
-      <button class="btn danger sm" style="float:right" onclick="event.stopPropagation();libDel('ideas','${x.id}')">删除</button></div></div>`).join('');
+      <span class="ic del" style="float:right" title="删除" onclick="event.stopPropagation();libDel('ideas','${x.id}')">✕</span></div></div>`).join('');
     form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新灵感（环节）</div>
       <div class="frow"><input id="ni_seg" placeholder="环节名，如：桌游破冰"><input id="ni_dur" style="width:90px" placeholder="分钟" inputmode="numeric"></div>
       <button class="btn sm" onclick="libAddIdea()">加入资产库</button></div>`;
@@ -1552,8 +1590,8 @@ function viewLib(){
         <div class="m">${meta}
         <span style="float:right">
           ${cat==='goods'?`<button class="exchip b${(x.inv||0)===3?0:((x.inv||0)?1:0)}" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();cycleInv('${x.id}')">📦 ${INV_ST[x.inv||0]}</button> `:''}
-          ${cat==='volunteer'?`<button class="btn ghost sm" onclick="event.stopPropagation();grantAccount('${x.id}')">${x.shareEmail?'账号✓':'授权账号'}</button> `:''}
-          <button class="btn danger sm" onclick="event.stopPropagation();libDel('resources','${x.id}')">删除</button></span></div></div>`;
+          ${cat==='volunteer'?`<span class="ic${x.shareEmail?' on':''}" title="${x.shareEmail?'已授权 '+esc(x.shareEmail)+' — 点开管理':'授权账号'}" onclick="event.stopPropagation();grantAccount('${x.id}')">🔑</span>`:''}
+          <span class="ic del" title="删除" onclick="event.stopPropagation();libDel('resources','${x.id}')">✕</span></span></div></div>`;
     }).join('');
     if(cat==='volunteer')
       form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新志愿者 / 工作人员</div>
@@ -1584,7 +1622,7 @@ function viewLib(){
   }else{
     list=L.money.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('money','${x.id}')"><div class="t">${x.kind==='in'?'⊕':'⊖'} ${esc(x.name)}${dtag(x)}</div>
       <div class="m num">${yen(x.amount)} · ${x.kind==='in'?'收入':'支出'}${x.unit?' · 单价'+yen(x.unit):''}
-      <button class="btn danger sm" style="float:right" onclick="event.stopPropagation();libDel('money','${x.id}')">删除</button></div></div>`).join('');
+      <span class="ic del" style="float:right" title="删除" onclick="event.stopPropagation();libDel('money','${x.id}')">✕</span></div></div>`).join('');
     form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新收支项</div>
       <div class="frow"><select id="nm_kind" style="width:90px"><option value="out">⊖ 支出</option><option value="in">⊕ 收入</option></select>
       <input id="nm_name" placeholder="名目，如：场地费"><input id="nm_amt" style="width:110px" placeholder="金额¥" inputmode="numeric"></div>
@@ -1826,10 +1864,13 @@ function confirmTickets(){const e=ev();
   ticketInfo(e).forEach(c=>{c.actual=c.unit*arrCount(e,c.name.indexOf('男')>=0?'男':'女');});
   save();render();toast('门票已入账（可在收支牌上修改）');}
 function addP(){const e=ev();
-  const g=prompt('性别（男/女）','女');if(g!=='男'&&g!=='女')return;
-  const name=prompt('姓名');if(!name)return;
-  const p={id:uid(),gender:g,n:nextBadge(e,g),name:name.trim(),job:'',arrived:false,at:null,evals:[],profile:null};
-  e.participants.push(p);fileGuest(p);save();render();toast(g+p.n+' 已加入');}
+  ask({title:'＋ 加一位参加者',fields:[
+      {label:'姓名',ph:'怎么称呼'},
+      {label:'性别',val:'女',opts:['女','男']}],
+    ok:'加入',fn:v=>{const name=(v[0]||'').trim(),g=v[1]==='男'?'男':'女';
+      if(!name){toast('先写名字');return;}
+      const p={id:uid(),gender:g,n:nextBadge(e,g),name,job:'',arrived:false,at:null,evals:[],profile:null};
+      e.participants.push(p);fileGuest(p);save();render();toast(g+p.n+' 已加入');}});}
 function nextBadge(e,g){return Math.max(0,...e.participants.filter(p=>p.gender===g).map(p=>p.n))+1;}
 // invite someone who already exists in the 嘉宾名册 — the repeat-guest path (pass ②)
 function pickGuestHtml(e){
@@ -2273,17 +2314,24 @@ function postClose(){S.postEdit=null;render();}
 function peFocusBody(){const el=$('po_body');if(el)el.focus();}
 function peCmd(cmd,arg){peFocusBody();try{document.execCommand(cmd,false,arg||null);}catch(e){}}
 function peLink(){
-  const u=prompt('链接地址（https://…）');if(!u)return;
-  const safe=window.ymSanitize?window.ymSanitize.safeUrl(u,false):'';
-  if(!safe){toast('只支持 https:// 或 mailto: 链接');return;}
-  peFocusBody();try{document.execCommand('createLink',false,safe);}catch(e){}
+  const sel=window.getSelection(),saved=sel&&sel.rangeCount?sel.getRangeAt(0).cloneRange():null;
+  ask({title:'🔗 加链接',note:'只接受 https:// 或 mailto:',
+    fields:[{label:'链接地址',ph:'https://…'}],ok:'插入',fn:v=>{
+      const safe=window.ymSanitize?window.ymSanitize.safeUrl(v[0],false):'';
+      if(!safe){toast('只支持 https:// 或 mailto: 链接');return;}
+      peRestore(saved);try{document.execCommand('createLink',false,safe);}catch(e){}}});
 }
 function peImg(){
-  const u=prompt('图片地址（https://… — 相册图片随 Drive 通道上线）');if(!u)return;
-  const safe=window.ymSanitize?window.ymSanitize.safeUrl(u,true):'';
-  if(!safe){toast('图片只支持 https:// 地址');return;}
-  peFocusBody();try{document.execCommand('insertImage',false,safe);}catch(e){}
+  const sel=window.getSelection(),saved=sel&&sel.rangeCount?sel.getRangeAt(0).cloneRange():null;
+  ask({title:'🖼 加图片',note:'相册图片随 Drive 通道上线',
+    fields:[{label:'图片地址',ph:'https://…'}],ok:'插入',fn:v=>{
+      const safe=window.ymSanitize?window.ymSanitize.safeUrl(v[0],true):'';
+      if(!safe){toast('图片只支持 https:// 地址');return;}
+      peRestore(saved);try{document.execCommand('insertImage',false,safe);}catch(e){}}});
 }
+// the dialog steals the caret; put it back where the host left it before execCommand runs
+function peRestore(r){peFocusBody();if(!r)return;
+  const s=window.getSelection();if(s){s.removeAllRanges();s.addRange(r);}}
 function pePaste(e){
   e.preventDefault();
   const cd=e.clipboardData||window.clipboardData;if(!cd)return;
