@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>我的志愿者页 · ym</title>
+<title>我的页面 · ym</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -56,6 +56,13 @@
   .rd .ds{display:block;font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:2px}
   .rd .me{font-size:10px;color:var(--brass);flex:none}
   .fold{font-size:12px;color:var(--brass);cursor:pointer;padding:8px 0;display:inline-block}
+  /* 嘉宾: 号牌 + 主办方通知 */
+  .badge{display:flex;align-items:baseline;gap:10px;margin-top:12px;padding-top:10px;
+    border-top:1px solid var(--line)}
+  .badge .bn{font-family:Oswald,sans-serif;font-size:26px;color:var(--brass);line-height:1}
+  .badge .bl{font-size:11px;color:var(--muted);letter-spacing:.1em}
+  .notice{margin-top:12px;padding:10px 11px;border:1px dashed var(--brass-dim);border-radius:6px;
+    font-size:12.5px;line-height:1.8}
   .rv{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px}
   .rv b{color:var(--brass)}
   .note{font-size:10.5px;color:var(--muted);line-height:1.8;margin-top:18px}
@@ -89,6 +96,8 @@ let SESSION=null,SHARES=null,MINE=[],_busy=false,_bad='',OPEN={};
 const $=id=>document.getElementById(id);
 
 /* ---------- render ---------- */
+// one person is either a 志愿者 or a 嘉宾 to a given host; the payload says which
+function isGuest(){return !!(SHARES&&SHARES.length&&SHARES.every(r=>(r.payload||{}).kind==='guest'));}
 function render(){
   let body='';
   if(!SESSION)body=_bad?badHtml():loginHtml();
@@ -97,11 +106,12 @@ function render(){
   else if(!SHARES.length)body=revokedHtml();
   else body=SHARES.map(shareHtml).join('');
   $('app').innerHTML=`
-    <div class="top"><span class="logo">ym</span><span class="t">我的志愿者页</span><span class="sp"></span>
+    <div class="top"><span class="logo">ym</span><span class="t">${isGuest()?'我的活动页':'我的志愿者页'}</span><span class="sp"></span>
       ${SESSION?`<button class="btn ghost sm" onclick="signOut()">退出</button>`:''}</div>
     ${body}
-    <p class="note">这里只显示主办方发布给你本人的内容：公开信息、当天流程，和你负责的事。
-      志愿者之间互不可见 —— 有任何问题请直接联系主办方。</p>`;
+    <p class="note">${isGuest()
+      ? '这里只显示主办方发布给你的内容：公开信息、当天流程、你的号牌和主办方通知。参加者之间互不可见 —— 有任何问题请直接联系主办方。'
+      : '这里只显示主办方发布给你本人的内容：公开信息、当天流程，和你负责的事。志愿者之间互不可见 —— 有任何问题请直接联系主办方。'}</p>`;
 }
 function loginHtml(){
   return `<div class="card" style="margin-top:28px">
@@ -133,7 +143,30 @@ function revokedHtml(){
   return `<div class="empty">主办方还没有发布内容给你，<br>或者已经收回了这个页面的权限。<br>
     <span class="muted">有问题请直接联系主办方。</span></div>`;
 }
+/* 嘉宾 view — public only. Deliberately has NO upload and NO 完成: a guest payload carries no
+   duties[] and therefore no chipId, so 0014's ym_share_has_chip() can never match and the
+   database refuses a submission even if someone drives the console by hand. */
+function guestShareHtml(row){
+  const d=row.payload||{};
+  const jobs=(d.jobs||[]).map(j=>{
+    const key=String(j.eventId||''),open=OPEN[key],b=j.badge||{},rd=j.rundown||[];
+    return `<div class="card">
+      <div class="ev">${esc(j.event||'')}</div>
+      <div class="meta">${fmtDate(j.date)}${j.start?' '+esc(j.start):''}${j.venue?' · '+esc(j.venue):''}</div>
+      ${j.theme?`<div class="meta">${esc(j.theme)}</div>`:''}
+      ${b.n?`<div class="badge"><span class="bn num">${esc(b.gender)}${esc(b.n)}</span>
+        <span class="bl">你的号牌${b.arrived?' · 已签到':''}</span></div>`:''}
+      ${j.notice?`<div class="notice"><div class="lbl" style="margin-bottom:4px">主办方通知</div>${esc(j.notice)}</div>`:''}
+      ${rd.length?`<div class="fold" onclick="fold('${esc(key)}')">${open?'▾':'▸'} 当天流程（${rd.length} 个环节）</div>
+        ${open?`<div>${rd.map(r=>`<div class="rd">
+            <span class="tm">${esc(r.time||'--')}</span>
+            <span class="sg">${esc(r.seg||'')}</span></div>`).join('')}</div>`:''}`:''}</div>`;}).join('');
+  return `<div style="margin-top:18px">
+    <div class="lbl">你好，${esc(d.name||'')}</div>
+    ${jobs||'<div class="empty">还没有你参加的活动。</div>'}</div>`;
+}
 function shareHtml(row){
+  if((row.payload||{}).kind==='guest')return guestShareHtml(row);
   const d=row.payload||{},host=row.host;
   const jobs=(d.jobs||[]).map(j=>{
     const key=String(j.eventId||'');

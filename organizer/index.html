@@ -454,6 +454,13 @@
   .pendbox .pf{display:inline-block;font-size:11px;color:var(--brass);cursor:pointer;
     border:1px solid var(--line);border-radius:4px;padding:3px 7px;margin:5px 5px 0 0;text-decoration:none}
   .extask .pdot{font-size:9.5px;color:var(--brass);margin-left:6px;white-space:nowrap}
+  /* destructive actions are LIGHT everywhere — never a heavy red button (owner's creed) */
+  .lnkdel{color:var(--muted);cursor:pointer;font-size:11.5px;align-self:center;padding:0 8px;
+    white-space:nowrap}
+  .lnkdel:hover{color:var(--alarm)}
+  .icx{color:var(--brass-dim);cursor:pointer;font-size:13px;line-height:1;padding:3px 6px;
+    border-radius:3px;opacity:.8}
+  .icx:hover{opacity:1;color:var(--alarm);background:rgba(210,96,74,.10)}
   .exdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;
     width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 48px);overflow:auto;
     background:var(--felt);border:1px solid var(--brass-dim);border-radius:16px;padding:16px 16px 14px;
@@ -642,8 +649,30 @@ function chipOwnedBy(c,p,idx){
   const who=String(c.role||c.owner||'').trim();if(!who)return false;
   return idx[who]===p.id;                            // 'DUP' matches nobody → fail closed
 }
+/* 嘉宾 view — PUBLIC ONLY (owner, 2026-07-22). A 嘉宾 account exists so TA can check when/where and
+   what their 号牌 is; it is NOT a window onto their own record. 资料卡 / 职业 / 择偶 / 评价 stay
+   host-only exactly as before, and no other attendee is ever named.
+   Note the shape: NO duties[] and therefore no chipId anywhere — which means 0014's
+   ym_share_has_chip() can never match for a guest, so the write surface is closed by the DATABASE,
+   not merely by hiding buttons. */
+function guestDataFor(p){
+  const jobs=[];
+  STORE.events.filter(e=>!e.demo).forEach(e=>{
+    const me=(e.participants||[]).find(x=>x.libId===p.id);
+    if(!me)return;                                   // only events TA is actually signed up for
+    jobs.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',venue:e.venue||'',
+      theme:e.theme||'',
+      badge:{gender:me.gender||'',n:me.n||0,arrived:!!me.arrived},
+      notice:e.notice||'',
+      // 时间 + 环节名 only. r.desc is the volunteer's operating instruction ("把签到台摆在门口")
+      // and must never reach a guest.
+      rundown:e.rows.filter(r=>r.time||r.seg).map(r=>({time:r.time||'',seg:r.seg||''}))});
+  });
+  return {kind:'guest',name:p.name,jobs,at:new Date().toISOString()};
+}
 /* hub-and-spoke: publish each linked member's own view (0009 ym_share) */
 function shareDataFor(p){
+  if(catOf(p)==='guest')return guestDataFor(p);
   const jobs=[],idx=volNameIndex();
   // never publish 教学示例 duties to a real volunteer's page — the tutorial invites practice
   STORE.events.filter(e=>!e.demo).forEach(e=>{
@@ -673,7 +702,10 @@ const EMAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 // a code for an address that has no ym_share row yet
 function pushShares(){
   if(!canCloud())return Promise.resolve();
-  const linked=STORE.library.resources.filter(p=>catOf(p)==='volunteer'&&p.shareEmail);
+  // volunteers get their duties; 嘉宾 get the PUBLIC view only (shareDataFor branches on cat).
+  // 捐赠人 and anything else is still not publishable.
+  const linked=STORE.library.resources.filter(p=>
+    (catOf(p)==='volunteer'||catOf(p)==='guest')&&p.shareEmail);
   if(!linked.length)return Promise.resolve();
   // De-duplicate by address: ym_share's PK is (host, member_email), and two rows with the
   // same key in ONE upsert makes Postgres abort the whole statement ("cannot affect row a
@@ -712,10 +744,11 @@ function grantState(p){const em=String(p.shareEmail||'').toLowerCase();
   return SHARE_ST[em]?{k:'live',t:'使用中'}:{k:'sent',t:'待打开'};}
 function grantOpen(pid){
   const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
-  // Guest data is host-only (owner rule 2026-07-20): the 嘉宾 themselves must never be able
-  // to read their own record, so a guest can never be granted an account. Hard guard, not
-  // just a hidden button — pushShares() filters on the same rule.
-  if(catOf(p)!=='volunteer'){toast('只有志愿者/工作人员可以授权账号（嘉宾资料仅主办方可见）');return;}
+  // A 嘉宾 MAY hold an account (owner, 2026-07-22) — but it shows the PUBLIC view only, never
+  // their own 资料卡. That boundary lives in shareDataFor()/guestDataFor(), which is the thing
+  // that decides what is published; this is only the door. 捐赠人 still get nothing.
+  const cat=catOf(p);
+  if(cat!=='volunteer'&&cat!=='guest'){toast('只有志愿者或嘉宾可以授权账号');return;}
   if(!canCloud()){toast('先登录并通过批准，才能授权成员账号');return;}
   _grant={pid,code:'',link:'',linkOk:true,busy:false,taken:false};grantPaint();
 }
@@ -752,7 +785,9 @@ function grantPaint(){
         <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="grantRevoke()">取消授权</span></div>`;
   }else{
     body=`${head}${warn}
-      <div class="sub" style="margin:0 0 8px">填 TA 的邮箱，生成授权码发给 TA。TA 只能看到公开信息、流程和自己负责的事。</div>
+      <div class="sub" style="margin:0 0 8px">填 TA 的邮箱，生成授权码发给 TA。${catOf(p)==='guest'
+        ?'嘉宾只能看到公开信息、当天流程、自己的号牌和你的通知 —— 看不到资料卡、评价，也看不到别的嘉宾。'
+        :'TA 只能看到公开信息、流程和自己负责的事。'}</div>
       <label class="dfld"><span class="l">邮箱</span>
         <input id="g_em" type="email" value="${esc(cur)}" placeholder="name@example.com"
           onkeydown="if(event.key==='Enter')grantIssue()"></label>
@@ -1345,7 +1380,7 @@ function viewSheet(){
     <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
     ${e?`<button class="btn ghost sm" onclick="cloneEvent('${e.id}')">🔁 再办一场</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
-    ${e&&!S.readonly&&evPhase(e)==='plan'?`<button class="btn danger sm" onclick="delEvent()">删除</button>`:''}
+    ${e&&!S.readonly&&evPhase(e)==='plan'?`<span class="icx" title="删除这场活动（仅筹备中可删）" onclick="delEvent()">✕</span>`:''}
   </div>`;
   const roBanner=S.readonly?`<div class="hintbar" style="border:1px solid var(--brass-dim);border-radius:5px;padding:9px 11px">
     🔒 只读回看（已归档活动）· <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读编辑</span></div>`:'';
@@ -1386,6 +1421,12 @@ function viewSheet(){
     ${(()=>{const vh=venueHistory(e);return vh?`<div class="reusehint" onclick="event.stopPropagation();venueHistDetail()">🏛 这个场地办过 ${vh.count} 场${vh.lastCost?' · 上次场租 '+yen(vh.lastCost):''} · 点看日期</div>`:'';})()}
     <div class="chips">${chipsHtml(e.header,'header')}</div>
     <div class="lbl" style="margin-top:8px">活动全场 — 点选此卡后，从资产库挂「全场」资源/收支</div>
+    <label class="dfld" style="margin-top:10px" onclick="event.stopPropagation()">
+      <span class="l">给嘉宾的通知（着装 · 交通 · 注意事项 —— 已授权的嘉宾会在自己页面看到）</span>
+      <div class="descwrap"><input id="e_notice" value="${esc(e.notice||'')}"
+        placeholder="几个关键词即可，点 ✨ 补写" onchange="e_upd('notice',this.value)">
+        <button class="aibtn" title="AI 补写（先写几个关键词）"
+          onclick="aiPhrase('e_notice','给嘉宾的通知','${escJs(e.name||'活动')}')">✨</button></div></label>
     <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:flex;
       gap:9px;align-items:center;flex-wrap:wrap" onclick="event.stopPropagation()">
       <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer">
@@ -1456,8 +1497,8 @@ function chipsHtml(holder,loc){
   }).join('');
   const money=holder.money.map(c=>`<span class="chip money ${c.kind==='in'?'in':'out'}"
     onclick="event.stopPropagation();editMoney('${loc}','${c.id}')"
-    title="点击填实际金额">${c.kind==='in'?'⊕':'⊖'} ${esc(c.name)}
-    <span class="amt">${yen(c.plan)}${c.actual!=null?' → '+yen(c.actual):''}</span>
+    title="点击设金额${c.unit!=null?' / 单价':''}">${c.kind==='in'?'⊕':'⊖'} ${esc(c.name)}
+    <span class="amt">${c.unit!=null?yen(c.unit)+'/人 · ':''}${yen(c.plan)}${c.actual!=null?' → '+yen(c.actual):''}</span>
     <span class="x" onclick="event.stopPropagation();delChip('${loc}','money','${c.id}')">✕</span></span>`).join('');
   const addJob=S.readonly?'':`<button class="chipadd" onclick="event.stopPropagation();addJob('${loc}')" title="加一件要做的事">＋事项</button>`;
   return res+money+addJob;
@@ -1571,7 +1612,7 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
       ${c?pendBlock(c.id):''}
       ${c?`<div class="exseg" style="margin-top:12px">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="jeStatus(${i})">${l}</div>`).join('')}</div>`:''}
       <div class="df"><button class="btn" style="flex:1" onclick="jobEditSave()">保存</button>
-        ${c?`<button class="btn danger sm" onclick="jeDelete()">删除</button>`:''}</div>
+        ${c?`<span class="lnkdel" onclick="jeDelete()">删除</span>`:''}</div>
     </div>`;
 }
 /* ---------- ask(): ONE natural in-app window, so no native prompt()/confirm() is ever shown ----------
@@ -1621,11 +1662,22 @@ function jeDelete(){if(!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je
   if(h&&je.cid)h.resources=h.resources.filter(x=>x.id!==je.cid);S.jobEdit=null;save();render();}
 function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
   const k=kind==='res'?'resources':'money';h[k]=h[k].filter(x=>x.id!==cid);save();render();}
+// 计划金额 · 单价 · 实际 all live here, because 计划 is where the host sets a price — the money chip
+// is the only place a 门票 exists, and its 单价 had no editor at all before (owner: 我在哪里设置门票价格？)
 function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
+  const per=c.kind==='in'&&(String(c.name||'').indexOf('门票')>=0||c.unit!=null);
+  const num=v=>v===''?null:(parseInt(String(v).replace(/[^\d]/g,''),10)||0);
   ask({title:(c.kind==='in'?'⊕ 收入':'⊖ 支出')+'「'+c.name+'」',
-    note:'计划 '+yen(c.plan)+' · 留空 = 还没发生',
-    fields:[{label:'实际金额',type:'num',val:c.actual!=null?c.actual:'',ph:yen(c.plan).replace(/[^\d]/g,'')}],
-    ok:'记下',fn:v=>{c.actual=v[0]===''?null:(parseInt(v[0].replace(/[^\d]/g,''),10)||0);save();render();}});}
+    note:per?'单价 × 到场人数 = 实收（在「日」页按「确认入账」结算）':'留空 = 还没发生',
+    fields:[
+      {label:'计划金额',type:'num',val:c.plan!=null?c.plan:'',ph:'0'},
+      ...(per?[{label:'每人单价（门票按到场人数×）',type:'num',val:c.unit!=null?c.unit:'',ph:'如 6000'}]:[]),
+      {label:'实际金额（留空=还没发生）',type:'num',val:c.actual!=null?c.actual:''}],
+    ok:'记下',fn:v=>{
+      c.plan=num(v[0])||0;
+      if(per){const u=num(v[1]);if(u==null||u===0)delete c.unit;else c.unit=u;}
+      c.actual=num(v[per?2:1]);
+      save();render();}});}
 // the host may well rename the tutorial into their real event — give that an exit
 function promoteDemo(){S.readonly=false;const e=ev();if(!e||!e.demo)return;
   if(!confirm('把「'+e.name+'」转为正式活动？转正后会上云备份，也可以公开到官网。'))return;
@@ -1732,7 +1784,7 @@ function viewLib(){
         <div class="m">${meta}${x.shareEmail?` · <span style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span> · ${esc(grantState(x).t)}`:''}
         <span style="float:right">
           ${cat==='goods'?`<button class="exchip b${(x.inv||0)===3?0:((x.inv||0)?1:0)}" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();cycleInv('${x.id}')">📦 ${INV_ST[x.inv||0]}</button> `:''}
-          ${cat==='volunteer'?`<span class="ic${x.shareEmail?' on':''}" title="${x.shareEmail?'账号 · '+esc(grantState(x).t)+' — 点开管理':'授权账号'}" onclick="event.stopPropagation();grantOpen('${x.id}')">🔑</span>`:''}
+          ${cat==='volunteer'||cat==='guest'?`<span class="ic${x.shareEmail?' on':''}" title="${x.shareEmail?'账号 · '+esc(grantState(x).t)+' — 点开管理':(cat==='guest'?'授权账号（只看公开信息）':'授权账号')}" onclick="event.stopPropagation();grantOpen('${x.id}')">🔑</span>`:''}
           <span class="ic del" title="删除" onclick="event.stopPropagation();libDel('resources','${x.id}')">✕</span></span></div></div>`;
     }).join('');
     if(cat==='volunteer')
@@ -1749,7 +1801,7 @@ function viewLib(){
         <button class="btn sm" onclick="libAddRes('guest')">加入名册</button>
         <p class="note9">嘉宾通常在活动当天由 📷 报名表 / ⬆名单CSV / 看板添加，会自动进入这里；
           也可以先建档，之后在看板「＋ 名册添加」直接选。<br>
-          <b style="color:var(--brass)">🔒 嘉宾资料由主办方填写与保管：嘉宾本人、志愿者、其他任何人都看不到。</b></p></div>`;
+          <b style="color:var(--brass)">🔒 嘉宾资料由主办方填写与保管：嘉宾本人、志愿者、其他任何人都看不到。授权账号后，嘉宾只看到公开信息、流程、自己的号牌和你的通知。</b></p></div>`;
     else if(cat==='donor')
       form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新捐赠人</div>
         <div class="frow"><input id="nr_name" placeholder="捐赠人名称">
@@ -1781,7 +1833,7 @@ function viewLib(){
     ${subtabs}
     <div class="libgrid">${list||'<div class="empty">空</div>'}</div>${form}
     <p class="note9">点任一条目 → 打开资料卡（V1.0 完整字段）。带 <span class="demotag dim">示例</span> 的是练习用的种子数据。</p>
-    ${dn?`<button class="btn danger sm" style="margin-top:6px" onclick="clearDemo()">🧹 清除所有示例数据（${dn} 项）</button>`:''}
+    ${dn?`<button class="btn ghost sm" style="margin-top:6px" onclick="clearDemo()">🧹 清除所有示例数据（${dn} 项）</button>`:''}
   </div>
     ${S.libEdit?libEditCard():''}`;
 }
@@ -2453,7 +2505,7 @@ function postEditor(){
       <button class="btn" style="flex:1;min-width:120px" onclick="postSave(true)">
         ${p.published?'更新并保持发布':'发布到官网'}</button>
       <button class="btn ghost sm" onclick="postSave(false)">${p.published?'下架为草稿':'存草稿'}</button>
-      ${p.id?`<button class="btn danger sm" onclick="postDel()">删除</button>`:''}</div>
+      ${p.id?`<span class="lnkdel" onclick="postDel()">删除</span>`:''}</div>
     <p class="note9">粘贴的内容会自动净化（脚本、样式、可疑链接一律清除）；官网渲染时再净化一次。</p>
   </div>`;
 }
@@ -2578,7 +2630,7 @@ function viewAdmin(){
       p.status==='approved'?'● 已批准':p.status==='pending'?'○ 待批准':'✕ 已停用'}</span>
     <span style="display:flex;gap:6px;flex:none">
       ${p.status!=='approved'?`<button class="btn sm" onclick="adminSet('${p.user_id}','approved')">批准为主办方</button>`:''}
-      ${p.status!=='rejected'&&p.user_id!==SESSION.user.id?`<button class="btn danger sm" onclick="adminSet('${p.user_id}','rejected')">停用</button>`:''}
+      ${p.status!=='rejected'&&p.user_id!==SESSION.user.id?`<span class="lnkdel" onclick="adminSet('${p.user_id}','rejected')">停用</span>`:''}
     </span></div>`;
   const cRow=c=>`<div class="rvrow" style="flex-wrap:wrap;gap:8px">
     <span class="c2 num" style="letter-spacing:.06em">${esc(c.code)}</span>
@@ -2586,7 +2638,7 @@ function viewAdmin(){
     <span class="st ${c.uses_left>0?'on':'off'}" style="font-size:10.5px">${c.uses_left>0?'可用 '+c.uses_left:'已用完'}</span>
     <span style="display:flex;gap:6px;flex:none">
       <button class="btn ghost sm" onclick="adminCopyCode('${esc(c.code)}')">复制</button>
-      ${c.uses_left>0?`<button class="btn danger sm" onclick="adminRevokeCode('${esc(c.code)}')">作废</button>`:''}
+      ${c.uses_left>0?`<span class="lnkdel" onclick="adminRevokeCode('${esc(c.code)}')">作废</span>`:''}
     </span></div>`;
   return `<div class="main" style="max-width:680px;margin:0 auto">
     <div class="sec">待批准 ${pend.length?`· ${pend.length}`:''}</div>
@@ -3043,7 +3095,7 @@ function exDetailCard(){
         <input type="date" value="${esc(c.due||'')}" onchange="exDue('${c.id}',this.value)"></label>
       <div class="df">
         ${b<2?`<button class="btn ghost sm" style="flex:1" onclick="exRemind('${c.id}')">📤 催办</button>`:''}
-        ${c.type==='任务'?`<button class="btn danger sm" onclick="exDelTask('${c.id}')">删除</button>`
+        ${c.type==='任务'?`<span class="lnkdel" onclick="exDelTask('${c.id}')">删除</span>`
           :`<button class="btn ghost sm" onclick="exIgnore('${c.id}')">搁置</button>`}</div>
     </div>`;
 }
