@@ -2556,7 +2556,7 @@ function heroHtml(e){
 function taskCard(x){
   const c=x.c,b=x.bucket,icon=c.type==='任务'?'📌':(c.type==='物'?'📦':'👤');
   const due=c.due?`<span class="due${(c.due<todayStr()&&b<2)?' over':''}">截止${fmtDate(c.due)}</span>`:'';
-  const brief=[esc(x.where),c.role?esc(c.role):'',c.needs?'需要 '+esc(c.needs):'',c.due?'截止 '+fmtDate(c.due):''].filter(Boolean).join(' · ');
+  const brief=[esc(x.where),c.role?esc(c.role):'',c.owner?'负责 '+esc(c.owner):'',c.needs?'需要 '+esc(c.needs):'',c.due?'截止 '+fmtDate(c.due):''].filter(Boolean).join(' · ');
   return `<div class="extask${S.armed===c.id?' armed':''}" data-cid="${c.id}" onclick="taskTap('${c.id}')">
     <div class="nm"><span class="nmt">${icon} ${esc(c.name)}</span>${due}</div>
     <span class="exchip b${b}" onclick="event.stopPropagation();exAdvance('${c.id}')">${TASK_ST[b]}</span>
@@ -2696,8 +2696,11 @@ function exDetailCard(){
       <div class="hd"><span class="tp">${icon} ${kind}</span>
         <button class="btn ghost sm" onclick="S.exTask=null;render()">✕</button></div>
       <div class="nm">${esc(c.name)}</div>
-      ${c.role?`<div class="sub">${esc(c.role)}</div>`:''}
+      <div class="sub">${esc(chipWhere(c.id))}${c.role?' · '+esc(c.role):''}</div>
       <div class="exseg">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="exSet('${c.id}',${i})">${l}</div>`).join('')}</div>
+      <label class="dfld"><span class="l">负责人（谁来跟这件事）</span>
+        <input list="peoplelist" value="${esc(c.owner||'')}" placeholder="选一个人，或直接写新名字"
+          onchange="exOwner('${c.id}',this.value)"></label>
       <label class="dfld"><span class="l">截止日期（可选 · 只提醒，不排期）</span>
         <input type="date" value="${esc(c.due||'')}" onchange="exDue('${c.id}',this.value)"></label>
       <div class="df">
@@ -2708,6 +2711,12 @@ function exDetailCard(){
 }
 function exSet(cid,bucket){if(S.readonly)return;const c=chipById(cid);if(!c||taskBucket(c)===bucket)return;c.status=BUCKET_STATUS[bucket];stampDone(c);save();render();}
 function exDue(cid,v){const c=chipById(cid);if(c){c.due=v||undefined;save();}}
+function exOwner(cid,v){if(S.readonly)return;const c=chipById(cid);if(c){c.owner=(v||'').trim()||undefined;save();render();}}
+// which 环节 a chip sits on — the same context the hover/tap brief shows (plain data, no AI)
+function chipWhere(cid){const e=ev();if(!e)return '';
+  if((e.header.resources||[]).some(c=>c.id===cid)||(e.header.money||[]).some(c=>c.id===cid))return '活动全场';
+  const r=e.rows.find(x=>(x.resources||[]).some(c=>c.id===cid)||(x.money||[]).some(c=>c.id===cid));
+  return r?((r.time?r.time+' ':'')+(r.seg||'环节')):'活动全场';}
 function exIgnore(cid){const c=chipById(cid);if(!c)return;c.ignored=true;S.exTask=null;save();render();toast('已搁置（下方提示保留，不再催办）');}
 function exRestore(cid){const c=chipById(cid);if(!c)return;c.ignored=false;save();render();}
 function exRemind(cid){const e=ev(),c=chipById(cid);if(!c)return;
