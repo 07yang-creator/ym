@@ -15,6 +15,16 @@
 > Pass conditions this serves: ① run a Saturday event without Excel · ② build the next event from the
 > last one's assets in minutes.
 
+## ⚑ Priority order (owner, 2026-07-21)
+
+**Data-reuse first, people-links later.** We're building a platform for **host + volunteer**, so the
+first job is to let the organizer **reuse data** (clone events, reuse venues / materials / quotes /
+rundowns — Groups **2 资产复用** and **4 事件复用与滚动**). The **people-connection** ideas (Group **1
+人员为中心**) are lower priority and, when built, must stay **host-only read-time aggregations** —
+never people-to-people links. **Inter-app / inter-participant communication is NOT open: everyone
+links to the HOST only (hub-and-spoke).** This kills any volunteer↔volunteer / guest↔guest edge
+(already in Parked) and means even the person cards are the host's private view.
+
 ## ★ Ship-first (best delight-per-effort)
 
 1. **一键复办（克隆这场→下一场）** — the flagship for pass-condition ②

@@ -467,6 +467,8 @@
   .implist{max-height:44vh;overflow:auto;margin:4px 0}
   .improw{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--line)}
   .improw .gtog{cursor:pointer;font-size:15px;color:var(--brass);width:20px;text-align:center;flex:none}
+  .improw .gtog.gq{color:var(--dim);opacity:.72}   /* 来源没写性别 — 别装作知道，等主办点一下 */
+  .improw .gtog.gq:after{content:'?';font-size:10px;vertical-align:super;margin-left:-1px}
   .improw .inm{flex:none;font-size:13px;min-width:64px;color:var(--stock)}
   .improw .imok{font-size:11.5px;color:var(--ok)}
   .improw .immatch{flex:1;min-width:0;font-size:12px;background:var(--felt);border:1px solid var(--line);border-radius:5px;color:var(--stock);padding:5px 8px}
@@ -1880,8 +1882,8 @@ function rosterShot(inp){if(S.readonly)return;const f=inp.files&&inp.files[0];in
       const seen={};
       S.importRows=people.filter(p=>seen[p.name]?false:(seen[p.name]=1)).map(p=>{
         const hit=matchGuestByName(p.name);
-        return {name:p.name,gender:(p.gender==='男'||p.gender==='女')?p.gender:(hit&&hit.gender?hit.gender:'男'),
-                matchId:hit?hit.id:null};});
+        const known=(p.gender==='男'||p.gender==='女')?p.gender:((hit&&hit.gender)||'');   // 截图上多半没写性别 — 不猜
+        return {name:p.name,gender:known||'男',gq:known?0:1,matchId:hit?hit.id:null};});
       S.showImport=true;render();toast('认出 '+S.importRows.length+' 人 — 请核对性别与匹配，再加入');})
     .catch(e=>toast('识别失败：'+e.message));
   });}
@@ -1889,12 +1891,14 @@ function parseImport(){const t=$('imp_text');if(!t)return;
   S.importRows=(t.value||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
     let g='',name=l;const m=l.match(/^(男|女|♂|♀)\s*(.+)$/)||l.match(/^(.+?)[\s·,，]*(男|女|♂|♀)$/);
     if(m){const a=m[1],b=m[2];if(/男|女|♂|♀/.test(a)&&a.length<=1){g=/男|♂/.test(a)?'男':'女';name=b;}else{g=/男|♂/.test(b)?'男':'女';name=a;}}
-    name=name.trim();const hit=matchGuestByName(name);
-    return {name,gender:g||(hit?hit.gender:'男'),matchId:hit?hit.id:null};});
+    name=name.trim();const hit=matchGuestByName(name);const known=g||(hit&&hit.gender)||'';
+    return {name,gender:known||'男',gq:known?0:1,matchId:hit?hit.id:null};});
   render();}
-function impGender(i){if(S.importRows&&S.importRows[i])S.importRows[i].gender=S.importRows[i].gender==='男'?'女':'男';render();}
+function impGender(i){const r=S.importRows&&S.importRows[i];if(!r)return;
+  r.gender=r.gender==='男'?'女':'男';r.gq=0;render();}   // 点过就是确认过
 function impMatch(i,val){const g=peoList('guest').find(x=>(x.name||'').trim()===(val||'').trim());
-  if(S.importRows&&S.importRows[i]){S.importRows[i].matchId=g?g.id:null;if(g&&g.gender)S.importRows[i].gender=g.gender;}render();}
+  if(S.importRows&&S.importRows[i]){S.importRows[i].matchId=g?g.id:null;
+    if(g&&g.gender){S.importRows[i].gender=g.gender;S.importRows[i].gq=0;}}render();}
 function commitImport(){if(S.readonly||!S.importRows)return;const e=ev();let n=0;
   S.importRows.forEach(r=>{const gen=r.gender||'男';
     if(r.matchId){const g=STORE.library.resources.find(x=>x.id===r.matchId);if(!g)return;
@@ -1910,9 +1914,9 @@ function importListCard(){
       ${!S.importRows?`<p class="note9" style="margin:2px 0 8px">从别处（微信 / LINE …）把名字复制贴进来，一行一个。名字前后可写 男/女。</p>
         <textarea id="imp_text" rows="6" style="width:100%;background:var(--felt);border:1px solid var(--line);border-radius:6px;color:var(--stock);padding:8px" placeholder="男 张三&#10;李四&#10;王五 女"></textarea>
         <div class="df"><button class="btn" style="flex:1" onclick="parseImport()">解析 →</button></div>`
-      :`<p class="note9" style="margin:2px 0 8px">核对性别；把标「新」的匹配到名册里已有的人（下次同名自动认出）。</p>
+      :`<p class="note9" style="margin:2px 0 8px">${S.importRows.filter(r=>r.gq).length?'有 '+S.importRows.filter(r=>r.gq).length+' 人名单里没写性别（<span style="opacity:.72">♂?</span>）— 点一下确认。':'核对性别；'}把标「新」的匹配到名册里已有的人（下次同名自动认出）。</p>
         <div class="implist">${S.importRows.map((r,i)=>{const g=r.matchId?STORE.library.resources.find(x=>x.id===r.matchId):null;
-          return `<div class="improw"><span class="gtog" onclick="impGender(${i})">${r.gender==='男'?'♂':'♀'}</span>
+          return `<div class="improw"><span class="gtog${r.gq?' gq':''}" title="${r.gq?'名单里没写性别 — 点一下确认':'点一下改'}" onclick="impGender(${i})">${r.gender==='男'?'♂':'♀'}</span>
             <span class="inm">${esc(r.name)}</span>
             ${g?`<span class="imok">→ ${esc(g.name)} ✓</span>`:`<input class="immatch" list="guestlist" placeholder="匹配已有人（留空=新人）" onchange="impMatch(${i},this.value)">`}</div>`;}).join('')}</div>
         <div class="df"><button class="btn" style="flex:1" onclick="commitImport()">全部加入（${S.importRows.length} 人）</button>
