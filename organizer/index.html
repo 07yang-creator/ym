@@ -1224,7 +1224,7 @@ function viewSheet(){
         <div class="c ok"><div class="n num">${rc[3]}</div><div class="l">到位</div></div>
       </div></div>
     <div class="strip"><div class="hd"><span class="lbl">收支 · 计划 / 实际</span>
-      <label class="btn ghost sm" style="cursor:pointer">📷 票据
+      <label class="btn ghost sm" style="cursor:pointer">票据
         <input type="file" accept="image/*" capture="environment" style="display:none" onchange="costPhoto(this)"></label></div>
       <div class="mline"><span>收入</span><span class="num">${yen(mt.inPlan)} / ${yen(mt.inActual)}</span></div>
       <div class="mline"><span>支出</span><span class="num">${yen(mt.outPlan)} / ${yen(mt.outActual)}</span></div>
@@ -1282,22 +1282,22 @@ function viewSheet(){
       <button onclick="event.stopPropagation();moveRow('${r.id}',1)" ${i===e.rows.length-1?'disabled':''}>▼</button>
       <button onclick="event.stopPropagation();delRow('${r.id}')">✕</button>
     </div></div>`).join('');
+  // sits directly above the 台本 rows; when running it is status + button only — no extra copy (owner)
   const kickoff=(e&&!S.readonly)?(e.status==='run'
     ?`<div class="kickoff run"><span class="st">● 执行跟踪中</span>
-        <button class="btn sm" onclick="goExec('${e.id}')">▶ 执行看板</button>
-        <span class="rem">改计划随时改，跟踪不会重来</span></div>`
+        <button class="btn sm" onclick="goExec('${e.id}')">▶ 执行看板</button></div>`
     :`<div class="kickoff plan"><button class="btn big" onclick="enterExec()">🚀 计划好了 · 开始跟踪执行</button>
         <span class="rem">把计划变成会自己提醒你的执行看板</span></div>`):'';
   const foldbar=e.rows.length?`<div class="foldtoggle"><span>环节 ${e.rows.length} · 点一个展开编辑</span>
     <span class="t" onclick="S.showAllRows=!S.showAllRows;render()">${S.showAllRows?'收起细节':'全部展开'}</span></div>`:'';
   return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main foldsheet${S.showAllRows?' showall':''}${S.readonly?' ro':''}">
-    ${sw}${roBanner}${kickoff}
+    ${sw}${roBanner}
     ${e.demo?`<div class="hintbar" style="border:1px dashed var(--brass-dim);border-radius:5px;padding:9px 11px">
       <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不会上云或公开到官网。
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
       <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧/📚 资产库点选应用。</div>
-    ${strips}${participantsStrip(e)}${S.costDraft?costDraftCard():''}${hd}${foldbar}${rows}
+    ${strips}${participantsStrip(e)}${S.costDraft?costDraftCard():''}${hd}${kickoff}${foldbar}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
   <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>
