@@ -2747,6 +2747,7 @@ function execFooter(e,mt,ign){
       ${ign.map(x=>`<div class="it"><span>${esc(x.c.name)} · ${esc(x.where)}</span>
         <span class="rz" onclick="exRestore('${x.c.id}')">↩ 恢复为待办</span></div>`).join('')}</div>`:''}
     <div class="exend" style="max-width:520px;margin:18px auto 0">
+      <button class="btn ghost sm" onclick="go('sheet')" title="回计划页改台本 · 跟踪不会重来">✎ 调整计划</button>
       <button class="btn" style="flex:1" onclick="endExec('done')">✓ 完成活动</button>
       <button class="btn ghost sm" onclick="endExec('cancelled')">取消活动</button></div>`;
 }
