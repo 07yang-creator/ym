@@ -447,6 +447,13 @@
   .exdlgcatch{position:fixed;inset:0;z-index:49}
   /* ask() mounts on <body>, so pin it to the viewport rather than an ancestor */
   .askdlg{position:fixed;width:min(400px,calc(100vw - 24px))}
+  /* 志愿者报上来的 — dashed so it reads as INCOMING, not as state the host already owns */
+  .pendbox{border:1px dashed var(--brass-dim);border-radius:8px;padding:9px 10px;margin:10px 0 2px}
+  .pendbox .ph{font-size:12px;color:var(--brass)}
+  .pendbox .pn{font-size:12px;color:var(--stock-dim);margin-top:3px;line-height:1.6}
+  .pendbox .pf{display:inline-block;font-size:11px;color:var(--brass);cursor:pointer;
+    border:1px solid var(--line);border-radius:4px;padding:3px 7px;margin:5px 5px 0 0;text-decoration:none}
+  .extask .pdot{font-size:9.5px;color:var(--brass);margin-left:6px;white-space:nowrap}
   .exdlg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;
     width:min(320px,calc(100vw - 24px));max-height:calc(100vh - 48px);overflow:auto;
     background:var(--felt);border:1px solid var(--brass-dim);border-radius:16px;padding:16px 16px 14px;
@@ -560,7 +567,10 @@
 <script>
 'use strict';
 /* ================= helpers ================= */
-function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+// ' is escaped too: volunteer-authored text (备注 / 文件名) now reaches the host's DOM, and a bare
+// quote there would break out of an attribute. No call site depends on the raw quote.
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+  .replace(/'/g,'&#39;').replace(/</g,'&lt;');}
 // 示例 badge for any seeded/demo record, shown on every screen so the host never mistakes it for real data
 function dtag(x,dim){return x&&x.demo?`<span class="demotag${dim?' dim':''}">示例</span>`:'';}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
@@ -614,29 +624,52 @@ function cloudPushAll(){
   sb.from('ym_doc').upsert(rows).then(r=>{if(r.error)toast('云同步失败：'+r.error.message);});
   pushShares();
 }
+/* 任务 chips carry a FREE-TEXT 负责人 (c.role) and no refId, so until now every 要做的事 was
+   invisible to the person who has to do it. Match by name — but deliberately DO NOT stamp refId
+   onto a 任务 chip: refId is read by volSection/applyRes/guestHistory, and re-semantifying it
+   while the host is mid-test is exactly the drift that keeps costing us. */
+function volNameIndex(){const m={};STORE.library.resources.forEach(r=>{
+  if(catOf(r)!=='volunteer')return;const n=String(r.name||'').trim();if(!n)return;
+  m[n]=m[n]?'DUP':r.id;});return m;}
+function chipOwnedBy(c,p,idx){
+  if(c.refId)return c.refId===p.id;                  // resource chip: hard link, unambiguous
+  if((c.type||'')!=='任务')return false;
+  const who=String(c.role||c.owner||'').trim();if(!who)return false;
+  return idx[who]===p.id;                            // 'DUP' matches nobody → fail closed
+}
 /* hub-and-spoke: publish each linked member's own view (0009 ym_share) */
 function shareDataFor(p){
-  const jobs=[];
+  const jobs=[],idx=volNameIndex();
   // never publish 教学示例 duties to a real volunteer's page — the tutorial invites practice
   STORE.events.filter(e=>!e.demo).forEach(e=>{
-    const duties=[];
-    const scan=(holder,where,time)=>holder.resources.forEach(c=>{
-      if(c.refId===p.id)duties.push({where,time,status:taskLabel(c)});});   // one vocabulary: 待办/进行中/完成
-    scan(e.header,'活动全场','');
-    e.rows.forEach(r=>scan(r,r.seg||'',r.time||''));
+    const duties=[],mine={};
+    const scan=(holder,loc,where,time)=>holder.resources.forEach(c=>{
+      if(!chipOwnedBy(c,p,idx))return;mine[loc]=1;
+      duties.push({chipId:c.id,where,time,name:c.name||'',needs:c.needs||'',due:c.due||'',
+        status:taskLabel(c)});});                     // one vocabulary: 待办/进行中/完成
+    scan(e.header,'header','活动全场','');
+    e.rows.forEach(r=>scan(r,r.id,r.seg||'',r.time||''));
     if(!duties.length)return;
     const log=(e.volLog||{})[p.id]||{};
-    jobs.push({event:e.name,date:e.date,start:e.start||'',venue:e.venue||'',
+    // HUB AND SPOKE: the rundown publishes 时间 · 环节 · 说明 and one boolean, nothing else.
+    // r.owner and r.resources are DELIBERATELY absent — either would show one volunteer another
+    // volunteer's name. No money, no 嘉宾, ever.
+    jobs.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',venue:e.venue||'',
+      theme:e.theme||'',
+      rundown:e.rows.filter(r=>r.time||r.seg||r.desc)
+        .map(r=>({time:r.time||'',seg:r.seg||'',desc:r.desc||'',mine:!!mine[r.id]})),
       duties,hours:log.hours||'',review:log.review||''});
   });
   return {name:p.name,role:p.role||'',jobs,at:new Date().toISOString()};
 }
 // must match 0013's ym_share_email_shape CHECK exactly, or a save silently 500s server-side
 const EMAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// returns the upsert promise: grantIssue() must await it, because /api/ym_invite refuses to mint
+// a code for an address that has no ym_share row yet
 function pushShares(){
-  if(!canCloud())return;
+  if(!canCloud())return Promise.resolve();
   const linked=STORE.library.resources.filter(p=>catOf(p)==='volunteer'&&p.shareEmail);
-  if(!linked.length)return;
+  if(!linked.length)return Promise.resolve();
   // De-duplicate by address: ym_share's PK is (host, member_email), and two rows with the
   // same key in ONE upsert makes Postgres abort the whole statement ("cannot affect row a
   // second time") — which would silently freeze publishing for every other volunteer too.
@@ -649,10 +682,11 @@ function pushShares(){
   const rows=Object.keys(byEmail).map(em=>({host:SESSION.user.id,member_email:em,
     payload:shareDataFor(byEmail[em])}));
   const bad=linked.length-rows.length;
-  if(!rows.length){if(bad)toast('成员邮箱格式有误，未发布');return;}
-  sb.from('ym_share').upsert(rows,{onConflict:'host,member_email'})
+  if(!rows.length){if(bad)toast('成员邮箱格式有误，未发布');return Promise.resolve();}
+  return sb.from('ym_share').upsert(rows,{onConflict:'host,member_email'})
     .then(r=>{if(r.error)toast('成员发布失败：'+r.error.message);
-      else if(bad)toast('已发布 '+rows.length+' 位（'+bad+' 位邮箱重复或有误，已跳过）');});
+      else if(bad)toast('已发布 '+rows.length+' 位（'+bad+' 位邮箱重复或有误，已跳过）');
+      return r;});
 }
 // revoking or re-addressing must actually take the old row away
 function dropShare(email){
@@ -660,25 +694,117 @@ function dropShare(email){
   sb.from('ym_share').delete().match({host:SESSION.user.id,
     member_email:String(email).trim().toLowerCase()}).then(()=>{});
 }
-function grantAccount(pid){
+/* ---------- 授权码 (0014 + /api/ym_invite) ----------
+   No schema change buys the account badge: ym_share.member already answers "has TA opened it".
+   未授权 = no row · 已发码待打开 = member is null · 使用中 = member set. */
+let SHARE_ST={},_grant=null;
+function loadShareStates(){ if(!canCloud())return;
+  sb.from('ym_share').select('member_email,member').then(({data})=>{SHARE_ST={};
+    (data||[]).forEach(r=>SHARE_ST[String(r.member_email).toLowerCase()]=!!r.member);render();});}
+function grantState(p){const em=String(p.shareEmail||'').toLowerCase();
+  if(!em)return {k:'none',t:''};
+  if(!(em in SHARE_ST))return {k:'sent',t:'待发布'};
+  return SHARE_ST[em]?{k:'live',t:'使用中'}:{k:'sent',t:'待打开'};}
+function grantOpen(pid){
   const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
   // Guest data is host-only (owner rule 2026-07-20): the 嘉宾 themselves must never be able
   // to read their own record, so a guest can never be granted an account. Hard guard, not
   // just a hidden button — pushShares() filters on the same rule.
   if(catOf(p)!=='volunteer'){toast('只有志愿者/工作人员可以授权账号（嘉宾资料仅主办方可见）');return;}
   if(!canCloud()){toast('先登录并通过批准，才能授权成员账号');return;}
+  _grant={pid,code:'',link:'',linkOk:true,busy:false,taken:false};grantPaint();
+}
+function grantClose(){const w=$('grantwrap');if(w)w.remove();_grant=null;}
+function grantPaint(){
+  const g=_grant;if(!g)return;
+  const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p){grantClose();return;}
+  let w=$('grantwrap');
+  if(!w){w=document.createElement('div');w.id='grantwrap';
+    w.innerHTML=`<div class="drawerbg" onclick="grantClose()"></div>
+      <div class="exdlg jobdlg askdlg"><div id="grantbody"></div></div>`;
+    document.body.appendChild(w);}
+  const st=grantState(p),dup=volNameIndex()[String(p.name||'').trim()]==='DUP';
   const cur=p.shareEmail||((p.contact||'').indexOf('@')>0?p.contact:'');
-  const em=prompt('成员邮箱 — TA 用此邮箱注册后，只能看到你发布给TA的内容（本人岗位/信息）。留空=取消授权',cur);
-  if(em===null)return;
-  const v=em.trim().toLowerCase();
-  const old=p.shareEmail;
-  if(!v){ if(old)dropShare(old);
-    delete p.shareEmail;save();render();toast('已取消授权');return;}
+  const head=`<div class="hd"><span class="tp">🔑 授权 ${esc(p.name)}</span>
+      <button class="btn ghost sm" onclick="grantClose()">✕</button></div>`;
+  const warn=dup?`<div class="sub" style="color:var(--alarm);margin:0 0 8px">⚠ 名册里还有一位「${esc(p.name)}」——
+      用姓名指定负责人的事项两人都收不到，请改名或改用名册指派。</div>`:'';
+  let body;
+  if(g.taken){
+    body=`${head}${warn}<div class="sub" style="line-height:1.9">这个邮箱已经有账号了。<br>
+      让 TA 直接用原来的密码在 <b>ym.jjconnect.tokyo/member/</b> 登录即可，不需要授权码 —— 登录后会自动看到你发布的内容。</div>
+      <div class="df"><button class="btn ghost sm" style="flex:1" onclick="_grant.taken=false;grantPaint()">换个邮箱</button></div>`;
+  }else if(g.code){
+    body=`${head}${warn}
+      <div class="sub" style="margin:0 0 6px">${esc(p.shareEmail||'')}</div>
+      <div class="lbl">授权码 · 24 小时内有效</div>
+      <div class="num" style="font-size:30px;letter-spacing:.22em;color:var(--brass);margin:2px 0 10px">${esc(g.code)}</div>
+      ${g.linkOk&&g.link?`<div class="sub" style="word-break:break-all;margin-bottom:10px">${esc(g.link)}</div>`:''}
+      <div class="sub" style="color:var(--alarm);margin-bottom:10px">只发给 TA 本人，别发到群里 —— 拿到这条的人就能以 TA 的身份登录。</div>
+      <div class="df"><button class="btn" style="flex:1" onclick="grantSend()">📤 发送</button>
+        <button class="btn ghost sm" onclick="grantIssue(1)">↻ 重发</button></div>
+      <div style="text-align:center;margin-top:10px">
+        <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="grantRevoke()">取消授权</span></div>`;
+  }else{
+    body=`${head}${warn}
+      <div class="sub" style="margin:0 0 8px">填 TA 的邮箱，生成授权码发给 TA。TA 只能看到公开信息、流程和自己负责的事。</div>
+      <label class="dfld"><span class="l">邮箱</span>
+        <input id="g_em" type="email" value="${esc(cur)}" placeholder="name@example.com"
+          onkeydown="if(event.key==='Enter')grantIssue()"></label>
+      <div class="df"><button class="btn" style="flex:1" ${g.busy?'disabled':''} onclick="grantIssue()">${g.busy?'生成中…':'生成授权码'}</button></div>
+      ${p.shareEmail?`<div style="text-align:center;margin-top:10px">
+        <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="grantRevoke()">取消授权（${esc(st.t)}）</span></div>`:''}`;
+  }
+  const el=$('grantbody');const foc=document.activeElement;
+  // don't rebuild the field the host is typing in (the L1327 focus discipline)
+  if(foc&&foc.id==='g_em'&&el.querySelector('#g_em')&&!g.code&&!g.taken)return;
+  el.innerHTML=body;
+  const inp=el.querySelector('#g_em');if(inp&&!g.code){inp.focus();inp.select();}
+}
+async function grantIssue(again){
+  const g=_grant;if(!g||g.busy)return;
+  const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
+  const v=again?String(p.shareEmail||''):String(($('g_em')||{}).value||'').trim().toLowerCase();
   if(!EMAIL_RE.test(v)||v.length>320){toast('邮箱格式不对（需要 name@example.com 这样的完整地址）');return;}
   const clash=STORE.library.resources.find(x=>x.id!==p.id&&String(x.shareEmail||'').toLowerCase()===v);
   if(clash){toast('这个邮箱已授权给「'+clash.name+'」，请先取消那边');return;}
-  if(old&&old.toLowerCase()!==v)dropShare(old);      // don't leave the old address readable
-  p.shareEmail=v;save();render();toast('已授权 '+v+' — 保存时自动发布TA的岗位');
+  const old=p.shareEmail;
+  if(old&&old.toLowerCase()!==v)dropShare(old);       // don't leave the old address readable
+  p.shareEmail=v;save();
+  g.busy=true;grantPaint();
+  try{
+    await pushShares();                               // the endpoint refuses an address with no ym_share row
+    const r=await fetch(API+'/api/ym_invite',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({email:v,user_token:SESSION.access_token})});
+    const j=await r.json().catch(()=>({}));
+    if(r.status===409||j.why==='taken'){g.busy=false;g.taken=true;grantPaint();loadShareStates();return;}
+    if(!r.ok||!j.code)throw new Error(j.error||('HTTP '+r.status));
+    g.code=j.code;g.link=j.link||'';g.linkOk=j.link_ok!==false;g.busy=false;
+    grantPaint();loadShareStates();
+    if(j.mailed)toast('授权码已生成，注册邮件已发出');
+  }catch(err){
+    g.busy=false;grantPaint();
+    toast('授权已保存，授权码生成失败（'+err.message+'）—— 可稍后重发');
+  }
+}
+function grantSend(){
+  const g=_grant;if(!g||!g.code)return;
+  const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
+  share(['【缘满沙龙】'+p.name+' 你好，这是你的志愿者页面：',
+    (g.linkOk&&g.link)?g.link:'',
+    '打开 https://ym.jjconnect.tokyo/member/ ，输入邮箱 '+p.shareEmail+' 和授权码 '+g.code+'，',
+    '首次登录请设置一个密码。24 小时内有效。请勿转发。'].filter(Boolean).join('\n'));
+}
+function grantRevoke(){
+  const g=_grant;if(!g)return;
+  const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
+  const old=p.shareEmail;
+  ask({title:'取消 '+p.name+' 的授权？',note:'TA 会立刻看不到任何内容，已上传的票据也一并撤下。',
+    fields:[],ok:'取消授权',fn:()=>{
+      if(old){dropShare(old);
+        if(canCloud())sb.from('ym_submit').delete()
+          .match({host:SESSION.user.id,member_email:String(old).toLowerCase()}).then(()=>{});}
+      delete p.shareEmail;save();grantClose();loadShareStates();render();toast('已取消授权');}});
 }
 async function cloudLoad(){
   if(!sb||!SESSION){PROFILE=null;stopPoll();render();return;}
@@ -709,7 +835,7 @@ async function cloudLoad(){
       if(re.data)PROFILE=Object.assign({},re.data,{is_admin:PROFILE.is_admin});}
   }
   if(!canCloud()){startPoll();render();return;}   // pending → watch for the admin's approval
-  stopPoll();
+  stopPoll();loadShareStates();loadPending();
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
   if(error){toast('云端读取失败：'+error.message);render();return;}
   const cloudEvs=(rows||[]).filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
@@ -1428,6 +1554,7 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
         <input id="je_needs" value="${esc(d.needs||'')}" placeholder="从下面点添加，或直接写"></label>${pick(uniquePlanNames(e,'物'),'jeNeed')}
       <label class="dfld"><span class="l">什么时候前完成（可选）</span>
         <input id="je_due" type="date" value="${esc(d.due||'')}"></label>
+      ${c?pendBlock(c.id):''}
       ${c?`<div class="exseg" style="margin-top:12px">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="jeStatus(${i})">${l}</div>`).join('')}</div>`:''}
       <div class="df"><button class="btn" style="flex:1" onclick="jobEditSave()">保存</button>
         ${c?`<button class="btn danger sm" onclick="jeDelete()">删除</button>`:''}</div>
@@ -1585,12 +1712,11 @@ function viewLib(){
         ? `${esc(x.dtype||'个人')}${x.company?' · '+esc(x.company):''}${x.totalAmount?' · 累计 '+esc(x.totalAmount):''}`
         : `${esc(x.role||'')}${x.contact?' · '+esc(x.contact):''}${x.avail?' · '+esc(x.avail):''}`;
       return `<div class="libitem" style="cursor:pointer" onclick="libEditOpen('${cat}','${x.id}')">
-        <div class="t">${icon} ${esc(x.name)}${dtag(x)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}
-          ${x.shareEmail?`<span class="lbl" style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span>`:''}</div>
-        <div class="m">${meta}
+        <div class="t">${icon} ${esc(x.name)}${dtag(x)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}</div>
+        <div class="m">${meta}${x.shareEmail?` · <span style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span> · ${esc(grantState(x).t)}`:''}
         <span style="float:right">
           ${cat==='goods'?`<button class="exchip b${(x.inv||0)===3?0:((x.inv||0)?1:0)}" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();cycleInv('${x.id}')">📦 ${INV_ST[x.inv||0]}</button> `:''}
-          ${cat==='volunteer'?`<span class="ic${x.shareEmail?' on':''}" title="${x.shareEmail?'已授权 '+esc(x.shareEmail)+' — 点开管理':'授权账号'}" onclick="event.stopPropagation();grantAccount('${x.id}')">🔑</span>`:''}
+          ${cat==='volunteer'?`<span class="ic${x.shareEmail?' on':''}" title="${x.shareEmail?'账号 · '+esc(grantState(x).t)+' — 点开管理':'授权账号'}" onclick="event.stopPropagation();grantOpen('${x.id}')">🔑</span>`:''}
           <span class="ic del" title="删除" onclick="event.stopPropagation();libDel('resources','${x.id}')">✕</span></span></div></div>`;
     }).join('');
     if(cat==='volunteer')
@@ -1659,10 +1785,15 @@ function clearDemo(){
 }
 function libDel(k,id){const L=STORE.library;
   const rec=L[k].find(x=>x.id===id);
-  if(rec&&rec.shareEmail&&!confirm('「'+rec.name+'」有成员账号（'+rec.shareEmail+'）。删除会同时收回TA的查看权限，继续？'))return;
-  if(!rec||!rec.shareEmail){if(!confirm('从资产库删除？（已挂到活动上的不受影响）'))return;}
-  if(rec&&rec.shareEmail)dropShare(rec.shareEmail);   // otherwise they keep reading forever
-  L[k]=L[k].filter(x=>x.id!==id);save();render();}
+  ask({title:rec&&rec.shareEmail?('删除 '+rec.name+'？'):'从资产库删除？',
+    note:rec&&rec.shareEmail
+      ? 'TA 有成员账号（'+rec.shareEmail+'）—— 删除会同时收回 TA 的查看权限。'
+      : '已挂到活动上的不受影响。',
+    fields:[],ok:'删除',fn:()=>{
+      if(rec&&rec.shareEmail){dropShare(rec.shareEmail);   // otherwise they keep reading forever
+        if(canCloud())sb.from('ym_submit').delete()
+          .match({host:SESSION.user.id,member_email:String(rec.shareEmail).toLowerCase()}).then(()=>{});}
+      L[k]=L[k].filter(x=>x.id!==id);save();render();}});}
 /* ---- item detail editor — full information fields per 缘满沙龙 V1.0 ---- */
 const LIB_FIELDS={
   // 志愿者名册 (V1.0)
@@ -2720,6 +2851,7 @@ function taskCard(x){
   return `<div class="extask${S.armed===c.id?' armed':''}" data-cid="${c.id}" onclick="taskTap('${c.id}')">
     <div class="nm"><span class="nmt">${icon} ${esc(c.name)}</span>${due}</div>
     <span class="exchip b${b}" onclick="event.stopPropagation();exAdvance('${c.id}')">${TASK_ST[b]}</span>
+    ${pendFor(c.id).length?`<span class="pdot" title="志愿者报了完成 / 传了票据">● 待确认</span>`:''}
     ${brief?`<div class="brief">${brief}</div>`:''}</div>`;
 }
 // desktop: hover already briefs, so a click opens. touch: 1st tap briefs, 2nd tap (same card) opens.
@@ -2886,6 +3018,7 @@ function exDetailCard(){
         <button class="btn ghost sm" onclick="S.exTask=null;render()">✕</button></div>
       <div class="nm">${esc(c.name)}</div>
       <div class="sub">${esc(chipWhere(c.id))}${c.role?' · '+esc(c.role):''}</div>
+      ${pendBlock(c.id)}
       <div class="exseg">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="exSet('${c.id}',${i})">${l}</div>`).join('')}</div>
       <label class="dfld"><span class="l">负责人（谁来跟这件事）</span>
         <input list="peoplelist" value="${esc(c.owner||'')}" placeholder="选一个人，或直接写新名字"
@@ -2899,6 +3032,72 @@ function exDetailCard(){
     </div>`;
 }
 function exSet(cid,bucket){if(S.readonly)return;const c=chipById(cid);if(!c||taskBucket(c)===bucket)return;c.status=BUCKET_STATUS[bucket];stampDone(c);save();render();}
+
+/* ---------- 志愿者报上来的（0014 ym_submit）—— 主办确认才翻状态 ----------
+   A volunteer tapping 完成 writes an ADDITIVE pending row. Nothing here writes chip.status; the
+   only conversion is pendAccept(), which calls the host's own existing exSet(). */
+let PENDING=[],_pendT=null;
+function loadPending(){
+  if(!canCloud())return;
+  // never select file_data — the poll would drag base64 receipts across the wire every minute
+  sb.from('ym_submit').select('id,member_email,event_id,chip_id,kind,note,file_name,file_mime,created_at')
+    .eq('status','pending').order('created_at')
+    .then(({data,error})=>{if(error)return;PENDING=data||[];render();});
+  if(!_pendT)_pendT=setInterval(()=>{if(canCloud())loadPending();else{clearInterval(_pendT);_pendT=null;}},60000);
+}
+function pendFor(cid){const e=ev();return PENDING.filter(r=>r.chip_id===cid&&(!e||r.event_id===e.id));}
+function pendCount(e){return e?PENDING.filter(r=>r.event_id===e.id).length:0;}
+// the roster name behind an address, so the host reads 「小林 说完成了」 not an email
+function pendWho(r){const p=STORE.library.resources.find(x=>
+  String(x.shareEmail||'').toLowerCase()===String(r.member_email||'').toLowerCase());
+  return p?p.name:(r.member_email||'志愿者');}
+function pendBlock(cid){
+  const rows=pendFor(cid);if(!rows.length)return '';
+  const done=rows.filter(r=>r.kind==='done'),files=rows.filter(r=>r.kind==='file');
+  const who=pendWho(rows[0]);
+  return `<div class="pendbox">
+    <div class="ph">● ${esc(who)} ${done.length?'说完成了':'传了票据'}</div>
+    ${done.filter(r=>r.note).map(r=>`<div class="pn">「${esc(r.note)}」</div>`).join('')}
+    ${files.map(r=>`<div class="pf" onclick="pendOpenFile('${r.id}')">📎 ${esc(r.file_name||'附件')}</div>`).join('')}
+    <div id="pendview_${esc(cid)}"></div>
+    <div class="df" style="margin-top:8px">
+      <button class="btn sm" style="flex:1" onclick="pendAccept('${esc(cid)}')">确认完成</button>
+      <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px;align-self:center;padding:0 8px"
+        onclick="pendReject('${esc(cid)}')">退回</span></div></div>`;
+}
+async function pendAccept(cid){
+  if(S.readonly)return;
+  const rows=pendFor(cid);if(!rows.length)return;
+  const evId=rows[0].event_id;
+  // local-first: confirming from a second device whose copy of this event is stale would push the
+  // stale doc over the 800ms debounce and quietly undo work done elsewhere.
+  if(!ev()||ev().id!==evId){await cloudLoad();S.evId=evId;}
+  if(!chipById(cid)){toast('这项已经不在台本里了');loadPending();return;}
+  exSet(cid,2);                                   // the host's own hand — RES_ST semantics untouched
+  const ids=pendFor(cid).map(r=>r.id);            // 确认 accepts that chip's 票据 too: one tap, not four
+  const {error}=await sb.from('ym_submit').update({status:'accepted'}).in('id',ids);
+  if(error)toast('已翻状态，但回执未标记：'+error.message);
+  loadPending();
+}
+async function pendReject(cid){
+  if(S.readonly)return;
+  const ids=pendFor(cid).map(r=>r.id);if(!ids.length)return;
+  const {error}=await sb.from('ym_submit').update({status:'rejected'}).in('id',ids);
+  if(error){toast('退回失败：'+error.message);return;}
+  toast('已退回 —— TA 可以改完再报一次');loadPending();
+}
+// fetch the bytes for ONE row, only when the host actually asks to look
+function pendOpenFile(sid){
+  const box=$('pendview_'+((PENDING.find(r=>r.id===sid)||{}).chip_id||''));if(!box)return;
+  box.textContent='读取中…';
+  sb.from('ym_submit').select('file_name,file_mime,file_data').eq('id',sid).maybeSingle()
+    .then(({data,error})=>{
+      if(error||!data){box.textContent='读取失败';return;}
+      const src='data:'+(data.file_mime||'image/jpeg')+';base64,'+(data.file_data||'');
+      box.innerHTML=(data.file_mime==='application/pdf')
+        ? `<a class="pf" href="${src}" download="${esc(data.file_name||'票据.pdf')}">⬇ ${esc(data.file_name||'票据.pdf')}</a>`
+        : `<img src="${src}" style="max-width:100%;border-radius:6px;margin-top:6px">`;});
+}
 function exDue(cid,v){const c=chipById(cid);if(c){c.due=v||undefined;save();}}
 function exOwner(cid,v){if(S.readonly)return;const c=chipById(cid);if(c){c.owner=(v||'').trim()||undefined;save();render();}}
 // which 环节 a chip sits on — the same context the hover/tap brief shows (plain data, no AI)

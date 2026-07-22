@@ -3,19 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>成员页 · ym</title>
+<title>我的志愿者页 · ym</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{--felt:#16241E;--felt-up:#1E3129;--stock:#E8E0CD;--stock-dim:#8E9A90;
-    --brass:#C9A356;--brass-dim:#6E5F36;--ink:#0E1512;--muted:#7C8F85;--line:#2C4238;--ok:#7FA98A}
+    --brass:#C9A356;--brass-dim:#6E5F36;--ink:#0E1512;--muted:#7C8F85;--line:#2C4238;--ok:#7FA98A;
+    --alarm:#D2604A}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0}
   body{background:#0E1713;color:var(--stock);
     font:14px/1.7 "Noto Sans JP",-apple-system,"PingFang SC","Hiragino Sans",sans-serif}
   .num{font-family:Oswald,sans-serif;font-variant-numeric:tabular-nums}
-  .app{max-width:560px;margin:0 auto;min-height:100vh;background:var(--felt);padding:0 16px 40px}
+  .app{max-width:560px;margin:0 auto;min-height:100vh;background:var(--felt);padding:0 16px 44px}
   .top{display:flex;align-items:center;gap:10px;height:50px;border-bottom:1px solid var(--line)}
   .top .logo{font-family:Oswald,sans-serif;font-size:17px;color:var(--brass)}
   .top .t{font-size:12px;color:var(--muted);letter-spacing:.18em}
@@ -28,14 +29,33 @@
   button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
   .btn{background:var(--brass);color:var(--ink);border-radius:4px;padding:10px 16px;
     font-size:12.5px;font-weight:700;letter-spacing:.06em}
+  .btn:disabled{opacity:.5}
   .btn.ghost{background:none;color:var(--brass);border:1px solid var(--brass-dim)}
+  .btn.sm{padding:7px 12px;font-size:11.5px}
   .card{background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:13px 14px;margin:12px 0}
-  .job .ev{font-size:14.5px;font-weight:700}
-  .job .meta{font-size:11px;color:var(--muted);letter-spacing:.06em;margin-top:2px}
-  .duty{display:flex;gap:9px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .ev{font-size:15px;font-weight:700}
+  .meta{font-size:11px;color:var(--muted);letter-spacing:.06em;margin-top:2px}
+  /* 你要做的事 */
+  .duty{border-bottom:1px solid var(--line);padding:10px 0}
   .duty:last-child{border-bottom:0}
-  .duty .tm{font-family:Oswald,sans-serif;width:48px;flex:none;color:var(--stock-dim)}
-  .duty .st{margin-left:auto;font-size:10.5px;color:var(--brass);flex:none}
+  .duty .dn{font-size:14px;font-weight:600}
+  .duty .dm{font-size:11px;color:var(--muted);margin-top:2px}
+  .duty .st{font-size:10.5px;color:var(--brass)}
+  .duty .acts{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .duty .said{font-size:11.5px;color:var(--ok)}
+  .duty .back{font-size:11.5px;color:var(--alarm)}
+  .fileup{border:1px solid var(--brass-dim);color:var(--brass);border-radius:4px;
+    padding:7px 12px;font-size:11.5px;cursor:pointer}
+  .mine{font-size:11px;color:var(--brass);margin-top:5px}
+  .mine .x{color:var(--muted);cursor:pointer;margin-left:6px}
+  /* 当天流程 */
+  .rd{display:flex;gap:9px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .rd:last-child{border-bottom:0}
+  .rd .tm{font-family:Oswald,sans-serif;width:46px;flex:none;color:var(--stock-dim)}
+  .rd .sg{flex:1;min-width:0}
+  .rd .ds{display:block;font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:2px}
+  .rd .me{font-size:10px;color:var(--brass);flex:none}
+  .fold{font-size:12px;color:var(--brass);cursor:pointer;padding:8px 0;display:inline-block}
   .rv{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px}
   .rv b{color:var(--brass)}
   .note{font-size:10.5px;color:var(--muted);line-height:1.8;margin-top:18px}
@@ -48,85 +68,225 @@
 <div class="app" id="app"></div>
 <script>
 'use strict';
-function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+  .replace(/'/g,'&#39;').replace(/</g,'&lt;');}
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;
-  document.body.appendChild(t);setTimeout(()=>t.remove(),2200);}
+  document.body.appendChild(t);setTimeout(()=>t.remove(),2600);}
 function fmtDate(s){if(!s)return '';const d=new Date(s+'T00:00:00');if(isNaN(d))return s;
   return (d.getMonth()+1)+'/'+d.getDate()+'('+'日一二三四五六'[d.getDay()]+')';}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function shrink(file,cb){ // photos → ≤1600px jpeg before upload (same as the host app)
+  const img=new Image();
+  img.onload=()=>{const s=Math.min(1,1600/Math.max(img.width,img.height));
+    const c=document.createElement('canvas');c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    cb(c.toDataURL('image/jpeg',.85).split(',')[1]);URL.revokeObjectURL(img.src);};
+  img.src=URL.createObjectURL(file);
+}
 const SB_URL='https://ugkopxmeqsbtjeimultz.supabase.co', SB_KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
-let SESSION=null,SHARES=null,_busy=false;
+let SESSION=null,SHARES=null,MINE=[],_busy=false,_bad='',OPEN={};
 const $=id=>document.getElementById(id);
 
+/* ---------- render ---------- */
 function render(){
   let body='';
-  if(!SESSION)body=loginHtml();
+  if(!SESSION)body=_bad?badHtml():loginHtml();
+  else if(needPw())body=setPwHtml();
   else if(SHARES===null)body=`<div class="empty">读取中…</div>`;
-  else if(!SHARES.length)body=`<div class="empty">还没有主办方发布给你的内容。<br>
-    <span class="muted">请确认主办方已用这个邮箱给你授权。</span></div>`;
+  else if(!SHARES.length)body=revokedHtml();
   else body=SHARES.map(shareHtml).join('');
-  document.getElementById('app').innerHTML=`
-    <div class="top"><span class="logo">ym</span><span class="t">成员页</span><span class="sp"></span>
-      ${SESSION?`<button class="btn ghost" style="padding:6px 12px;font-size:11.5px" onclick="signOut()">退出</button>`:''}</div>
+  $('app').innerHTML=`
+    <div class="top"><span class="logo">ym</span><span class="t">我的志愿者页</span><span class="sp"></span>
+      ${SESSION?`<button class="btn ghost sm" onclick="signOut()">退出</button>`:''}</div>
     ${body}
-    <p class="note">此页只显示主办方发布给你本人的内容（你的岗位与记录）。成员之间互不可见 —
-      有任何问题请直接联系主办方。</p>`;
+    <p class="note">这里只显示主办方发布给你本人的内容：公开信息、当天流程，和你负责的事。
+      志愿者之间互不可见 —— 有任何问题请直接联系主办方。</p>`;
 }
 function loginHtml(){
   return `<div class="card" style="margin-top:28px">
-    <div class="lbl" style="margin-bottom:10px">登录 — 志愿者 / 工作人员</div>
-    <input id="em" type="email" placeholder="邮箱（主办方授权用的那个）" style="margin-bottom:8px">
+    <div class="lbl" style="margin-bottom:10px">用主办方给你的授权码进入</div>
+    <input id="em" type="email" placeholder="邮箱（主办方授权的那个）" style="margin-bottom:8px">
+    <input id="code" inputmode="numeric" placeholder="6 位授权码" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')useCode()">
+    <button class="btn" style="width:100%" onclick="useCode()">进入</button>
+    <p class="note">授权码 24 小时内有效，只能用一次。首次进入会让你设置一个密码，之后就用密码登录。</p>
+    <div class="lbl" style="margin:18px 0 8px">已经设过密码了</div>
     <input id="pw" type="password" placeholder="密码" style="margin-bottom:10px"
       onkeydown="if(event.key==='Enter')signIn()">
-    <div style="display:flex;gap:8px">
-      <button class="btn" style="flex:1" onclick="signIn()">登录</button>
-      <button class="btn ghost" style="flex:1" onclick="signUp()">首次注册</button></div>
-    <p class="note">注册用主办方给你授权的邮箱；确认邮件后回来登录即可，无需等待审批。</p></div>`;
+    <button class="btn ghost" style="width:100%" onclick="signIn()">用密码登录</button></div>`;
+}
+function badHtml(){
+  return `<div class="card" style="margin-top:28px"><div class="lbl" style="margin-bottom:8px">进不去</div>
+    <div style="font-size:13px;line-height:1.9">${esc(_bad)}</div>
+    <div style="margin-top:12px"><button class="btn ghost sm" onclick="_bad='';render()">重试</button></div></div>`;
+}
+function setPwHtml(){
+  return `<div class="card" style="margin-top:28px">
+    <div class="lbl" style="margin-bottom:10px">设置密码 —— 只需这一次</div>
+    <input id="np" type="password" placeholder="设一个密码（至少 6 位）" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')setPw()">
+    <button class="btn" style="width:100%" onclick="setPw()">保存并进入</button>
+    <p class="note">下次直接用邮箱和这个密码登录，不用再要授权码。</p></div>`;
+}
+function revokedHtml(){
+  return `<div class="empty">主办方还没有发布内容给你，<br>或者已经收回了这个页面的权限。<br>
+    <span class="muted">有问题请直接联系主办方。</span></div>`;
 }
 function shareHtml(row){
-  const d=row.payload||{};
-  const jobs=(d.jobs||[]).map(j=>`<div class="card job">
-    <div class="ev">${esc(j.event)}</div>
-    <div class="meta">${fmtDate(j.date)}${j.start?' '+esc(j.start):''}${j.venue?' · '+esc(j.venue):''}</div>
-    <div style="margin-top:8px">${(j.duties||[]).map(x=>`<div class="duty">
-      <span class="tm">${esc(x.time||'--')}</span><span>${esc(x.where)}</span>
-      <span class="st">${esc(x.status||'')}</span></div>`).join('')}</div>
-    ${(j.hours||j.review)?`<div class="rv">${j.hours?`服务时长 <b class="num">${esc(j.hours)}h</b>`:''}
-      ${j.review?`${j.hours?' · ':''}评价：${esc(j.review)}`:''}</div>`:''}</div>`).join('');
+  const d=row.payload||{},host=row.host;
+  const jobs=(d.jobs||[]).map(j=>{
+    const key=String(j.eventId||'');
+    const duties=(j.duties||[]).map(x=>dutyHtml(host,j,x)).join('');
+    const rd=j.rundown||[],open=OPEN[key];
+    return `<div class="card">
+      <div class="ev">${esc(j.event||'')}</div>
+      <div class="meta">${fmtDate(j.date)}${j.start?' '+esc(j.start):''}${j.venue?' · '+esc(j.venue):''}</div>
+      ${j.theme?`<div class="meta">${esc(j.theme)}</div>`:''}
+      ${duties?`<div class="lbl" style="margin:14px 0 2px">你要做的 ${j.duties.length} 件事</div>${duties}`:''}
+      ${rd.length?`<div class="fold" onclick="fold('${esc(key)}')">${open?'▾':'▸'} 当天流程（${rd.length} 个环节）</div>
+        ${open?`<div>${rd.map(r=>`<div class="rd">
+            <span class="tm">${esc(r.time||'--')}</span>
+            <span class="sg">${esc(r.seg||'')}${r.desc?`<span class="ds">${esc(r.desc)}</span>`:''}</span>
+            ${r.mine?'<span class="me">你负责</span>':''}</div>`).join('')}</div>`:''}`:''}
+      ${(j.hours||j.review)?`<div class="rv">${j.hours?`服务时长 <b class="num">${esc(j.hours)}h</b>`:''}
+        ${j.review?`${j.hours?' · ':''}评价：${esc(j.review)}`:''}</div>`:''}</div>`;}).join('');
   return `<div style="margin-top:18px">
     <div class="lbl">你好，${esc(d.name||'')}${d.role?' · '+esc(d.role):''}</div>
     ${jobs||'<div class="empty">暂无岗位安排</div>'}</div>`;
 }
-async function load(){
-  SHARES=null;render();
-  try{await sb.rpc('ym_claim_shares');}catch(e){}
-  const {data,error}=await sb.from('ym_share').select('payload,updated_at');
-  if(error){toast('读取失败：'+error.message);SHARES=[];}
-  else SHARES=data||[];
-  render();
+function dutyHtml(host,j,x){
+  const cid=x.chipId||'',evId=String(j.eventId||'');
+  const rows=MINE.filter(r=>r.chip_id===cid&&r.event_id===evId);
+  const done=rows.find(r=>r.kind==='done'),files=rows.filter(r=>r.kind==='file');
+  const meta=[x.where,x.time,x.needs?'需要 '+x.needs:'',x.due?'截止 '+fmtDate(x.due):''].filter(Boolean).join(' · ');
+  let act;
+  if(done&&done.status==='accepted')act=`<span class="said">✓ 主办方已确认</span>`;
+  else if(done&&done.status==='rejected')
+    act=`<span class="back">主办方退回了 —— 可以改完再报一次</span>
+      <button class="btn sm" onclick="claimDone('${esc(host)}','${esc(evId)}','${esc(cid)}')">重新报完成</button>`;
+  else if(done)
+    act=`<span class="said">● 已报完成 · 等主办方确认</span>
+      <span class="mine"><span class="x" onclick="withdraw('${esc(done.id)}')">撤回</span></span>`;
+  else
+    act=`<label class="fileup">📎 传票据<input type="file" accept="image/*,application/pdf" style="display:none"
+        onchange="upFile('${esc(host)}','${esc(evId)}','${esc(cid)}',this)"></label>
+      <button class="btn sm" onclick="claimDone('${esc(host)}','${esc(evId)}','${esc(cid)}')">我做完了</button>`;
+  return `<div class="duty">
+    <div class="dn">${esc(x.name||x.where||'')}</div>
+    ${meta?`<div class="dm">${esc(meta)}</div>`:''}
+    <div class="dm">主办方那边：<span class="st">${esc(x.status||'')}</span></div>
+    ${files.map(f=>`<div class="mine">📎 ${esc(f.file_name||'附件')}
+      ${f.status==='accepted'?'':`<span class="x" onclick="withdraw('${esc(f.id)}')">撤回</span>`}</div>`).join('')}
+    <div class="acts">${act}</div></div>`;
+}
+function fold(k){OPEN[k]=!OPEN[k];render();}
+
+/* ---------- auth ---------- */
+// 授权码 = GoTrue's own email_otp. verifyOtp is a POST with NO redirect, so it works whether or not
+// the redirect allow-list is configured — that is why it is the primary way in.
+function useCode(){
+  if(_busy||!sb)return;
+  const email=($('em').value||'').trim().toLowerCase(),token=($('code').value||'').trim();
+  if(!email||!token){toast('请输入邮箱和授权码');return;}
+  _busy=true;
+  sb.auth.verifyOtp({email,token,type:'invite'})
+    .then(r=>(r&&!r.error)?r:sb.auth.verifyOtp({email,token,type:'magiclink'}))
+    .then(r=>{_busy=false;
+      if(r&&r.error){
+        _bad=/expired|invalid/i.test(r.error.message||'')
+          ? '这个授权码已失效（只能用一次，24 小时内有效）。请让主办方重新发一次。'
+          : '进不去，请再试一次，或让主办方重新发一次授权码。';
+        render();}
+    }).catch(()=>{_busy=false;_bad='网络不太稳，请重试。';render();});
 }
 function signIn(){
-  if(_busy||!sb)return;_busy=true;
-  const email=($('em').value||'').trim(),pw=$('pw').value||'';
-  if(!email||!pw){toast('请输入邮箱和密码');_busy=false;return;}
+  if(_busy||!sb)return;
+  const email=($('em').value||'').trim().toLowerCase(),pw=$('pw').value||'';
+  if(!email||!pw){toast('请输入邮箱和密码');return;}
+  _busy=true;
   sb.auth.signInWithPassword({email,password:pw}).then(({error})=>{_busy=false;
-    if(error){toast('登录失败：'+error.message);return;}});
+    if(error)toast('登录失败：邮箱或密码不对');});
 }
-function signUp(){
-  if(_busy||!sb)return;_busy=true;
-  const email=($('em').value||'').trim(),pw=$('pw').value||'';
-  if(!email||pw.length<6){toast('请输入邮箱和至少6位密码');_busy=false;return;}
-  sb.auth.signUp({email,password:pw,options:{emailRedirectTo:'https://ym.jjconnect.tokyo/member/'}}).then(({data,error})=>{_busy=false;
-    if(error){toast('注册失败：'+error.message);return;}
-    toast(data.session?'注册成功':'确认邮件已发送，请查收后回来登录');});
+// user_metadata is user-writable — a UX flag, never a boundary; the boundary is RLS.
+function needPw(){return !!(SESSION&&SESSION.user&&SESSION.user.user_metadata
+  &&SESSION.user.user_metadata.must_set_password);}
+function setPw(){
+  if(_busy||!sb)return;
+  const pw=$('np').value||'';
+  if(pw.length<6){toast('密码至少 6 位');return;}
+  _busy=true;
+  sb.auth.updateUser({password:pw,data:{must_set_password:false}}).then(({data,error})=>{_busy=false;
+    if(error){toast('设置失败：'+error.message);return;}
+    if(data&&data.user&&SESSION)SESSION.user=data.user;
+    toast('密码已设好');load();});
 }
-function signOut(){sb.auth.signOut().then(()=>{SHARES=null;render();});}
+function signOut(){sb.auth.signOut().then(()=>{SHARES=null;MINE=[];render();});}
+
+/* ---------- data ---------- */
+async function load(){
+  SHARES=null;render();
+  // no empty catch: this rpc failing is exactly what explains "我拿到码了但什么都没有"
+  const cl=await sb.rpc('ym_claim_shares');
+  if(cl.error)toast('关联失败：'+cl.error.message);
+  const {data,error}=await sb.from('ym_share').select('host,payload,updated_at');
+  if(error){toast('读取失败：'+error.message);SHARES=[];render();return;}
+  SHARES=data||[];
+  await loadMine();
+  render();
+}
+async function loadMine(){
+  const {data,error}=await sb.from('ym_submit')
+    .select('id,event_id,chip_id,kind,status,note,file_name,created_at');
+  MINE=error?[]:(data||[]);
+}
+async function claimDone(host,evId,cid){
+  const prev=MINE.find(r=>r.chip_id===cid&&r.event_id===evId&&r.kind==='done');
+  if(prev&&prev.status==='accepted'){toast('主办方已确认');return;}
+  if(prev){const d=await sb.from('ym_submit').delete().eq('id',prev.id);
+    if(d.error){toast('提交失败：'+d.error.message);return;}}
+  // ON CONFLICT DO NOTHING (needs no UPDATE policy) — a double tap must not error
+  const {error}=await sb.from('ym_submit').upsert(
+    {host,member:SESSION.user.id,event_id:evId,chip_id:cid,kind:'done',slot:'',note:''},
+    {onConflict:'host,member,event_id,chip_id,kind,slot',ignoreDuplicates:true});
+  if(error){toast(/row-level|policy/i.test(error.message)
+    ? '主办方还没发布这一项，请稍后再试' : '提交失败：'+error.message);return;}
+  await loadMine();render();toast('已报完成 —— 等主办方确认');
+}
+function upFile(host,evId,cid,input){
+  const f=input.files&&input.files[0];input.value='';if(!f)return;
+  const send=(b64,name,mime)=>{
+    if(b64.length>600000){toast('这张太大了（约 400KB 以内），请重拍或裁一下');return;}
+    sb.from('ym_submit').insert({host,member:SESSION.user.id,event_id:evId,chip_id:cid,
+      kind:'file',slot:uid(),file_name:String(name).slice(0,200),file_mime:mime,file_data:b64})
+      .then(({error})=>{
+        if(error){toast(/row-level|policy/i.test(error.message)
+          ? '主办方还没发布这一项，请稍后再试' : '上传失败：'+error.message);return;}
+        loadMine().then(()=>{render();toast('票据已传给主办方');});});
+  };
+  if(f.type==='application/pdf'){
+    if(f.size>400000){toast('这个文件太大了（约 400KB 以内）');return;}
+    const rd=new FileReader();
+    rd.onload=()=>send(String(rd.result).split(',')[1]||'',f.name||'票据.pdf','application/pdf');
+    rd.readAsDataURL(f);
+  }else{
+    toast('处理中…');
+    shrink(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));
+  }
+}
+async function withdraw(id){
+  const {error}=await sb.from('ym_submit').delete().eq('id',id);
+  if(error){toast('撤回失败：'+error.message);return;}
+  await loadMine();render();toast('已撤回');
+}
+
 if(sb){
   sb.auth.getSession().then(({data})=>{SESSION=data.session;if(SESSION)load();else render();});
   sb.auth.onAuthStateChange((ev2,s2)=>{
     const was=SESSION&&SESSION.user.id,now=s2&&s2.user.id;
-    SESSION=s2;if(was!==now){if(s2)load();else render();}});
-}else{document.getElementById('app').innerHTML='<div class="empty">加载失败，请刷新</div>';}
+    SESSION=s2;_bad='';
+    if(was!==now){if(s2)load();else{SHARES=null;MINE=[];render();}}});
+}else{$('app').innerHTML='<div class="empty">加载失败，请刷新</div>';}
 render();
 </script>
 </body>
