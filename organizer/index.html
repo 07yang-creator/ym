@@ -129,14 +129,6 @@
   .rowops button:hover{color:var(--brass)}
   .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
   /* fold-to-major: in fold mode show only 环节 + a summary; the SELECTED row (or 全部展开) expands its chips */
-  .rowcard .rowsum{display:none;font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:.03em;cursor:pointer}
-  .rowcard .rowsum .empty{color:var(--brass-dim)}
-  .main.foldsheet .rowcard .rowdetail{display:none}
-  .main.foldsheet .rowcard .rowsum{display:block}
-  .main.foldsheet .rowcard.sel .descwrap,.main.foldsheet.showall .rowcard .descwrap{display:flex}
-  .main.foldsheet .rowcard.sel .chips,.main.foldsheet.showall .rowcard .chips{display:flex}
-  .main.foldsheet .rowcard.sel .rowfiles,.main.foldsheet.showall .rowcard .rowfiles{display:flex}
-  .main.foldsheet .rowcard.sel .rowsum,.main.foldsheet.showall .rowcard .rowsum{display:none}
   .descwrap{display:flex;gap:6px;align-items:center;margin-top:6px}
   .descsi{flex:1;min-width:0;background:var(--felt);border:1px solid var(--line);border-radius:5px;
     color:var(--stock);font-size:12px;padding:6px 9px}
@@ -162,8 +154,6 @@
     background:var(--felt);border:1px solid var(--line);border-radius:12px;padding:3px 9px;cursor:pointer}
   .filechip .x{color:var(--brass-dim)}
   .fileadd{font-size:10.5px;color:var(--brass);border:1px dashed var(--brass-dim);border-radius:12px;padding:3px 9px;cursor:pointer}
-  .foldtoggle{display:flex;justify-content:space-between;align-items:center;margin:2px 2px 8px;font-size:12px;color:var(--muted)}
-  .foldtoggle .t{color:var(--brass);cursor:pointer;font-weight:600}
   .chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:3px;
     background:var(--felt);border:1px solid var(--line);color:var(--stock-dim);cursor:pointer;user-select:none}
   .chip .x{color:var(--brass-dim);padding:0 1px}
@@ -1268,14 +1258,13 @@ function viewSheet(){
         <input class="owni" value="${esc(r.owner)}" placeholder="负责人" list="peoplelist"
           onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','owner',this.value)">
       </div>
-      <div class="descwrap rowdetail">
+      <div class="descwrap">
         <input class="descsi" value="${esc(r.desc||'')}" placeholder="这个环节的简介 / 说明（写几个关键词，点 ✨ 补写）"
           onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','desc',this.value)">
         <button class="aibtn" title="AI 补写（先写几个关键词）"
           onclick="event.stopPropagation();aiPhrase(this.parentElement.querySelector('.descsi'),'环节说明','${esc(r.seg||'环节')}')">✨</button></div>
-      <div class="chips rowdetail">${chipsHtml(r,r.id)}</div>
-      <div class="rowfiles rowdetail">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">📎 ${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" multiple style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
-      <div class="rowsum" onclick="event.stopPropagation();selRow('${r.id}')">${rowSum(r)}</div>
+      <div class="chips">${chipsHtml(r,r.id)}</div>
+      <div class="rowfiles">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">📎 ${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" multiple style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
     </div>
     <div class="rowops">
       <button onclick="event.stopPropagation();moveRow('${r.id}',-1)" ${i===0?'disabled':''}>▲</button>
@@ -1288,29 +1277,20 @@ function viewSheet(){
         <button class="btn sm" onclick="goExec('${e.id}')">▶ 执行看板</button></div>`
     :`<div class="kickoff plan"><button class="btn big" onclick="enterExec()">🚀 计划好了 · 开始跟踪执行</button>
         <span class="rem">把计划变成会自己提醒你的执行看板</span></div>`):'';
-  const foldbar=e.rows.length?`<div class="foldtoggle"><span>环节 ${e.rows.length} · 点一个展开编辑</span>
-    <span class="t" onclick="S.showAllRows=!S.showAllRows;render()">${S.showAllRows?'收起细节':'全部展开'}</span></div>`:'';
-  return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main foldsheet${S.showAllRows?' showall':''}${S.readonly?' ro':''}">
+  return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main${S.readonly?' ro':''}">
     ${sw}${roBanner}
     ${e.demo?`<div class="hintbar" style="border:1px dashed var(--brass-dim);border-radius:5px;padding:9px 11px">
       <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不会上云或公开到官网。
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
       <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧/📚 资产库点选应用。</div>
-    ${strips}${participantsStrip(e)}${S.costDraft?costDraftCard():''}${hd}${kickoff}${foldbar}${rows}
+    ${strips}${participantsStrip(e)}${S.costDraft?costDraftCard():''}${hd}${kickoff}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
   <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>
   ${S.gate?gateCard():''}`;
 }
 // folded 环节 summary — major item stays (time/环节/负责人), details (chips) hide behind this
-function rowSum(r){
-  const nRes=r.resources.filter(c=>(c.type||'人')!=='任务').length;
-  const nJob=r.resources.filter(c=>(c.type||'人')==='任务').length;
-  const nMon=(r.money||[]).length;
-  if(!nRes&&!nJob&&!nMon)return '<span class="empty">还没安排 · 点开添加</span>';
-  return [nRes?`资源 ${nRes}`:'',nJob?`要做 ${nJob}`:'',nMon?`收支 ${nMon}`:''].filter(Boolean).join('　·　');
-}
 function chipsHtml(holder,loc){
   const res=holder.resources.map(c=>{
     if((c.type||'人')==='任务'){   // a JOB — a 要做的事 for this 环节 (booking / setup / tools …)
@@ -1484,7 +1464,7 @@ function cloneEvent(srcId){
     rows:(src.rows||[]).map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,desc:r.desc,
       resources:live(r.resources).map(cpR),money:(r.money||[]).map(cpM)})),   // rows KEEP their 要做的事 (jobs)
     participants:[]};
-  STORE.events.push(ne);S.evId=ne.id;S.readonly=false;S.view='sheet';S.showAllRows=false;S.sel='header';S.gate=null;
+  STORE.events.push(ne);S.evId=ne.id;S.readonly=false;S.view='sheet';S.sel='header';S.gate=null;
   save();render();toast('已照这份台本开了新一场 — 改个日期就能办 🎉');}
 function delEvent(id){const e=id?STORE.events.find(x=>x.id===id):ev();if(!e)return;
   // only 筹备中 (plan) events can be deleted — kicked-off or finished ones are protected
