@@ -144,6 +144,9 @@
   .aibtn:hover{background:rgba(201,163,86,.2)}
   .aibtn:disabled{opacity:.5;cursor:default}
   .jobdlg .descwrap{margin-top:0}
+  .rvsum{width:100%;background:var(--felt);border:1px solid var(--line);border-radius:6px;
+    color:var(--stock);font-size:13px;padding:9px 11px;line-height:1.7;resize:vertical;font-family:inherit}
+  .rvsum:focus{border-color:var(--brass-dim);outline:none}
   .rowfiles{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center}
   .filechip{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--stock-dim);
     background:var(--felt);border:1px solid var(--line);border-radius:12px;padding:3px 9px;cursor:pointer}
@@ -1226,7 +1229,7 @@ function viewSheet(){
         <button class="aibtn" title="AI 补写（先写几个关键词）"
           onclick="event.stopPropagation();aiPhrase(this.parentElement.querySelector('.descsi'),'环节说明','${esc(r.seg||'环节')}')">✨</button></div>
       <div class="chips rowdetail">${chipsHtml(r,r.id)}</div>
-      <div class="rowfiles rowdetail">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">📎 ${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
+      <div class="rowfiles rowdetail">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">📎 ${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" multiple style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
       <div class="rowsum" onclick="event.stopPropagation();selRow('${r.id}')">${rowSum(r)}</div>
     </div>
     <div class="rowops">
@@ -1302,17 +1305,17 @@ function e_upd(f,v){const e=ev();e[f]=v;save();if(e.publicOn)syncEventPost(e);}
 function r_upd(id,f,v){const r=ev().rows.find(x=>x.id===id);if(r){r[f]=v;save();}}
 // ✨ AI 补写 — a few keywords → one natural line. Fills the field; the host still edits & saves
 // (assistive, confirm-first: the server prompt forbids inventing times/names/amounts).
-function aiPhrase(el,kind,ctx){
+function aiPhrase(el,kind,ctx,longForm){
   if(S.readonly)return;
   if(typeof el==='string')el=document.getElementById(el);
   if(!el)return;
   const t=(el.value||'').trim();
   if(!t){toast('先写几个关键词，再点 ✨');el.focus();return;}
-  const btn=el.parentElement&&el.parentElement.querySelector('.aibtn');
+  const btn=(el.parentElement&&el.parentElement.querySelector('.aibtn'))||document.querySelector('.aibtn.for-'+el.id);
   if(btn){btn.disabled=true;btn.textContent='…';}
   const done=()=>{if(btn){btn.disabled=false;btn.textContent='✨';}};
   fetch(API+'/api/phrase',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({text:t,kind:kind||'',context:ctx||'',
+    body:JSON.stringify({text:t,kind:kind||'',context:ctx||'',long:!!longForm,
       user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
   .then(r=>r.json()).then(res=>{done();
     if(res&&res.text&&res.text!==t){el.value=res.text;el.dispatchEvent(new Event('change'));toast('已补写 — 可以再改');}
@@ -1320,11 +1323,22 @@ function aiPhrase(el,kind,ctx){
   .catch(e=>{done();toast('补写失败：'+e.message);});
 }
 // 环节 attachments — small files inline (data URL); big ones keep the name only until the Drive proxy is wired
-function rowAttach(rid,input){if(S.readonly)return;const f=input.files&&input.files[0];if(!f)return;
-  const r=ev().rows.find(x=>x.id===rid);if(!r)return;if(!r.files)r.files=[];const fid=uid();
-  if(f.size>400000){r.files.push({id:fid,name:f.name});save();render();toast('已记下文件名（大文件待接入云盘）');return;}
-  const rd=new FileReader();rd.onload=()=>{r.files.push({id:fid,name:f.name,url:rd.result,mime:f.type});save();render();toast('已附上：'+f.name);};
-  rd.readAsDataURL(f);}
+function rowAttach(rid,input){const r=ev().rows.find(x=>x.id===rid);if(r)attachTo(r,input);}
+// shared multi-file attach: small files inline (data URL), big ones keep the name only
+function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs||!fs.length)return;
+  if(!holder.files)holder.files=[];let pending=fs.length;const n=fs.length;
+  const finish=()=>{if(!--pending){save();render();toast('已附上 '+n+' 个文件');}};
+  [...fs].forEach(f=>{const fid=uid();
+    if(f.size>400000){holder.files.push({id:fid,name:f.name});finish();return;}
+    const rd=new FileReader();
+    rd.onload=()=>{holder.files.push({id:fid,name:f.name,url:rd.result,mime:f.type});finish();};
+    rd.onerror=finish;rd.readAsDataURL(f);});
+  input.value='';}
+/* 复盘 event-level attachments */
+function evAttach(input){const e=ev();if(e)attachTo(e,input);}
+function delEvFile(fid){const e=ev();if(e&&e.files){e.files=e.files.filter(x=>x.id!==fid);save();render();}}
+function openEvFile(fid){const e=ev();const f=((e&&e.files)||[]).find(x=>x.id===fid);if(!f)return;
+  if(f.url)window.open(f.url,'_blank');else toast(f.name+' — 待接入云盘后可打开');}
 function delFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);if(r&&r.files){r.files=r.files.filter(x=>x.id!==fid);save();render();}}
 function openFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);const f=r&&(r.files||[]).find(x=>x.id===fid);if(!f)return;
   if(f.url)window.open(f.url,'_blank');else toast(f.name+' — 待接入云盘后可打开');}
@@ -2418,6 +2432,16 @@ function viewReview(){
       <span class="num" style="font-size:15px">${am+aw}/${total}</span></div>
       <div style="font-size:12.5px">男 ${am} · 女 ${aw} · 评价 ${evals} 条${noshow.length?`<br><span class="muted">未到：${noshow.map(p=>esc(p.gender+p.n+' '+p.name)).join('、')}</span>`:''}</div></div>
     ${volSection(e)}
+    <div class="rvsec"><div class="hd"><span class="lbl">复盘小结</span>
+        ${!S.readonly?`<button class="aibtn for-rv_summary" title="AI 补写（先写几个关键词）"
+          onclick="aiPhrase('rv_summary','复盘小结','${esc(e.name)}',true)">✨</button>`:''}</div>
+      <textarea id="rv_summary" class="rvsum" rows="4" ${S.readonly?'readonly':''}
+        placeholder="写几个关键词就行，例如：女生到得早 · 快问快答最热 · 茶歇偏少 —— 再点 ✨ 补成一段。"
+        onchange="e_upd('summary',this.value)">${esc(e.summary||'')}</textarea>
+      <div class="rowfiles" style="margin-top:8px">
+        ${(e.files||[]).map(f=>`<span class="filechip" onclick="openEvFile('${f.id}')">📎 ${esc(f.name)}${!S.readonly?`<span class="x" onclick="event.stopPropagation();delEvFile('${f.id}')">✕</span>`:''}</span>`).join('')}
+        ${!S.readonly?`<label class="fileadd">＋附件（可多选）<input type="file" multiple style="display:none" onchange="evAttach(this)"></label>`:''}</div>
+      <p class="note9" style="margin-top:6px">照片、名单、票据都能附在这里；小文件直接存下，大文件先记文件名（接入云盘后自动升级）。</p></div>
     <div class="exports">
       <button class="btn sm" onclick="startSaveBack()">💾 保存回资产库</button>
       <button class="btn ghost sm" onclick="shareRundown()">📤 分享台本</button>
