@@ -37,7 +37,14 @@
   .topbar .ttl{font-size:12px;color:var(--muted);letter-spacing:.18em}
   .topbar .sp{flex:1}
   .navlinks{display:flex;gap:2px}
-  .navlinks button{color:var(--muted);font-size:12.5px;letter-spacing:.08em;padding:7px 9px;border-radius:4px}
+  .navlinks button{color:var(--muted);font-size:12.5px;letter-spacing:.08em;padding:7px 9px;border-radius:4px;
+    white-space:nowrap}
+  /* 5 个 tab 在 375px 上按原尺寸会每个折成两行。收紧字距和内边距，让它们各占一行 —— 换行的
+     导航比小一号的字难读得多。 */
+  @media(max-width:430px){
+    .navlinks{gap:0}
+    .navlinks button{font-size:11.5px;letter-spacing:0;padding:7px 5px}
+  }
   .navlinks button.on{color:var(--brass);border-bottom:2px solid var(--brass);border-radius:0}
   .avatar{width:28px;height:28px;border-radius:50%;background:var(--brass);color:var(--ink);
     font-weight:700;display:grid;place-items:center;font-size:12px;flex:none}
@@ -459,6 +466,37 @@
   .joinbox .jrow{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
   .joinbox .jrow:last-of-type{border-bottom:0}
   .joinbox .jn{flex:1;min-width:0;font-size:13px}
+  .rvrow.volrow{flex-wrap:wrap}
+  .selfrep{font-size:11px;color:var(--ok);white-space:nowrap;padding:0 6px}
+  .selfrep.none{color:var(--muted)}
+  /* 同名类在成员页也有一份 —— 两个 app 是独立单文件，样式不共享，改一处要想到另一处 */
+  .cstat{display:flex;gap:18px;align-items:baseline;margin:4px 0 2px}
+  .cstat b{font-family:Oswald,sans-serif;font-size:22px;color:var(--brass);display:block;line-height:1.1}
+  .cstat span{font-size:10px;letter-spacing:.16em;color:var(--muted)}
+  .ptable{margin-bottom:6px}
+  .prow{display:flex;gap:9px;align-items:center;padding:9px 10px;border:1px solid var(--line);
+    border-radius:5px;margin-bottom:5px;cursor:pointer;background:var(--felt-up);font-size:13px}
+  .prow:hover{border-color:var(--brass)}
+  .prow.on{border-color:var(--brass)}
+  .prow .pn{font-weight:600;flex:none;min-width:62px}
+  .prow .pc{color:var(--brass);font-size:11.5px;flex:none;min-width:64px}
+  .prow .prank{flex:none;width:20px;text-align:center;font-family:Oswald,sans-serif;
+    font-size:11px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:3px}
+  .prow .prank.sp{border:0}
+  .prow .pm{flex:1;min-width:0;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media(max-width:430px){
+    .prow{flex-wrap:wrap;row-gap:3px}
+    .prow .pm{flex:1 0 100%;white-space:normal;overflow:visible}   /* 摘要换行，不截断 */
+    .prow .pst{margin-left:auto}
+  }
+  .prow .ppend{flex:none;font-size:10.5px;color:var(--brass)}
+  .prow .pst{flex:none;font-size:10.5px;color:var(--muted)}
+  .drow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+  .drow:last-of-type{border-bottom:0}
+  .drow .de{flex:none;min-width:130px;font-size:12.5px}
+  .drow .dv{font-size:11px;color:var(--ok)}
+  .drow .dv input{width:96px;padding:5px 7px;font-size:12px;margin-left:4px}
+  .drow .dv input:last-child{width:150px}
   .extask .pdot{font-size:9.5px;color:var(--brass);margin-left:6px;white-space:nowrap}
   .extask .pdot.got{color:var(--ok)}
   /* 一键发布 (Y7 §B6) */
@@ -785,6 +823,94 @@ function dropShare(code){
   if(!canCloud()||!code)return;
   sb.from('ym_share').delete().match({host:SESSION.user.id,member_code:code}).then(()=>{});
 }
+/* ---------- 用户一览 (owner 2026-07-27) ----------
+   资产库按「资产类别」组织，找一个人要先想 TA 是志愿者还是嘉宾。这里按 **人** 组织：
+   一屏看到谁有账号、什么编号、什么星级、做过多少、欠你多少确认。点开看服务记录、直接改表现。 */
+function viewPeople(){
+  const all=STORE.library.resources.filter(r=>catOf(r)!=='goods');
+  const q=String(S.pq||'').trim();
+  const hit=p=>{if(!q)return true;const a=codeOf(p);
+    return String(p.name||'').indexOf(q)>=0||(a&&a.code.toUpperCase().indexOf(q.toUpperCase())>=0);};
+  const GRP=[['volunteer','志愿者 / 有偿'],['guest','嘉宾'],['donor','捐赠人']];
+  const body=GRP.map(([cat,label])=>{
+    const list=all.filter(p=>catOf(p)===cat&&hit(p));
+    if(!list.length)return '';
+    return `<div class="sec">${label} <span class="muted" style="font-size:11px">${list.length}</span></div>
+      <div class="ptable">${list.map(p=>peopleRow(p,cat)).join('')}</div>`;}).join('');
+  return `<div class="main" style="max-width:720px;margin:0 auto">
+    <div class="hintbar">用户一览 — 按人看，不按类别看。点一行展开 TA 的服务记录和表现。</div>
+    <input id="pq" value="${esc(q)}" placeholder="搜姓名或编号（如 V0014）"
+      style="margin:10px 0" oninput="S.pq=this.value;renderPeopleOnly()">
+    ${body||'<div class="empty">没有匹配的人。</div>'}
+    ${S.pOpen?peopleDetail():''}</div>`;
+}
+// 输入框里打字不能整页重画（会丢焦点）—— 只换列表那块
+function renderPeopleOnly(){
+  const el=document.querySelector('.main');if(!el)return;
+  const cur=document.activeElement,pos=cur&&cur.id==='pq'?cur.selectionStart:null;
+  el.outerHTML=viewPeople();
+  const n=$('pq');if(n&&pos!=null){n.focus();n.setSelectionRange(pos,pos);}
+}
+function peopleRow(p,cat){
+  const a=codeOf(p),st=codeState(p);
+  const t=a?selfTally(a.code):{n:0,hours:0,cost:0};
+  const hist=cat==='guest'?guestHistory(p.id):null;
+  const meta=cat==='guest'
+    ? `参加 ${hist.length} 场${hist.reduce((s,h)=>s+h.evals.length,0)?' · 评价 '+hist.reduce((s,h)=>s+h.evals.length,0)+' 条':''}`
+    : cat==='donor' ? esc(p.dtype||'个人')
+    : `${esc(p.role||'')}${t.n?' · 完成 '+t.n+' 件 · '+(t.hours%1?t.hours.toFixed(1):t.hours)+'h':''}${t.cost?' · 自费 '+yen(t.cost):''}`;
+  const pend=a?PENDING.filter(r=>String(r.member_code||'')===a.code).length:0;
+  return `<div class="prow${S.pOpen===p.id?' on':''}" onclick="S.pOpen=S.pOpen===
+      '${escJs(p.id)}'?null:'${escJs(p.id)}';loadAccepted();render()">
+    <span class="pn">${esc(p.name)}${dtag(p,1)}</span>
+    <span class="pc num">${a?esc(a.code):'<span class="muted" style="font-size:10px">未发码</span>'}</span>
+    ${a&&a.role==='V'?`<span class="prank">${esc(a.rank||'C')}</span>`:'<span class="prank sp"></span>'}
+    <span class="pm">${meta}</span>
+    ${pend?`<span class="ppend">● ${pend}</span>`:''}
+    <span class="pst">${esc(st.t)}</span></div>`;
+}
+function peopleDetail(){
+  const p=STORE.library.resources.find(x=>x.id===S.pOpen);if(!p){S.pOpen=null;return '';}
+  const cat=catOf(p),a=codeOf(p);
+  const t=a?selfTally(a.code):{n:0,hours:0,cost:0,rows:[]};
+  // 服务记录：每场活动一行，本人申报 vs 主办登记并排
+  const evs=STORE.events.filter(e=>!e.demo).map(e=>{
+    const log=(e.volLog||{})[p.id]||{};
+    const st=a?selfTally(a.code,e.id):{n:0,hours:0,cost:0};
+    const asGuest=(e.participants||[]).find(x=>x.libId===p.id);
+    if(!st.n&&!log.hours&&!log.review&&!asGuest)return '';
+    return `<div class="drow">
+      <span class="de">${esc(e.name)}<span class="muted" style="font-size:10.5px"> ${fmtDate(e.date)}</span></span>
+      ${asGuest?`<span class="dv">号牌 ${esc(asGuest.gender+asGuest.n)}${asGuest.arrived?' · 已到':''}</span>`:''}
+      ${st.n?`<span class="dv">本人申报 ${st.hours%1?st.hours.toFixed(1):st.hours}h${st.cost?' · '+yen(st.cost):''}（${st.n} 件）</span>`:''}
+      ${cat==='volunteer'?`<span class="dv"><input placeholder="主办记时长h" inputmode="decimal" value="${esc(log.hours||'')}"
+          onchange="volLogFor('${escJs(e.id)}','${escJs(p.id)}','hours',this.value)">
+        <input placeholder="活动表现 / 评价" value="${esc(log.review||'')}"
+          onchange="volLogFor('${escJs(e.id)}','${escJs(p.id)}','review',this.value)"></span>`:''}
+    </div>`;}).filter(Boolean).join('');
+  return `<div class="drawerbg" onclick="S.pOpen=null;render()"></div>
+    <div class="exdlg jobdlg askdlg" style="width:min(560px,calc(100vw - 24px))">
+      <div class="hd"><span class="tp">${esc(p.name)}${a?' · '+esc(a.code):''}</span>
+        <button class="btn ghost sm" onclick="S.pOpen=null;render()">✕</button></div>
+      <div class="sub" style="margin:0 0 8px">${esc(ROLE_LBL[a?roleKey(a):'']||(cat==='guest'?'嘉宾':cat==='donor'?'捐赠人':'志愿者'))}${
+        a?' · '+esc(codeState(p).t):' · 未发码'}</div>
+      ${cat==='volunteer'?`<div class="cstat">
+        <div><b class="num">${t.n}</b><span>已确认</span></div>
+        <div><b class="num">${t.hours%1?t.hours.toFixed(1):t.hours}</b><span>本人申报 h</span></div>
+        ${t.cost?`<div><b class="num">${yen(t.cost)}</b><span>自费</span></div>`:''}
+      </div>${a&&a.role==='V'?rankRow(p):''}`:''}
+      <div class="lbl" style="margin:14px 0 4px">服务记录 · 活动表现</div>
+      ${evs||'<div class="note9">还没有记录。</div>'}
+      <div class="df" style="margin-top:12px">
+        <button class="btn ghost sm" style="flex:1" onclick="S.pOpen=null;libEditOpen('${escJs(cat)}','${escJs(p.id)}')">打开资料卡</button>
+        ${cat!=='goods'?`<button class="btn ghost sm" onclick="S.pOpen=null;grantOpen('${escJs(p.id)}')">🔑 账号</button>`:''}</div>
+    </div>`;
+}
+// 从一览里改某场活动的表现 —— volLog 是按活动存的，所以要指定 eventId
+function volLogFor(evId,pid,k,v){
+  const e=STORE.events.find(x=>x.id===evId);if(!e)return;
+  e.volLog=e.volLog||{};e.volLog[pid]=e.volLog[pid]||{};
+  e.volLog[pid][k]=String(v||'').trim();save();}
 /* ---------- 用户编码 + 邀请码 (0015) ----------
    The 16-char 邀请码 lives ONLY in _grant, for the one paint that shows it. It is NEVER written to
    a 名册 record: cloudPushAll() uploads STORE.library verbatim into ym_doc.payload, so a stored
@@ -1238,7 +1364,7 @@ function followUps(e){const f=[];   // unmet, non-ignored — drives 催 + desk 
 /* ================= render ================= */
 const $=id=>document.getElementById(id);
 function render(){
-  const navItems=[['desk','工作台'],['sheet','计划'],['lib','资产库'],['post','发布']];
+  const navItems=[['desk','工作台'],['sheet','计划'],['people','用户'],['lib','资产库'],['post','发布']];
   if(PROFILE&&PROFILE.is_admin)navItems.push(['admin','管理']);
   const nav=navItems.map(([k,l])=>
     `<button class="${S.view===k||(k==='sheet'&&S.view==='exec')?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
@@ -1248,7 +1374,8 @@ function render(){
   else if(S.view==='today')body=viewDesk();
   else if(S.view==='exec')body=viewExec();
   else if(S.view==='day')body=viewDay();
-  else if(S.view==='review')body=viewReview();
+  else if(S.view==='review'){loadAccepted();body=viewReview();}
+  else if(S.view==='people')body=viewPeople();
   else if(S.view==='post')body=viewPost();
   else if(S.view==='admin')body=viewAdmin();
   else body=viewLib();
@@ -1271,7 +1398,9 @@ function render(){
     window.ymSanitize.into($('po_body'),S.postEdit.body_html||'');
   if(S.exTask)positionExDlg();   // anchor the floating task detail next to its node
 }
-function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;if(v!=='sheet')S.readonly=false;render();}
+function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;if(v!=='sheet')S.readonly=false;
+  if(v==='people')loadAccepted();          // 本人申报的数字来自 accepted 行，不在轮询里
+  render();}
 
 /* ---------- round corner fabs: 📷 photo + 🎤 hold-to-talk (jjcashflow pattern) ---------- */
 function fabsHtml(){
@@ -2960,22 +3089,57 @@ function viewReview(){
   </div>`;
 }
 /* ---- 志愿者 per-event 服务时长/工作评价 (V1.0; feeds the member share) ---- */
+/* 已确认的提交 —— 复盘和用户一览要看「本人申报」的工时/自费，而那些行 status 已经是 accepted，
+   不在 loadPending 的结果里。单独按需取，不进 60 秒轮询：accepted 行只会越积越多。 */
+let ACCEPTED=[],_accAt=0;
+function loadAccepted(force){
+  if(!canCloud())return Promise.resolve();
+  if(!force&&Date.now()-_accAt<30000)return Promise.resolve();
+  _accAt=Date.now();
+  return sb.from('ym_submit')
+    .select('id,member_code,event_id,chip_id,kind,note,hours,cost,diff,created_at')
+    .eq('status','accepted').order('created_at')
+    .then(({data,error})=>{if(error)return;ACCEPTED=data||[];render();});
+}
+// 本人申报的合计 —— 只数 submit/done，claim 和 join 不带工时
+function selfTally(code,evId){
+  const rows=ACCEPTED.filter(r=>String(r.member_code||'')===code
+    &&(r.kind==='submit'||r.kind==='done')&&(!evId||r.event_id===evId));
+  return {n:rows.length,
+    hours:rows.reduce((s,r)=>s+(parseFloat(r.hours)||0),0),
+    cost:rows.reduce((s,r)=>s+(parseInt(r.cost,10)||0),0),rows};
+}
 function volSection(e){
-  const seen={},people=[];
+  // 三种指派方式都要覆盖：refId（从名册挂的人牌）、volId（抢单赢来的硬链接）、
+  // 姓名（主办直接在任务上打的名字）。只认 refId 会把整个任务系统里的人漏光。
+  const seen={},people=[],idx=volNameIndex();
+  const add=(id)=>{if(!id||seen[id])return;const p=STORE.library.resources.find(x=>x.id===id);
+    if(!p||catOf(p)!=='volunteer')return;seen[id]=1;people.push(p);};
   allResChips(e).forEach(x=>{const c=x.c;
-    if((c.type||'人')!=='人'||!c.refId||seen[c.refId])return;
-    seen[c.refId]=1;people.push(c);});
+    if((c.type||'人')==='人'&&c.refId)return add(c.refId);
+    if((c.type||'')==='任务'){
+      if(c.volId)return add(c.volId);
+      const who=String(c.role||c.owner||'').trim();
+      if(who&&idx[who]&&idx[who]!=='DUP')add(idx[who]);}});
   if(!people.length)return '';
   e.volLog=e.volLog||{};
-  const rows=people.map(c=>{const log=e.volLog[c.refId]||{};
-    return `<div class="rvrow"><span class="c2">👤 ${esc(c.name)}<span class="muted" style="font-size:11px"> ${esc(c.role||'')}</span></span>
-      <input style="width:74px;padding:5px 8px" placeholder="时长h" inputmode="decimal" value="${esc(log.hours||'')}"
-        onchange="volLog('${c.refId}','hours',this.value)">
-      <input style="flex:1.4;padding:5px 8px" placeholder="工作评价" value="${esc(log.review||'')}"
-        onchange="volLog('${c.refId}','review',this.value)"></div>`;}).join('');
-  return `<div class="rvsec"><div class="hd"><span class="lbl">志愿者 · 服务时长 / 工作评价</span></div>${rows}
-    <p class="note9" style="margin:8px 0 0">已授权账号的成员会在自己的页面看到这里的时长与评价。</p></div>`;
+  const rows=people.map(p=>{const log=e.volLog[p.id]||{};
+    const a=codeOf(p),t=a?selfTally(a.code,e.id):{n:0,hours:0,cost:0};
+    const said=t.n?`<span class="selfrep">本人申报 ${t.hours%1?t.hours.toFixed(1):t.hours}h${
+      t.cost?' · 自费 '+yen(t.cost):''}</span>`:'<span class="selfrep none">本人未申报</span>';
+    return `<div class="rvrow volrow">
+      <span class="c2">👤 ${esc(p.name)}${a?`<span class="num" style="color:var(--brass);font-size:10.5px"> ${esc(a.code)}</span>`:''}
+        <span class="muted" style="font-size:11px"> ${esc(p.role||'')}</span></span>
+      ${said}
+      <input style="width:78px;padding:5px 8px" placeholder="主办记时长h" inputmode="decimal" value="${esc(log.hours||'')}"
+        onchange="volLog('${escJs(p.id)}','hours',this.value)">
+      <input style="flex:1.3;padding:5px 8px" placeholder="工作评价" value="${esc(log.review||'')}"
+        onchange="volLog('${escJs(p.id)}','review',this.value)"></div>`;}).join('');
+  return `<div class="rvsec"><div class="hd"><span class="lbl">志愿者 · 本人申报 / 主办登记</span></div>${rows}
+    <p class="note9" style="margin:8px 0 0"><b>本人申报</b>是 TA 自己交任务时填的、你已确认的数字；
+      <b>主办记时长</b>是你自己的记录，两者分开存、不相加。TA 在自己页面上两个都看得到。</p></div>`;
 }
+
 function volLog(refId,k,v){const e=ev();e.volLog=e.volLog||{};
   e.volLog[refId]=e.volLog[refId]||{};e.volLog[refId][k]=v.trim();save();}
 
