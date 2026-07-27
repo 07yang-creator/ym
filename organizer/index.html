@@ -862,7 +862,9 @@ function guestDataFor(p){
     // invited: 主办把 TA 放进了这场的「拟邀请」。这只是**告诉 TA 被邀请了**，报名与否仍然是
     // TA 自己按「我想参加」—— owner 2026-07-27:「在被邀请用户同意以后」才计入报名侧。
     // 只是一个布尔，不泄露还邀请了谁。
-    if(e.publicOn)open.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',
+    // 已经办完的活动不该还挂在「可以报名」里 —— 嘉宾按下去，主办收到一条给上周的报名。
+    const ph=evPhase(e);
+    if(e.publicOn&&(ph==='plan'||ph==='current'))open.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',
       venue:e.venue||'',theme:e.theme||'',
       invited:((e.invitees||[]).some(x=>x.libId===p.id))||undefined});
   });
@@ -1622,6 +1624,11 @@ function fabsHtml(){
 function authSheet(){
   let inner='';
   if(!sb)inner=`<div class="empty">登录组件加载失败，请刷新</div>`;
+  /* ⚠ 这一条必须排在 canCloud()/SESSION 前面。点重设邮件的链接回来时 supabase-js 已经建立了
+     一个 recovery 会话 —— 也就是说**一定**有 SESSION，已批准的账号还会让 canCloud() 为真。
+     排在后面就永远轮不到，那封信点进来只会看到「云同步已开启」，密码根本改不成。
+     （onAuthStateChange 里已经把它挡在 cloudLoad 之前了，但渲染分支的顺序是另一道门。） */
+  else if(S.authRecovery)inner=authNewPw(true);
   else if(canCloud())
     inner=`<div style="font-size:13px;line-height:2">${ico('cloud')}<b>${esc(SESSION.user.email||'')}</b><br>
       <span class="muted">云同步已开启 — 活动与资产库自动备份，多设备可用。</span></div>
@@ -1646,9 +1653,6 @@ function authSheet(){
         <p class="note9">批准后本页会自动开通（每15秒检查一次），也可以点上面的按钮立即刷新。</p>`}
       <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
   }
-  // 点重设邮件的链接回来时 supabase-js 先建立一个 recovery 会话再发 PASSWORD_RECOVERY。
-  // 必须挡在其他分支前面，否则页面直接进内容页，主办永远看不到「设新密码」这一步。
-  else if(S.authRecovery)inner=authNewPw(true);
   else if(S.authTab==='forgot')
     inner=`<div class="lbl" style="margin-bottom:10px">重设密码</div>
       <p class="note9" style="margin:0 0 10px">填注册时用的邮箱，我们发一封信；点信里的链接回到这一页设新密码。</p>
@@ -2857,7 +2861,17 @@ function guestDatalist(){return `<datalist id="guestlist">${peoList('guest').map
    通知先只做 app 内 —— 邮件那条 owner 说迟点配，主办暂时手动发。 */
 function joinFor(e){return e?PENDING.filter(r=>r.kind==='join'&&r.event_id===e.id):[];}
 function joinStrip(e){
-  const rows=joinFor(e);if(!rows.length)return '';
+  const rows=joinFor(e);
+  /* 空的时候画一句话，而不是返回 ''。整块不画 = 主办以为这功能没做（复查 2026-07-27 的结论：
+     「shipped but invisible」和没上线是一回事）。而且这里能**说清楚差哪一步** —— 报名进不来
+     只有两个原因，两个都在这一屏之外，猜不到。 */
+  if(!rows.length){
+    const noPub=!e.publicOn;
+    const noGuestAcct=!STORE.library.resources.some(r=>catOf(r)==='guest'&&codeOf(r));
+    return `<div class="joinbox"><div class="ph">还没有人按「我想参加」</div>
+      <p class="note9">${noPub?'这场还没「公开到官网」—— 去 计划 页勾上，报名才进得来。<br>':''}
+      ${noGuestAcct?'名册里还没有嘉宾绑定账号 —— 资产库 → 人员 → 嘉宾 → '+ico('key')+' 发个邀请码。<br>':''}
+      ${!noPub&&!noGuestAcct?'已经公开、也有嘉宾账号了 —— 等他们在自己页面上按「我想参加」。':''}</p></div>`;}
   return `<div class="joinbox">
     <div class="ph">● ${rows.length} 人想参加</div>
     ${rows.map(r=>{const p=personByCode(r.member_code);
@@ -3677,7 +3691,15 @@ function rcEventBlock(e){
    志愿者的写入面。member_code 是服务端盖的，所以「这是谁」不必信客户端。 */
 function giveFor(e){return e?PENDING.filter(r=>r.kind==='give'&&r.event_id===e.id):[];}
 function giveStrip(e){
-  const rows=giveFor(e);if(!rows.length)return '';
+  const rows=giveFor(e);
+  // 同上：空着也要露一行，否则「捐赠者能直接交票据」这件事没人知道存在。
+  // 但只在名册里真有捐赠人时才提 —— 一个捐赠人都没有的沙龙，不需要天天看见这句话。
+  if(!rows.length){
+    if(!STORE.library.resources.some(r=>catOf(r)==='donor'))return '';
+    const noAcct=!STORE.library.resources.some(r=>catOf(r)==='donor'&&codeOf(r));
+    return `<div class="pendbox" style="margin:10px 0"><div class="ph">${ico('gift')}还没有捐赠票据</div>
+      <p class="note9">${noAcct?'捐赠人还没有账号 —— 资产库 → 人员 → 捐赠人 → '+ico('key')+' 发个邀请码，TA 就能自己把票据交到这里。'
+        :'捐赠人可以在自己页面上传票据，交来后会出现在这里，一点就能入账。'}</p></div>`;}
   return `<div class="pendbox" style="margin:10px 0">
     <div class="ph">${ico('gift')}${rows.length} 张捐赠票据待入账</div>
     ${rows.map(r=>`<div class="pf two">
