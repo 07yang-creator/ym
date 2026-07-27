@@ -118,7 +118,7 @@ function shrink(file,cb){ // photos → ≤1600px jpeg before upload (same as th
 const SB_URL='https://ugkopxmeqsbtjeimultz.supabase.co', SB_KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
 const API='https://www.jjconnect.tokyo';
-let SESSION=null,MYCODES=null,SHARES=null,MINE=[],_busy=false,_bad='',OPEN={},TAB='login';
+let SESSION=null,MYCODES=null,SHARES=null,MINE=[],_busy=false,_bad='',OPEN={},TAB='login',RECOVERY=false;
 // Role comes from ym_code (server data, read under RLS with our own token), never from the shape
 // of what was published to us, and never from user_metadata (which is user-writable).
 // An array, not maybeSingle(): one person may hold an identity with more than one host.
@@ -142,7 +142,9 @@ const $=id=>document.getElementById(id);
 /* ---------- render ---------- */
 function render(){
   let body;
-  if(!SESSION)          body=_bad?badHtml():(TAB==='reg'?regHtml():loginHtml());
+  if(RECOVERY)          body=newPwHtml(true);          // 从重设邮件的链接回来
+  else if(!SESSION)     body=_bad?badHtml():(TAB==='reg'?regHtml():TAB==='forgot'?forgotHtml():loginHtml());
+  else if(TAB==='pw')   body=newPwHtml(false);
   else if(MYCODES===null)body=`<div class="empty">读取中…</div>`;
   else if(!MYCODES.length)body=bindHtml();     // signed in, but no 编码 bound to this account
   else if(SHARES===null) body=`<div class="empty">读取中…</div>`;
@@ -153,7 +155,8 @@ function render(){
     <div class="top"><span class="logo">ym</span>
       <span class="t">${guest?'我的活动页':'我的成员页'}</span><span class="sp"></span>
       ${myCode()?`<span class="num" style="color:var(--brass);font-size:13px">${esc(myCode())}</span>`:''}
-      ${SESSION?`<button class="btn ghost sm" onclick="signOut()">退出</button>`:''}</div>
+      ${SESSION&&!RECOVERY?`<span class="fold" style="padding:0 8px" onclick="TAB='pw';render()">改密码</span>
+        <button class="btn ghost sm" onclick="signOut()">退出</button>`:''}</div>
     ${body}
     <p class="note">${guest
       ? '这里只显示主办方发布给你的内容：公开信息、当天流程、你的号牌和主办方通知。参加者之间互不可见 —— 有任何问题请直接联系主办方。'
@@ -161,14 +164,38 @@ function render(){
 }
 function loginHtml(){
   return `<div class="card" style="margin-top:28px">
-    <div class="lbl" style="margin-bottom:10px">用编号或邮箱登录</div>
+    <div class="lbl" style="margin-bottom:10px">登录</div>
     <input id="lid" type="email" placeholder="你的邮箱" autocapitalize="off" spellcheck="false" style="margin-bottom:8px">
     <input id="lpw" type="password" placeholder="密码" style="margin-bottom:10px"
       onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doLogin()">${_busy?'登录中…':'登录'}</button>
-    <p class="note">编号不区分空格和大小写：<b>v 14</b>、<b>V014</b> 都是 <b>V0014</b>。</p>
-    <div style="text-align:center;margin-top:14px">
+    <div style="text-align:center;margin-top:12px">
+      <span class="fold" onclick="TAB='forgot';render()">忘记密码了</span></div>
+    <div style="text-align:center;margin-top:6px">
       <span class="fold" onclick="TAB='reg';render()">我有邀请码，还没注册 →</span></div></div>`;
+}
+/* 忘记密码 —— 自己走，主办不介入。Supabase 发一封带链接的信，点开落回这一页并进入
+   PASSWORD_RECOVERY 状态，直接设新密码。编号（V0014）自始至终不变。 */
+function forgotHtml(){
+  return `<div class="card" style="margin-top:28px">
+    <div class="lbl" style="margin-bottom:10px">重设密码</div>
+    <p class="note" style="margin:0 0 10px">填注册时用的邮箱，我们给你发一封信；点信里的链接回到这一页设新密码。</p>
+    <input id="fem" type="email" placeholder="你的邮箱" autocapitalize="off" spellcheck="false" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')doForgot()">
+    <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doForgot()">${_busy?'发送中…':'发送重设邮件'}</button>
+    <div style="text-align:center;margin-top:12px">
+      <span class="fold" onclick="TAB='login';render()">← 回登录</span></div></div>`;
+}
+/* 邮件链接回来后 —— 也用于登录状态下主动改密码 */
+function newPwHtml(recovery){
+  return `<div class="card" style="margin-top:${recovery?28:12}px">
+    <div class="lbl" style="margin-bottom:10px">${recovery?'设一个新密码':'修改密码'}</div>
+    <input id="np1" type="password" placeholder="新密码（至少 8 位）" style="margin-bottom:8px">
+    <input id="np2" type="password" placeholder="再输一次" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')doNewPw()">
+    <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doNewPw()">${_busy?'保存中…':'保存'}</button>
+    ${recovery?'':`<div style="text-align:center;margin-top:12px">
+      <span class="fold" onclick="TAB='';render()">← 不改了</span></div>`}</div>`;
 }
 function regHtml(){
   return `<div class="card" style="margin-top:28px">
@@ -544,6 +571,31 @@ async function joinEvent(host,evId){
   await loadMine();render();toast('已报名 —— 等主办方确认，号牌出现就是通过了');
 }
 
+async function doForgot(){
+  if(_busy||!sb)return;
+  const em=($('fem').value||'').trim().toLowerCase();
+  if(!em){toast('请输入邮箱');return;}
+  _busy=true;render();
+  // redirectTo 必须在 Supabase 的 Redirect URLs 白名单里，否则 GoTrue 会静默换成 Site URL
+  await sb.auth.resetPasswordForEmail(em,{redirectTo:location.origin+location.pathname});
+  _busy=false;
+  // 不区分「这个邮箱存不存在」—— 否则这个表单就成了账号存在性探测器
+  TAB='login';render();
+  toast('如果这个邮箱有账号，信已经发出了 —— 请查收（也看一下垃圾邮件）');
+}
+async function doNewPw(){
+  if(_busy||!sb)return;
+  const a=$('np1').value||'',b=$('np2').value||'';
+  if(a.length<8){toast('密码至少 8 位');return;}
+  if(a!==b){toast('两次输入不一样');return;}
+  _busy=true;render();
+  const {error}=await sb.auth.updateUser({password:a});
+  _busy=false;
+  if(error){toast('改不了：'+error.message);render();return;}
+  RECOVERY=false;TAB='';
+  toast('密码已更新');
+  if(MYCODES===null)load();else render();
+}
 function signOut(){sb.auth.signOut().then(()=>{MYCODES=null;SHARES=null;MINE=[];TAB='login';render();});}
 
 
@@ -599,7 +651,10 @@ if(sb){
   sb.auth.onAuthStateChange((ev2,s2)=>{
     const was=SESSION&&SESSION.user.id,now=s2&&s2.user.id;
     SESSION=s2;_bad='';
-    if(was!==now){if(s2)load();else{SHARES=null;MINE=[];render();}}});
+    // 点重设邮件的链接回来时 supabase-js 会先建立一个 recovery 会话再发这个事件。
+    // 必须挡在 load() 前面，否则页面会直接进内容页，用户永远看不到设密码这一步。
+    if(ev2==='PASSWORD_RECOVERY'){RECOVERY=true;render();return;}
+    if(was!==now){if(s2)load();else{SHARES=null;MINE=[];RECOVERY=false;TAB='login';render();}}});
 }else{$('app').innerHTML='<div class="empty">加载失败，请刷新</div>';}
 render();
 </script>
