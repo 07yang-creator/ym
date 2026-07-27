@@ -454,6 +454,11 @@
   .pendbox .pf{display:inline-block;font-size:11px;color:var(--brass);cursor:pointer;
     border:1px solid var(--line);border-radius:4px;padding:3px 7px;margin:5px 5px 0 0;text-decoration:none}
   .diffseg .sb{font-family:Oswald,sans-serif;letter-spacing:.06em}
+  .joinbox{border:1px dashed var(--brass-dim);border-radius:8px;padding:9px 10px;margin-top:10px}
+  .joinbox .ph{font-size:12px;color:var(--brass)}
+  .joinbox .jrow{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+  .joinbox .jrow:last-of-type{border-bottom:0}
+  .joinbox .jn{flex:1;min-width:0;font-size:13px}
   .extask .pdot{font-size:9.5px;color:var(--brass);margin-left:6px;white-space:nowrap}
   .extask .pdot.got{color:var(--ok)}
   /* 一键发布 (Y7 §B6) */
@@ -2130,7 +2135,11 @@ function libAddRes(cat){const name=$('nr_name').value.trim();if(!name){toast('�
     role:v('nr_role'),contact:v('nr_contact')};
   if(cat==='guest'){rec.gender=v('nr_gender')||'女';rec.occupation=v('nr_role');rec.role='';}
   if(cat==='donor'){rec.dtype=v('nr_dtype')||'个人';}
-  STORE.library.resources.push(rec);save();render();toast(name+' 已加入名册');}
+  STORE.library.resources.push(rec);save();render();
+  // owner: 「在增加嘉宾或志愿者时，可以直接生成邀请码」—— 加完就开发码窗口，省掉「再回名册找到这个人」
+  // 那一步。物资没有账号，捐赠人/嘉宾/志愿者都有。canCloud 之外静默跳过，只是加进名册。
+  if(cat!=='goods'&&canCloud()){grantOpen(rec.id);toast(name+' 已加入 — 顺手发个邀请码？');}
+  else toast(name+' 已加入名册');}
 function libAddMoney(){const name=$('nm_name').value.trim();if(!name){toast('名目必填');return;}
   STORE.library.money.push({id:uid(),name,kind:$('nm_kind').value,
     amount:parseInt(($('nm_amt').value||'').replace(/[^\d]/g,''),10)||0});save();render();}
@@ -2241,6 +2250,50 @@ function delParticipant(pid){if(S.readonly)return;const e=ev();e.participants=e.
 function matchGuestByName(name){const k=(name||'').trim();if(!k)return null;
   return peoList('guest').find(g=>(g.name||'').trim()===k||((g.aliases||[]).some(a=>(a||'').trim()===k)))||null;}
 function guestDatalist(){return `<datalist id="guestlist">${peoList('guest').map(g=>`<option value="${esc(g.name)}">`).join('')}</datalist>`;}
+/* 嘉宾报名 (PLAN-Y7 §C) — 成员点「我想参加」写一行 kind:'join'，主办在 计划→参加者 这里看到。
+   同意 = 主办自己的手：发号牌、写进 participants、republish。号牌出现即视为通过（成员那边看得到）。
+   通知先只做 app 内 —— 邮件那条 owner 说迟点配，主办暂时手动发。 */
+function joinFor(e){return e?PENDING.filter(r=>r.kind==='join'&&r.event_id===e.id):[];}
+function joinStrip(e){
+  const rows=joinFor(e);if(!rows.length)return '';
+  return `<div class="joinbox">
+    <div class="ph">● ${rows.length} 人想参加</div>
+    ${rows.map(r=>{const p=personByCode(r.member_code);
+      const who=p?p.name:(r.member_code||'某位嘉宾');
+      return `<div class="jrow">
+        <span class="jn">${esc(who)}${p?'':' <span class="lbl" style="color:var(--alarm)">名册里没有</span>'}</span>
+        <button class="btn sm" onclick="joinAccept('${escJs(r.id)}')">同意</button>
+        <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px;padding:0 6px"
+          onclick="joinReject('${escJs(r.id)}')">婉拒</span></div>`;}).join('')}
+    <p class="note9">同意后 TA 的页面上会出现号牌 —— 那就是通过的信号。</p></div>`;
+}
+async function joinAccept(sid){
+  if(S.readonly||!canCloud())return;
+  const r=PENDING.find(x=>x.id===sid&&x.kind==='join');if(!r)return;
+  if(!ev()||ev().id!==r.event_id){await cloudLoad();S.evId=r.event_id;}
+  const e=ev();if(!e){toast('这场活动已经不在了');loadPending();return;}
+  const p=personByCode(r.member_code);
+  if(!p){toast('名册里找不到这个人 —— 请先把 TA 加进嘉宾名册');return;}
+  if(e.participants.some(x=>x.libId===p.id))toast(p.name+' 已经在名单里了');
+  else{const g=p.gender==='男'?'男':'女';
+    e.participants.push({id:uid(),libId:p.id,gender:g,n:nextBadge(e,g),name:p.name,
+      job:p.occupation||'',arrived:false,at:null,evals:[]});
+    save();}
+  const {error}=await sb.from('ym_submit').update({status:'accepted'}).eq('id',sid);
+  if(error)toast('已加入名单，但回执未标记：'+error.message);
+  await pushShares();loadPending();render();toast('已加入 —— TA 会看到自己的号牌');
+}
+async function joinReject(sid){
+  if(S.readonly||!canCloud())return;
+  ask({title:'婉拒这次报名？',note:'TA 会看到你写的这句话。',
+    fields:[{label:'说明（必填）',ph:'例如：这场已经满了，下一场优先安排你'}],ok:'婉拒',
+    fn:async(v)=>{const why=(v[0]||'').trim();
+      if(!why){toast('请写一句说明');return;}
+      const {error}=await sb.from('ym_submit')
+        .update({status:'rejected',host_note:why.slice(0,2000)}).eq('id',sid);
+      if(error){toast('操作失败：'+error.message);return;}
+      loadPending();toast('已婉拒');}});
+}
 function participantsStrip(e){
   const men=e.participants.filter(p=>p.gender==='男').length,women=e.participants.filter(p=>p.gender==='女').length;
   return `<div class="strip pstrip"><div class="hd"><span class="lbl">参加者 · 名单</span>
@@ -2252,6 +2305,7 @@ function participantsStrip(e){
       <button class="btn ghost sm" onclick="S.showImport=true;S.importRows=null;render()">⬆ 导入名单</button>
       <label class="btn ghost sm" style="cursor:pointer">📷 名单截图<input type="file" accept="image/*"
         style="display:none" onchange="rosterShot(this)"></label></div>
+    ${joinStrip(e)}
     ${S.pickGuest?pickGuestHtml(e):''}</div>`;
 }
 // 📷 名单截图 → names → the SAME confirm/match list as ⬆导入名单.
@@ -3315,7 +3369,7 @@ function loadPending(){
 // 确认完成 button wired to exSet(cid,2) — one tap would mark an untouched task 完成 and stamp the
 // claim 'accepted', which also (correctly) frees the arbiter. Two verbs, two boxes, two accessors.
 function pendFor(cid,mc){const e=ev();
-  return PENDING.filter(r=>r.chip_id===cid&&r.kind!=='claim'&&(!e||r.event_id===e.id)
+  return PENDING.filter(r=>r.chip_id===cid&&r.kind!=='claim'&&r.kind!=='join'&&(!e||r.event_id===e.id)
     &&(!mc||String(r.member_code||'')===mc));}
 // 0016 guarantees AT MOST ONE live claim per chip, so this is always one person or nobody.
 // PENDING holds only status='pending' rows (loadPending filters), so a 退回'd or already-assigned
