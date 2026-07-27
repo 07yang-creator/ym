@@ -1707,7 +1707,10 @@ function jeRole(n){const el=document.getElementById('je_role');if(el)el.value=n;
 function jeNeed(n){const el=document.getElementById('je_needs');if(el)el.value=el.value.trim()?el.value.trim()+'、'+n:n;jeKeep();}
 function jeDiff(v){const je=S.jobEdit;if(!je)return;je.diff=v;
   document.querySelectorAll('.jobdlg .diffseg .sb').forEach(n=>n.classList.toggle('on',n.textContent===v));}
-function jeStatus(i){document.querySelectorAll('.jobdlg .exseg .sb').forEach((s,j)=>s.classList.toggle('on',j===i));}
+// :not(.diffseg) — the 难度 row is an .exseg too and comes FIRST, so a bare selector numbers the
+// two rows as one and jeStatus(1) lands on 难度 B instead of 进行中
+function jeStatus(i){document.querySelectorAll('.jobdlg .exseg:not(.diffseg) .sb')
+  .forEach((s,j)=>s.classList.toggle('on',j===i));}
 function jobEditSave(){if(S.readonly||!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);if(!h)return;
   const name=(document.getElementById('je_name').value||'').trim();if(!name){toast('先写要做什么');return;}
   const role=(document.getElementById('je_role').value||'').trim();
