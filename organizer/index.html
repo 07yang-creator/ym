@@ -2463,7 +2463,8 @@ function confirmTickets(){const e=ev();const ts=ticketInfo(e);if(!ts.length)retu
       : sb.from('ym_entry').insert(row);
   })).then(rs=>{
     const bad=rs.find(r=>r&&r.error);
-    if(bad)toast('门票台账未写入：'+bad.error.message);
+    if(bad)toast(ledgerNotReady(bad.error)?'门票没进总账 —— 数据库迁移 0018 还没应用（收支牌已经记下了）'
+      :'门票台账未写入：'+bad.error.message);
     loadLedger(1);});
 }
 function addP(){const e=ev();
@@ -2988,6 +2989,10 @@ function rcDir(v){rcSet('dir',v);}
 function rcWho(v){rcKeep();S.rc.who=v;if(v==='advance')S.rc.pay='立替';render();}
 function rcEv(v){rcKeep();S.rc.f.ev=v;S.rc.f.chip='';render();}
 
+// 0018 还没应用时数据库回的是 42703「column "image" does not exist」—— 那是触发器里的列名，
+// 跟主办拍的这张票据毫无关系，所以单独认出来，说人话。
+function ledgerNotReady(e){const m=String((e&&e.message)||'')+' '+String((e&&e.code)||'');
+  return /42703/.test(m)||/column .*image.* does not exist/i.test(m);}
 /* ---- THE ONE WRITER ---- */
 /* 票据图片 → 主办自己的 Google Drive，按 <活动>/<类型> 分目录 (owner 2026-07-27)。
    走 /api/ym_file：Apps Script 的 /exec 对公网开放，所以那边只有上传能力、没有删除；
@@ -3037,6 +3042,9 @@ async function rcConfirm(){
     image_mime:img.id?R.mime:null,image_name:img.id?String(R.name||'票据.jpg').slice(0,200):''};
   const {data,error}=await sb.from('ym_entry').insert(row).select('id,voucher_no').single();
   if(error){toast(/duplicate|unique/i.test(error.message)?'这张票据已经入过账了'
+    // 0017 的 ym_entry_cap() 数了一列不存在的 image；0018 之前每一次入账都会 42703 回滚。
+    // 说清楚是数据库那一步没做，别让主办以为是自己拍错了。
+    :ledgerNotReady(error)?'台账还没开通 —— 数据库迁移 0018 还没应用。卡还留着，应用后再点一次'
     :'入账失败：'+error.message+' —— 卡还留着，联网后再点一次');return;}   // card stays open
   if(c.submitId){const u=await sb.from('ym_submit').update({status:'accepted'}).eq('id',c.submitId);
     if(u.error)toast('已入账，但回执未标记：'+u.error.message);
