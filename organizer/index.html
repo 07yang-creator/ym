@@ -390,6 +390,11 @@
   .deskcard .dc-brief .t{color:var(--brass);cursor:pointer;font-weight:700}
   .deskcard .dc-del{position:absolute;top:6px;right:10px;color:var(--brass-dim);cursor:pointer;font-size:14px;line-height:1;padding:2px 5px}
   /* 计划 / 当天 / 复盘 —— 一场活动的三个阶段，跟着活动卡走 (owner 2026-07-27) */
+  /* 报名 15/30 —— 一眼就看到，所以钉在卡片右侧 (owner 2026-07-27) */
+  .deskcard .dc-cap{position:absolute;top:11px;right:12px;font-family:Oswald,sans-serif;font-size:13px;
+    color:var(--brass);letter-spacing:.02em;display:flex;align-items:center;gap:3px}
+  .deskcard .dc-cap.full{color:var(--ok)}
+  .deskcard.plan .dc-cap{right:34px}
   .deskcard .dc-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
   .deskcard .dc-go{font-size:11.5px;color:var(--brass);border:1px solid var(--brass-dim);
     border-radius:20px;padding:4px 11px;cursor:pointer;white-space:nowrap}
@@ -1395,6 +1400,7 @@ function ensureY2(){
     if(!STORE.library.taxMode)STORE.library.taxMode='exempt';
     STORE.y9=1;
   }
+  STORE.events.forEach(e=>{if(!e.invitees)e.invitees=[];});   // 拟邀请（owner 2026-07-27）
   if(!STORE.y10){                    // 灵感四类：已有的灵感全部是当天的环节，落在「当天活动」
     (STORE.library.ideas||[]).forEach(i=>{if(!i.kind)i.kind='day';});
     // 物资大类**不猜**：老数据留在「未分类」，由主办自己点一下 —— 把「场地」错标成消耗品
@@ -1834,7 +1840,10 @@ function viewSheet(){
       <input type="time" style="width:100px" value="${esc(e.start)}"
         onclick="event.stopPropagation();selRow('header')" onchange="e_upd('start',this.value)">
       <input style="flex:2;min-width:130px" value="${esc(e.venue)}" placeholder="场地"
-        onclick="event.stopPropagation();selRow('header')" onchange="e_upd('venue',this.value)"></div>
+        onclick="event.stopPropagation();selRow('header')" onchange="e_upd('venue',this.value)">
+      <input style="width:104px" inputmode="numeric" value="${esc(e.cap||'')}" placeholder="名额（如30）"
+        title="定员 —— 报名数按这个显示成 15/30"
+        onclick="event.stopPropagation();selRow('header')" onchange="e_upd('cap',parseInt(this.value.replace(/[^\\d]/g,''),10)||undefined);render()"></div>
     ${(()=>{const vh=venueHistory(e);return vh?`<div class="reusehint" onclick="event.stopPropagation();venueHistDetail()">${ico('house')}这个场地办过 ${vh.count} 场${vh.lastCost?' · 上次场租 '+yen(vh.lastCost):''} · 点看日期</div>`:'';})()}
     <div class="chips">${chipsHtml(e.header,'header')}</div>
     <div class="lbl" style="margin-top:8px">活动全场 — 点选此卡后，从资产库挂「全场」资源/收支</div>
@@ -1891,7 +1900,7 @@ function viewSheet(){
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
       <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧的资产库点选应用。</div>
-    ${strips}${participantsStrip(e)}${giveStrip(e)}${hd}${kickoff}${rows}
+    ${strips}${giveStrip(e)}${hd}${kickoff}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
   <button class="fab" onclick="S.drawer=true;render()">${ico('books')}资产库</button>
@@ -2758,19 +2767,69 @@ async function joinReject(sid){
       if(error){toast('操作失败：'+error.message);return;}
       loadPending();toast('已婉拒');}});
 }
-function participantsStrip(e){
+/* 报名情况 —— 从「计划」搬到「执行看板」(owner 2026-07-27)：
+   「在计划台面，参加者实际上是不存在的，因为还没有报名。」计划阶段真正存在的只有 **拟邀请**：
+   你打算叫谁。等发布出去、报名进来了，才有 **已报名**。两件事分开列，不再混成一个「参加者」。 */
+function invList(e){return (e&&e.invitees)||[];}
+function capOf(e){const n=parseInt(e&&e.cap,10);return n>0?n:0;}
+function signupText(e){const c=capOf(e);return e.participants.length+(c?'/'+c:'');}
+function signupBlock(e){
   const men=e.participants.filter(p=>p.gender==='男').length,women=e.participants.filter(p=>p.gender==='女').length;
-  return `<div class="strip pstrip"><div class="hd"><span class="lbl">参加者 · 名单</span>
-      <span style="font-size:12px;color:var(--muted)">${e.participants.length} 人 · 男 ${men} · 女 ${women}</span></div>
+  const inv=invList(e),cap=capOf(e);
+  const full=cap&&e.participants.length>=cap;
+  return `<div class="rvsec" style="margin-top:14px"><div class="hd">
+      <span class="lbl">报名情况</span>
+      <span class="num" style="font-size:15px;color:${full?'var(--ok)':'var(--brass)'}">${signupText(e)}</span></div>
+    <div class="lbl" style="margin:6px 0 5px">已报名 · ${e.participants.length} 人（男 ${men} · 女 ${women}）${full?' —— 已满员':''}</div>
     <div class="plist">${e.participants.length?e.participants.map(p=>`<span class="chip s1">${p.gender==='男'?'♂':'♀'} ${esc(p.name)}${p.libId?'':' <span class="lbl" style="color:var(--alarm)">新</span>'}
-      <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`).join(''):'<span class="note9">还没有参加者 — 从名册选，或导入名单。</span>'}</div>
+      <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`).join('')
+      :'<span class="note9">还没有人报名 —— 公开到官网后，报名会出现在这里。</span>'}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
-      <button class="btn ghost sm" onclick="S.pickGuest=true;render()">＋ 从名册选</button>
       <button class="btn ghost sm" onclick="S.showImport=true;S.importRows=null;render()">${ico('up')}导入名单</button>
       <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}名单截图<input type="file" accept="image/*"
         style="display:none" onchange="rosterShot(this)"></label></div>
     ${joinStrip(e)}
+    <div class="lbl" style="margin:14px 0 5px;padding-top:10px;border-top:1px solid var(--line)">拟邀请 · ${inv.length} 人 —— 还没报名，只是你打算叫的人</div>
+    <div class="plist">${inv.length?inv.map(x=>`<span class="chip s0">${x.gender==='男'?'♂':'♀'} ${esc(x.name)}
+      <span class="rz" style="color:var(--brass);cursor:pointer;font-size:10.5px;margin-left:6px"
+        onclick="invToSignup('${escJs(x.id)}')">转为已报名</span>
+      <span class="x" onclick="delInvitee('${escJs(x.id)}')">✕</span></span>`).join('')
+      :'<span class="note9">从嘉宾名册点选你想邀请的人 —— 他们不计入报名数。</span>'}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+      <button class="btn ghost sm" onclick="S.pickInvite=!S.pickInvite;render()">＋ 从名册选</button></div>
+    ${S.pickInvite?pickInviteHtml(e):''}
     ${S.pickGuest?pickGuestHtml(e):''}</div>`;
+}
+// 拟邀请 —— 只从嘉宾名册来（名册里才有性别/职业这些下次还用得上的资料）
+function pickInviteHtml(e){
+  const here={};(e.participants||[]).forEach(p=>{if(p.libId)here[p.libId]=1;});
+  invList(e).forEach(x=>{if(x.libId)here[x.libId]=1;});
+  const avail=peoList('guest').filter(g=>!here[g.id]);
+  return `<div class="rvsec" style="margin-top:10px"><div class="hd">
+      <span class="lbl">从嘉宾名册选 · ${avail.length} 位可选</span>
+      <button class="btn ghost sm" onclick="S.pickInvite=false;render()">关闭</button></div>
+    ${avail.length?`<div class="chips">${avail.map(g=>`<span class="chip s1" onclick="addInvitee('${escJs(g.id)}')">
+      ${g.gender==='男'?'♂':'♀'} ${esc(g.name)}${g.occupation?`<span class="lbl"> ${esc(g.occupation)}</span>`:''}</span>`).join('')}</div>`
+    :`<div class="note9">名册里的嘉宾都已在本场（已报名或已在拟邀请里）。</div>`}</div>`;
+}
+function addInvitee(libId){
+  const e=ev();const g=STORE.library.resources.find(r=>r.id===libId);if(!e||!g)return;
+  if(!e.invitees)e.invitees=[];
+  if(e.invitees.some(x=>x.libId===libId))return;
+  e.invitees.push({id:uid(),libId:g.id,name:g.name,gender:g.gender==='男'?'男':'女'});
+  save();render();toast(g.name+' 已加入拟邀请');
+}
+function delInvitee(id){const e=ev();if(!e||!e.invitees)return;
+  e.invitees=e.invitees.filter(x=>x.id!==id);save();render();}
+// 拟邀请 → 已报名：这一步是主办的手，不是系统替他判断「大概会来」
+function invToSignup(id){
+  const e=ev();const x=invList(e).find(y=>y.id===id);if(!x)return;
+  const g=x.gender==='男'?'男':'女';
+  e.participants.push({id:uid(),libId:x.libId,gender:g,n:nextBadge(e,g),name:x.name,
+    job:(STORE.library.resources.find(r=>r.id===x.libId)||{}).occupation||'',
+    arrived:false,at:null,evals:[],profile:null});
+  e.invitees=e.invitees.filter(y=>y.id!==id);
+  save();render();toast(x.name+' 已转为已报名');
 }
 // 📷 名单截图 → names → the SAME confirm/match list as ⬆导入名单.
 // The image is parsed in memory and never stored; nobody joins until the host confirms.
@@ -4250,6 +4309,7 @@ function viewExec(){
     ${claimBanner(e)}
     ${execTree(e,todo,doing,done)}
     ${execFooter(e,mt,ign)}
+    ${signupBlock(e)}
     <p class="note9">时间树：树干顶＝计划开始、根＝活动日，「今天」每天下移；右(进行中)做好当天滑到左(完成)，有截止的钉 ● 标记。空白日子会收成「空 N 天」。点任务看详情、催办、设截止或搁置。</p>
   </div></div>
   ${S.exTask?exDetailCard():''}`;
@@ -4671,8 +4731,10 @@ function viewDesk(){
     // 该跟活动卡放在一起，而不是藏在编辑台本的那一页里。
     // ⚠ 卡片从 <button> 改成了 <div> —— 按钮里不能再套按钮，而这一行就是按钮。
     const go2=(fn,label)=>`<span class="dc-go" onclick="event.stopPropagation();${fn}">${label}</span>`;
-    return `<div class="deskcard${ph==='current'?' cur':''}" role="button" tabindex="0" onclick="deskOpen('${e.id}')">
+    return `<div class="deskcard${ph==='current'?' cur':''}${ph==='plan'?' plan':''}" role="button" tabindex="0" onclick="deskOpen('${e.id}')">
       ${ph==='plan'?`<span class="dc-del" onclick="event.stopPropagation();delEvent('${e.id}')" title="删除（仅筹备中可删）">✕</span>`:''}
+      ${ph==='archived'?'':`<span class="dc-cap${capOf(e)&&e.participants.length>=capOf(e)?' full':''}"
+        title="已报名 / 名额">${ico('person')}${esc(signupText(e))}</span>`}
       <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}${pendCount(e)?` · <span style="color:var(--brass)">● 待确认 ${pendCount(e)}</span>`:''}</div>
       ${ph==='archived'?'':`<div class="dc-acts">
