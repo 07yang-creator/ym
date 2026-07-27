@@ -2749,7 +2749,11 @@ function dayBoard(e){
   let bar='';
   if(tickets.length){
     const due=tickets.reduce((s,c)=>s+c.unit*ticketHeads(e,c),0);
-    const done=tickets.every(c=>c.actual!=null)&&tickets.reduce((s,c)=>s+(c.actual||0),0)===due;
+    // ✓已入账 以前只看本地 chip.actual —— 而 chip.actual 是 confirmTickets 先写、ym_entry 后写的。
+    // 写失败（没迁移、离线、RLS）时牌子照样打勾，主办以为门票收入进账了，总账里其实一分没有。
+    const posted=c2=>(LEDGER||[]).some(r=>r.src==='ticket'&&r.chip_id===c2.id&&r.event_id===e.id&&r.status==='posted');
+    const done=tickets.every(c=>c.actual!=null)&&tickets.reduce((s,c)=>s+(c.actual||0),0)===due
+      &&(!canCloud()||tickets.every(posted));
     bar=`<div class="ticketbar"><span>门票实收（按到场）</span>
       <span class="num" style="font-size:14px">${yen(due)}</span>
       ${done?'<span class="lbl" style="color:var(--ok)">✓ 已入账</span>'
@@ -3260,6 +3264,7 @@ const RC_CTR={'現金':'現金','クレジット':'未払金','電子マネー':
 const RC_ACCT=['会場費','消耗品費','会議費','接待交際費','広告宣伝費','旅費交通費','通信費',
                '印刷製本費','支払手数料','外注費','雑費','売上高(参加費)','受取寄付金','雑収入'];
 let LEDGER=null;                    // ym_entry cache. NEVER holds image/parse — see loadLedger.
+let LEDGER_ERR='';                  // 上一次读失败的原因；空状态靠它区分「没有」和「没读到」
 
 // 課税/免税. 缘满沙龙 ≈ ¥6M 課税売上高 → 免税事業者、且 2割特例 covers 令和8年分 —— 仕入税額控除
 // はそもそも関係ない。だから既定は免税で、インボイス関連の表示は一切出さない。データは両方の
@@ -3303,8 +3308,11 @@ function loadLedger(force){
       'member_code,confidence,status,void_reason,image_id,image_url,image_name,created_at')
     .order('entry_date',{ascending:false}).order('seq',{ascending:false}).limit(3000)
     .then(({data,error})=>{
-      if(error){toast('台账读取失败：'+error.message);LEDGER=LEDGER||[];render();return;}
-      LEDGER=data||[];render();});      // ← D3 defect (a): the missing render()
+      // ⚠ 以前这里写 LEDGER=LEDGER||[]，而 [] 是真值 —— 一次网络抖动之后 loadLedger 永远
+      // 早退，总账整场显示 ¥0，CSV 导出一张空表，而且屏幕上写的是「还没有记录」。
+      // 读失败就让它继续是 null（下次还会去读），另外记一笔，好让空状态说实话。
+      if(error){toast('台账读取失败：'+error.message);LEDGER_ERR=error.message||'读取失败';render();return;}
+      LEDGER_ERR='';LEDGER=data||[];render();});      // ← D3 defect (a): the missing render()
 }
 
 /* ---- capture: the ONE component all four entry points call ---- */
@@ -3349,6 +3357,7 @@ function rcSeed(force){
   R.who=c.src==='vol'?(c.selfPaid?'self':'advance'):'host';
   R.more=false;
   R.tax=mock?[]:rcTax(d.tax_lines,total);
+  R.seedAmt=total;            // rcConfirm 靠它判断「主办改过金额没有」
   const reg=mock?'':String(d.invoice_reg_no||'').replace(/\s/g,'').toUpperCase();
   R.f={date:(mock?'':dateOf(d.issue_date))||(e&&e.date)||todayStr(),
        paid:'',amt:total?String(total):'',
@@ -3406,7 +3415,10 @@ function rcCard(){
       <div class="sfield"><div class="fl">勘定科目（不确定可以留空）</div>
         <input id="rc_acct" list="rcacct" value="${esc(f.acct)}" placeholder="例如 会場費"></div>
       <datalist id="rcacct">${RC_ACCT.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
-      ${chips.length?`<div class="sfield"><div class="fl">结算哪一条预算</div>
+      ${/* 从「任务」进来的票据带着一个**任务** chip 的 id，它不在这张收支牌列表里 ——
+           照旧渲染 select 的话，它的值是第一项（空），rcKeep 一读就把那条线索抹掉了，
+           凭证再也回不到那件事上。所以只有当 f.chip 真的在列表里（或本来就没挂）才用 select。 */''}
+      ${chips.length&&(!f.chip||chips.some(x=>x.c.id===f.chip))?`<div class="sfield"><div class="fl">结算哪一条预算</div>
         <select id="rc_chip"><option value="">不挂 —— 单独记一笔</option>
           ${chips.map(x=>`<option value="${esc(x.c.id)}"${f.chip===x.c.id?' selected':''}>${esc(x.c.name)} · 预算 ${yen(x.c.plan)}${x.c.actual!=null?' · 已记 '+yen(x.c.actual):''}</option>`).join('')}
         </select></div>`:`<input type="hidden" id="rc_chip" value="${esc(f.chip)}">`}
@@ -3466,8 +3478,16 @@ async function rcUpload(b64,mime,name,ev){
     return j&&j.ok?{id:String(j.file_id||''),url:String(j.url||'')}:null;
   }catch(e){return null;}
 }
+let _rcBusy=false;
 async function rcConfirm(){
   const R=S.rc;if(!R||S.readonly||!canCloud())return;
+  // Drive 上传 + insert 之间有好几秒。主办的账没有 src='host' 的唯一索引兜底，
+  // 第二次点就是**第二笔真账**（金额翻倍，而且两张凭证长得一模一样）。
+  if(_rcBusy){toast('正在入账，别重复点');return;}
+  _rcBusy=true;
+  try{await rcConfirmDo(R);}finally{_rcBusy=false;}
+}
+async function rcConfirmDo(R){
   rcKeep();const f=R.f,c=R.ctx||{};
   const amount=num0(f.amt);
   if(!amount){toast('金额不能为空');return;}
@@ -3475,7 +3495,12 @@ async function rcConfirm(){
   if(!date){toast('計上日填一下 —— 帳簿は日付から始まる');return;}   // never blocks on 科目
   const reg=String(f.reg||'').trim().toUpperCase();
   if(reg&&!/^T\d{13}$/.test(reg)){toast('登録番号是 T + 13 位数字 —— 不确定就清空');return;}
-  const tax=R.tax.map(t=>({r:t.r,b:t.b,t:t.t}));
+  /* 税額の内訳は AI が読んだ**あの金額**に対するもの。主办把金额改掉（OCR 看错一位是常事）
+     以后还沿用旧内訳，CSV 里的 税抜+税額 就和 税込 对不上 —— 消費税申告に使えない行になる。
+     金额一变就按内税 10% 重算；寄付は 不課税 なので、そもそも税を立てない。 */
+  const donation=(c.src==='donor')||f.acct==='受取寄付金';
+  const tax=donation?[]
+    :(amount===num0(R.seedAmt)?R.tax.map(t=>({r:t.r,b:t.b,t:t.t})):rcTax([],amount));
   // 图片先进主办自己的 Drive，帳簿里只留引用 (owner 2026-07-27)。上传失败不挡主办自己拍的那张
   // —— 一行没有图的账目仍然是有用的记录。但成员/捐赠者交来的必须带凭证（0017 §2 的 CHECK），
   // 因为 ym_submit 那行随时会被 取消授权 删掉；那种情况下宁可不入账，也不能记一笔无据的钱。
@@ -3540,6 +3565,9 @@ function rcSettle(evId,cid){
 // selfPaid は SUBMIT 行から取る —— cost は file 行ではなく submit 行にある（member L~430）。
 function rcFromSubmit(sid,src){
   if(!canCloud())return;
+  // 只读回看（已归档活动）里不该有写入动作 —— 捐赠条上的「入账」以前没挡，
+  // 一点就真的记一笔账，还白烧一次 OCR 调用。
+  if(S.readonly){toast('只读回看 —— 退出只读才能入账');return;}
   const r=PENDING.find(x=>x.id===sid);if(!r){toast('这条已经不在了');return;}
   const sub=PENDING.find(x=>x.kind==='submit'&&x.chip_id===r.chip_id
     &&String(x.member_code||'')===String(r.member_code||'')&&x.event_id===r.event_id);
@@ -3633,6 +3661,11 @@ function ledYears(){const s={};(LEDGER||[]).forEach(r=>s[Number(String(r.entry_d
   const y=Object.keys(s).map(Number).sort((a,b)=>b-a);
   const n=new Date().getFullYear();if(y.indexOf(n)<0)y.unshift(n);return y;}
 const LED_F=[['all','全部'],['out','支出'],['in','收入'],['open','未決済'],['check','要核对']];
+/* 给税理士的 CSV 用 ledExportRows()，不是 ledRows()。
+   年度和活动是**范围**，该跟着走；但 支出/収入/未決済/要核对 是屏幕上的**放大镜** ——
+   主办点开「要核对」逐条清理，然后按「総勘定元帳 CSV」，导出来的却只有那几条没核对的，
+   而且文件名和表头都不会说。帳簿少行是所有错误里最难发现的一种。 */
+function ledExportRows(){const keep=S.ledF;S.ledF='all';const r=ledRows();S.ledF=keep;return r;}
 function ledRows(){
   const fy=ledFy(),f=S.ledF||'all';
   return (LEDGER||[]).filter(r=>{
@@ -3688,7 +3721,10 @@ function viewLedger(){
   if(!canCloud())return `<div class="main" style="max-width:640px;margin:0 auto"><div class="empty">
     ${SESSION?'账号还在等主办方审核 —— 通过后就能记账。':'总账在云端 —— 请先登录。'}<br>
     <span class="muted">未登录也能照常记预算，只是票据入不了账。</span></div></div>`;
-  if(LEDGER===null){loadLedger();return `<div class="main"><div class="empty">读取中…</div></div>`;}
+  if(LEDGER===null){loadLedger();
+    return `<div class="main"><div class="empty">${LEDGER_ERR
+      ?ico('warn')+'台账没读到：'+esc(LEDGER_ERR)+'<br><span class="muted">先别导出 CSV —— 这不是「没有记录」，是没读到。</span><br><button class="btn ghost sm" style="margin-top:10px" onclick="loadLedger(1)">'+ico('again')+'重试</button>'
+      :'读取中…'}</div></div>`;}
   const rows=ledRows(),t=ledTotals(rows),fy=ledFy(),taxed=taxMode()==='taxed';
   const F=(k,l)=>`<span class="ledf ${(S.ledF||'all')===k?'on':''}" onclick="S.ledF='${k}';render()">${l}</span>`;
   return `<div class="main" style="max-width:760px;margin:0 auto">
@@ -3770,7 +3806,7 @@ function taxKubun(r,rate){
 function ledSrc(s){return s==='vol'?'志願者':s==='donor'?'寄付':s==='ticket'?'内部(門票)':'主催';}
 // ① 税理士が読む帳簿。一行 per 税率 —— 税込ひとまとめでは消費税申告に使えない。
 function exportLedger(){
-  const rows=ledRows();
+  const rows=ledExportRows();
   const out=[['証憑番号','計上日','決済日','取引先','登録番号','摘要','勘定科目','借方','貸方',
     '収支','税込金額','税率','税抜','消費税','税区分','活動(部門)','出所','原本','入力日時','状態','取消理由']];
   rows.forEach(r=>{const j=rcJournal(r);
@@ -3796,13 +3832,16 @@ function exportLedger(){
 //    出して税理士に一度マッピングしてもらうほうが確実。弥生/MF/freee も同じ列で入る。
 //    日付は 計上日 —— 帳簿と同じ発生主義で揃える（決済日で切ると自分の記帳基準と矛盾する）。
 function exportJournal(){
-  const rows=ledRows().filter(r=>r.status==='posted');
+  const rows=ledExportRows().filter(r=>r.status==='posted');
   const out=[['伝票日付','伝票番号','借方科目','借方金額','借方税区分','貸方科目','貸方金額','貸方税区分',
     '消費税額','摘要','取引先名','登録番号','部門','証憑番号']];
   rows.forEach(r=>{const j=rcJournal(r);
     const tx=(r.tax&&r.tax.length)?r.tax:[{r:'',b:r.amount,t:0}];
     const memo=(r.memo||r.vendor||r.account||'').slice(0,60);
-    tx.forEach(l=>{const amt=(l.b||0)+(l.t||0)||r.amount;if(!amt)return;
+    // ⚠ 曾经是 `(l.b||0)+(l.t||0)||r.amount` —— 一个 0 円 的税率桶（模型返回 {rate:'0',base:0,tax:0}
+    // 是常事）会掉进 `||r.amount`，于是同一张票据在仕訳里出现**两条全额**，帳簿凭空多一倍。
+    // tx 为空时上面已经兜底成 [{b:r.amount}]，所以这里不需要、也不能再兜一次。
+    tx.forEach(l=>{const amt=(l.b||0)+(l.t||0);if(!amt)return;
       const z=taxKubun(r,l.r);
       if(r.direction==='out')out.push([r.entry_date,r.voucher_no,j.dr,amt,z,j.cr,amt,'対象外',
         l.t||0,memo,r.vendor,r.reg_no,evName(r.event_id),r.voucher_no]);
@@ -4321,7 +4360,12 @@ function applySaveBack(){
   S.saveBack=null;save();render();toast('已保存回资产库（'+n+' 项）— 下一场从这里开始');
 }
 /* ---- exports ---- */
-function csvEsc(v){v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+/* 取引先名 は OCR が読んだ文字列＝モデル由来。=SUM(...) や @… で始まる値は Excel/Numbers が
+   **数式として実行**するので、税理士が開いた瞬間に走る。先頭に ' を足して無害化する
+   （CSV インジェクション対策の定石。表示上は税理士のツールが ' を落とす）。 */
+function csvEsc(v){v=String(v==null?'':v);
+  if(/^[=+\-@\t\r]/.test(v))v="'"+v;
+  return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
 function dlCSV(name,rows){
   const txt='﻿'+rows.map(r=>r.map(csvEsc).join(',')).join('\r\n');
   const a=document.createElement('a');
@@ -4635,7 +4679,9 @@ function loadPending(){
       // A minute-timer that repaints is a minute-timer that eats whatever the host was typing:
       // render() rebuilds every editor from SAVED state. Repaint only on real change, never
       // while an editor is open — each of those closes with its own render().
-      if(!same&&!S.postEdit&&!S.jobEdit&&!$('askwrap')&&!$('grantwrap'))render();});
+      // S.rc 也要挡：确认卡里主办正在照着票面手填，60 秒的轮询重绘会把没读回 R.f 的
+      // 那几格换回旧值 —— 一张票据填到一半被悄悄清空，人只会以为自己没打上。
+      if(!same&&!S.postEdit&&!S.jobEdit&&!S.rc&&!S.libEdit&&!S.libAdd&&!$('askwrap')&&!$('grantwrap'))render();});
   if(!_pendT)_pendT=setInterval(()=>{if(canCloud())loadPending();else{clearInterval(_pendT);_pendT=null;}},60000);
 }
 // em filters to ONE submitter: two volunteers can report on the same chip, and the host must not
@@ -4696,7 +4742,11 @@ async function pendAccept(cid,mc){
   if(!ev()||ev().id!==evId){await cloudLoad();S.evId=evId;}
   if(!chipById(cid)){toast('这项已经不在台本里了');loadPending();return;}
   exSet(cid,2);                                   // the host's own hand — RES_ST semantics untouched
-  const ids=pendFor(cid,mc).map(r=>r.id);         // 确认 accepts THAT person's 票据 too: one tap, not four
+  // ⚠ 票据行**不跟着确认**。PENDING 只装 pending，一旦把 file 行标成 accepted，它就从
+  // pendBlock 消失，而「入账」按钮只长在那里 —— 先点了「确认完成」的主办，从此再也没有
+  // 任何入口把那张票据记进帳簿。任务完成 ≠ 钱记完，两件事两个按钮。
+  const ids=pendFor(cid,mc).filter(r=>r.kind!=='file').map(r=>r.id);
+  if(!ids.length){loadPending();return;}
   const {error}=await sb.from('ym_submit').update({status:'accepted'}).in('id',ids);
   if(error)toast('已翻状态，但回执未标记：'+error.message);
   loadPending();
