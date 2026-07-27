@@ -65,7 +65,7 @@
     border:1px solid var(--brass-dim);border-radius:6px;padding:8px 13px;font-size:12.5px;
     font-weight:600;letter-spacing:.06em;box-shadow:none;opacity:.85}
   .fab:hover{opacity:1;background:rgba(201,163,86,.18)}
-  /* round corner fabs (📷/🎤) — light icons; position:fixed directly (iOS absolute-in-fixed bug) */
+  /* round corner fabs (camera / mic) — line icons; position:fixed directly (iOS absolute-in-fixed bug) */
   .rfab{position:fixed;z-index:38;width:42px;height:42px;border-radius:50%;
     right:max(16px,calc(50vw - var(--w)/2 + 16px));
     background:transparent;border:1px solid var(--line);color:var(--brass);
@@ -473,6 +473,11 @@
   .cstat{display:flex;gap:18px;align-items:baseline;margin:4px 0 2px}
   .cstat b{font-family:Oswald,sans-serif;font-size:22px;color:var(--brass);display:block;line-height:1.1}
   .cstat span{font-size:10px;letter-spacing:.16em;color:var(--muted)}
+  /* 线条图标：唯一图标来源。currentColor 让它自动跟随所在按钮/标签的颜色 */
+  .ico{width:1.05em;height:1.05em;vertical-align:-.16em;fill:none;stroke:currentColor;
+    stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .ico+*{margin-left:.34em}
+  .ico.lg{width:1.35em;height:1.35em}
   .ptable{margin-bottom:6px}
   .prow{display:flex;gap:9px;align-items:center;padding:9px 10px;border:1px solid var(--line);
     border-radius:5px;margin-bottom:5px;cursor:pointer;background:var(--felt-up);font-size:13px}
@@ -630,6 +635,46 @@
 <script>
 'use strict';
 /* ================= helpers ================= */
+/* ---------- 线条图标 (owner universal rule 2026-07-27) ----------
+   「默认情况下，总是使用简单的线条icon」—— 彩色 emoji 在 Apple 上渲染成卡通图，和这个 app 的
+   细线质感是两回事。这里是唯一的图标来源：24 格视框、1.6 描边、currentColor（所以自动跟随
+   .btn / .lbl / .alarm 的颜色）、随字号缩放。
+   保留不动的是真正的线条字形：→ ← ✕ ✓ ● ♂ ♀ ⊕ ⊖ —— 它们本来就是线，换成 SVG 只会更重。 */
+const ICON={
+  cam:'<circle cx="12" cy="13" r="3.4"/><path d="M3 8.5h3.2l1.6-2.2h8.4l1.6 2.2H21v10H3z"/>',
+  mic:'<rect x="9" y="3" width="6" height="10" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
+  key:'<circle cx="8" cy="12" r="3.6"/><path d="M11.6 12H21M18 12v3M15 12v2.2"/>',
+  clip:'<path d="M20 11.5 12 19.4a4.6 4.6 0 0 1-6.5-6.5l8.4-8.3a3 3 0 0 1 4.3 4.3l-8.3 8.3a1.5 1.5 0 0 1-2.1-2.1l7.6-7.6"/>',
+  pin:'<path d="M9 3h6M12 3v6M7.5 9h9l1.2 5.4H6.3zM12 14.4V21"/>',
+  box:'<path d="M3 7.6 12 3l9 4.6v8.8L12 21l-9-4.6z"/><path d="M3 7.6 12 12l9-4.4M12 12v9"/>',
+  person:'<circle cx="12" cy="8" r="3.6"/><path d="M4.6 20.5a7.4 7.4 0 0 1 14.8 0"/>',
+  gift:'<path d="M3.5 8.5h17v3.5h-17zM5 12v8.5h14V12M12 8.5V21"/><path d="M12 8.5S10.8 3.5 8.3 3.5a2.4 2.4 0 0 0 0 5M12 8.5s1.2-5 3.7-5a2.4 2.4 0 0 1 0 5"/>',
+  ai:'<path d="M12 3.2 13.7 9l5.8 1.7-5.8 1.8L12 18.3l-1.7-5.8L4.5 10.7 10.3 9z"/><path d="M18.6 3v3.2M17 4.6h3.2"/>',
+  send:'<path d="M21 3 10.5 13.5M21 3l-6.8 18-3.7-7.5L3 9.8z"/>',
+  mega:'<path d="M4 9.5h3.5L16 5v14L7.5 14.5H4zM19 9.2a4.2 4.2 0 0 1 0 5.6M7.5 14.5v4.2a1.6 1.6 0 0 0 3.2 0v-3"/>',
+  hand:'<path d="M9 11V5.4a1.6 1.6 0 0 1 3.2 0V11M12.2 11V4.2a1.6 1.6 0 0 1 3.2 0V11M15.4 11V6.6a1.6 1.6 0 0 1 3.2 0v7.6a6.6 6.6 0 0 1-6.6 6.6h-.8a6 6 0 0 1-4.6-2.2L4 15.2a1.7 1.7 0 0 1 2.5-2.2L9 15.4"/>',
+  cloud:'<path d="M7 18.5a4 4 0 0 1 .5-8 5.5 5.5 0 0 1 10.5 1.5 3.3 3.3 0 0 1-.5 6.5z"/>',
+  lock:'<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.4a4 4 0 0 1 8 0v3.1"/>',
+  books:'<path d="M4 4.5h5.5v15H4zM10.5 4.5H16v15h-5.5z"/><path d="M17.2 5.2l3 .8-3.6 14.2-2.9-.8"/>',
+  up:'<path d="M12 20V5M12 5 6 11M12 5l6 6"/>',
+  down:'<path d="M12 4v15M12 19l-6-6M12 19l6-6"/>',
+  again:'<path d="M20 6.5v5h-5"/><path d="M19.4 11.5a7.6 7.6 0 1 0-.7 5.4"/>',
+  ban:'<circle cx="12" cy="12" r="8.6"/><path d="M6 6l12 12"/>',
+  trash:'<path d="M4.5 6.5h15M9.5 6.5V4h5v2.5M7 6.5l1 14h8l1-14"/>',
+  go:'<circle cx="12" cy="12" r="8.6"/><path d="M10 8.2 16 12l-6 3.8z"/>',
+  house:'<path d="M3.5 10.5 12 4l8.5 6.5V20h-17z"/><path d="M9.5 20v-6h5v6"/>',
+  warn:'<path d="M12 3.6 21.4 20H2.6z"/><path d="M12 9.6v5M12 17.2v.2"/>',
+  wait:'<circle cx="12" cy="12" r="8.6"/><path d="M12 6.8V12l3.4 2"/>',
+  link:'<path d="M10.5 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.7 1.7"/><path d="M13.5 10.5a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.7-1.7"/>',
+  image:'<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l4.6-4.6 3.4 3.4 2.6-2.6L20 18"/>',
+  save:'<path d="M4.5 4.5h11L19.5 8.5v11h-15z"/><path d="M8 4.5v5h7v-5M8 19.5v-5.5h8v5.5"/>',
+  print:'<path d="M7 9V4h10v5"/><rect x="3.5" y="9" width="17" height="7" rx="1.6"/><path d="M7 14h10v6H7z"/>',
+  coin:'<circle cx="12" cy="12" r="8.6"/><path d="M12 7v10M14.6 9.4a2.9 2.9 0 0 0-2.6-1.4c-1.6 0-2.6.9-2.6 2s1 1.9 2.6 2.2 2.8.9 2.8 2.1-1.1 2.1-2.8 2.1a3 3 0 0 1-2.7-1.5"/>',
+  seed:'<path d="M12 20.5V11"/><path d="M12 11S5 11.6 5 6c4.6 0 7 2.3 7 5zM12 12.4S19 13 19 7.4c-4.6 0-7 2.3-7 5z"/>',
+  eye:'<path d="M2.5 12S6.4 5.8 12 5.8 21.5 12 21.5 12 17.6 18.2 12 18.2 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>'
+};
+// 用在文字前面时自带右侧间距；size 用 em 所以跟着上下文字号走
+function ico(n,cls){return `<svg class="ico${cls?' '+cls:''}" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]||''}</svg>`;}
 // For HTML TEXT and double-quoted attribute values. ' is escaped too because volunteer-authored
 // text (备注 / 文件名) now reaches the host's DOM.
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
@@ -675,7 +720,7 @@ const LS_KEY='jjym_v1';
 const RES_ST=['未联系','已联系','已确认','到位'];
 let STORE=null;
 function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){
-  if(!S._quota){S._quota=1;toast('⚠ 本机存储已满');}}
+  if(!S._quota){S._quota=1;toast('本机存储已满');}}
   if(canCloud()){clearTimeout(_pushT);_pushT=setTimeout(cloudPushAll,800);}}
 /* ---------- cloud mirror (Y4 alive; 0008_ym.sql) ---------- */
 // mirrors ym_ok() server-side: an APPROVED ym_member row, or platform admin. A cashflow
@@ -903,7 +948,7 @@ function peopleDetail(){
       ${evs||'<div class="note9">还没有记录。</div>'}
       <div class="df" style="margin-top:12px">
         <button class="btn ghost sm" style="flex:1" onclick="S.pOpen=null;libEditOpen('${escJs(cat)}','${escJs(p.id)}')">打开资料卡</button>
-        ${cat!=='goods'?`<button class="btn ghost sm" onclick="S.pOpen=null;grantOpen('${escJs(p.id)}')">🔑 账号</button>`:''}</div>
+        ${cat!=='goods'?`<button class="btn ghost sm" onclick="S.pOpen=null;grantOpen('${escJs(p.id)}')">${ico('key')}账号</button>`:''}</div>
     </div>`;
 }
 // 从一览里改某场活动的表现 —— volLog 是按活动存的，所以要指定 eventId
@@ -963,9 +1008,9 @@ function grantPaint(){
     document.body.appendChild(w);}
   const a=codeOf(p),st=codeState(p),cat=catOf(p);
   const dup=nameIndex(cat)[String(p.name||'').trim()]==='DUP';
-  const head=`<div class="hd"><span class="tp">🔑 ${esc(p.name)}</span>
+  const head=`<div class="hd"><span class="tp">${ico('key')}${esc(p.name)}</span>
       <button class="btn ghost sm" onclick="grantClose()">✕</button></div>`;
-  const warn=dup?`<div class="sub" style="color:var(--alarm);margin:0 0 8px">⚠ 名册里还有一位「${esc(p.name)}」——
+  const warn=dup?`<div class="sub" style="color:var(--alarm);margin:0 0 8px">${ico('warn')}名册里还有一位「${esc(p.name)}」——
       ${cat==='guest'?'先确认这条记录就是 TA 本人，否则 TA 会看到另一个同名者的活动和号牌。'
         :'用姓名指定负责人的事项两人都收不到，请改名或改用名册指派。'}</div>`:'';
   let body;
@@ -976,7 +1021,7 @@ function grantPaint(){
       <div class="lbl">邀请码 · 一周内有效 · 只能用一次</div>
       <div class="num" style="font-size:21px;letter-spacing:.2em;color:var(--brass);margin:2px 0 10px;word-break:break-all">${esc(g.invite)}</div>
       <div class="sub" style="color:var(--alarm);margin-bottom:10px">只发给 TA 本人，别发到群里 —— 拿到这条的人就能用它注册成 ${esc(ROLE_LBL[g.role]||'')}。这串码只显示这一次。</div>
-      <div class="df"><button class="btn" style="flex:1" onclick="grantSend()">📤 发送</button>
+      <div class="df"><button class="btn" style="flex:1" onclick="grantSend()">${ico('send')}发送</button>
         <button class="btn ghost sm" onclick="grantClose()">收起</button></div>`;
   }else if(a){
     body=`${head}${warn}
@@ -984,7 +1029,7 @@ function grantPaint(){
       <div class="num" style="font-size:26px;letter-spacing:.16em;color:var(--brass);margin:2px 0 6px">${esc(a.code)}</div>
       <div class="sub" style="margin:0 0 10px">${esc(ROLE_LBL[roleKey(a)]||'')} · ${esc(st.t)}${a.invite_tail?' · 码尾 '+esc(a.invite_tail):''}</div>
       ${a.bound?`<div class="sub" style="margin-bottom:10px">TA 已经注册好了。以后用 <b>${esc(a.code)}</b> 或自己的邮箱 + 密码登录。</div>`
-        :`<div class="df"><button class="btn" style="flex:1" ${g.busy?'disabled':''} onclick="codeReissue()">${g.busy?'生成中…':'↻ 重发邀请码'}</button></div>
+        :`<div class="df"><button class="btn" style="flex:1" ${g.busy?'disabled':''} onclick="codeReissue()">${g.busy?'生成中…':ico('again')+'重发邀请码'}</button></div>
           <p class="note9">重发会立刻作废上一个邀请码，编号不变。</p>`}
       <div style="text-align:center;margin-top:10px">
         <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="grantRevoke()">${a.revoked?'恢复访问':'取消授权'}</span></div>
@@ -1051,7 +1096,7 @@ function grantRevoke(){
   const p=STORE.library.resources.find(x=>x.id===g.pid),a=p&&codeOf(p);if(!a)return;
   const off=!a.revoked;
   grantClose();                                 // one window at a time — never stack two cards
-  ask({title:(off?'取消 ':'恢复 ')+p.name+' 的授权？',
+  ask({title:(off?'取消 ':'恢复 ')+esc(p.name)+' 的授权？',
     note:off?('TA 会立刻看不到任何内容，已上传的票据也一并撤下。编号 '+a.code+' 保留，永远不会给别人。')
             :'TA 会重新看到你发布给 TA 的内容。',
     fields:[],ok:off?'取消授权':'恢复',fn:async()=>{
@@ -1106,8 +1151,8 @@ async function cloudLoad(){
   ensureY2();
   if(!STORE.events.length)cloudPushAll();                 // never leave the host with an empty app
   S.evId=STORE.events[0]?STORE.events[0].id:null;S.sel='header';
-  if(localReal.length){toast('☁ 已同步（本机 '+localReal.length+' 场活动已合并上传）');cloudPushAll();}
-  else toast('☁ 云同步已开启');
+  if(localReal.length){toast('已同步（本机 '+localReal.length+' 场活动已合并上传）');cloudPushAll();}
+  else toast('云同步已开启');
   render();
 }
 // union by id; cloud entries win, local-only entries survive
@@ -1384,7 +1429,7 @@ function render(){
       <span class="logo">ym</span><span class="ttl">主办台</span>
       <span class="sp"></span>
       <div class="navlinks">${nav}</div>
-      <span class="avatar" onclick="S.auth=!S.auth;render()" title="${canCloud()?'云同步已开启':(SESSION?'等待管理员批准':'演示模式 — 点击登录')}">${canCloud()?esc((SESSION.user.email||'C')[0].toUpperCase()):(SESSION?'⏳':'演')}</span>
+      <span class="avatar" onclick="S.auth=!S.auth;render()" title="${canCloud()?'云同步已开启':(SESSION?'等待管理员批准':'演示模式 — 点击登录')}">${canCloud()?esc((SESSION.user.email||'C')[0].toUpperCase()):(SESSION?ico('wait'):'演')}</span>
     </div>${body}
     ${fabsHtml()}
     ${S.auth?authSheet():''}
@@ -1402,25 +1447,25 @@ function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;if(v!=='sheet'
   if(v==='people')loadAccepted();          // 本人申报的数字来自 accepted 行，不在轮询里
   render();}
 
-/* ---------- round corner fabs: 📷 photo + 🎤 hold-to-talk (jjcashflow pattern) ---------- */
+/* ---------- round corner fabs: photo + hold-to-talk (jjcashflow pattern) ---------- */
 function fabsHtml(){
   if(!ev())return '';
   const base=S.view==='day'?84:20;   // clear the day tab bar
   const recTab=S.view==='day'&&S.dayTab==='rec';
   const menu=S.fabMenu?`<div class="fabmenu" style="bottom:${base+124}px">
-      <label>📷 票据 → 收支<input type="file" accept="image/*" capture="environment"
+      <label>${ico('cam')}票据 → 收支<input type="file" accept="image/*" capture="environment"
         style="display:none" onchange="S.fabMenu=false;costPhoto(this)"></label>
-      <label>📷 报名表 → 名册<input type="file" accept="image/*" capture="environment"
+      <label>${ico('cam')}报名表 → 名册<input type="file" accept="image/*" capture="environment"
         style="display:none" onchange="S.fabMenu=false;formPhoto(this)"></label></div>`:'';
   const hide=S.view==='exec'?' exhide':'';   // desktop 执行 tree: fabs would cover the 进行中 column (CSS hides ≥760px)
   // the fabs are position:fixed in the bottom-right — without this the last row of content
   // (e.g. ＋新建 on 日) ends UNDERNEATH them at full scroll. No overlapping, ever.
   return `<div class="fabspace${hide}" style="height:${base+116}px"></div>${menu}
     <button class="rfab${hide}" style="bottom:${base+62}px" title="拍照（票据/报名表）"
-      onclick="S.fabMenu=!S.fabMenu;render()">📷</button>
+      onclick="S.fabMenu=!S.fabMenu;render()">${ico('cam','lg')}</button>
     ${recTab?'':`<button class="rfab${hide}" id="micfab" style="bottom:${base}px" title="按住说话（签到/翻状态/评价/记账）"
       onmousedown="recStart()" onmouseup="recStop()" onmouseleave="recStop()"
-      ontouchstart="event.preventDefault();recStart()" ontouchend="recStop()">🎤</button>`}
+      ontouchstart="event.preventDefault();recStart()" ontouchend="recStop()">${ico('mic','lg')}</button>`}
     ${S.draft&&!recTab?`<div class="drawerbg" onclick="S.draft=null;render()"></div>
       <div class="modal-g">${draftCard(ev())}</div>`:''}`;
 }
@@ -1430,16 +1475,16 @@ function authSheet(){
   let inner='';
   if(!sb)inner=`<div class="empty">登录组件加载失败，请刷新</div>`;
   else if(canCloud())
-    inner=`<div style="font-size:13px;line-height:2">☁ <b>${esc(SESSION.user.email||'')}</b><br>
+    inner=`<div style="font-size:13px;line-height:2">${ico('cloud')}<b>${esc(SESSION.user.email||'')}</b><br>
       <span class="muted">云同步已开启 — 活动与资产库自动备份，多设备可用。</span></div>
       <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
   else if(SESSION){
     const rejected=PROFILE&&PROFILE.status==='rejected';
-    inner=`<div style="font-size:13px;line-height:2">${rejected?'⛔':'⏳'} <b>${esc(SESSION.user.email||'')}</b><br>
+    inner=`<div style="font-size:13px;line-height:2">${rejected?ico('ban'):ico('wait')} <b>${esc(SESSION.user.email||'')}</b><br>
       <span class="muted">${rejected?'此账号已被管理员停用。数据仍在本机，请联系管理员。'
         :'已注册，等待管理员批准（区分：主办方）。批准前数据仅存本机，不会丢。'}</span></div>
       ${rejected?'':`<button class="btn" style="width:100%;margin-top:12px" onclick="recheck()">
-          🔄 管理员已批准？点这里刷新</button>
+          ${ico('again')}管理员已批准？点这里刷新</button>
         <div class="addform" style="margin-top:10px">
         <div class="lbl" style="margin-bottom:8px">有邀请码？立即开通</div>
         <input id="au_code2" placeholder="邀请码" style="margin-bottom:8px"
@@ -1552,7 +1597,7 @@ function libPanel(){
     items=peoList(cat).map(r=>{const u=usedEvents(r.id);
       const meta=[esc(r.role),r.contact?esc(r.contact):'',cat==='goods'&&r.inv!=null?INV_ST[r.inv]:'',u?`用过 ${u} 场`:''].filter(Boolean).join(' · ');
       return `<button class="libitem" onclick="applyRes('${r.id}')">
-      <div class="t">${cat==='volunteer'?'👤':'📦'} ${esc(r.name)}${dtag(r)}</div><div class="m">${meta}</div></button>`;}).join('');
+      <div class="t">${ico(cat==='volunteer'?'person':'box')}${esc(r.name)}${dtag(r)}</div><div class="m">${meta}</div></button>`;}).join('');
     hint=cat==='volunteer'?'先点选一行（或活动卡），再点这里 → 志愿者挂到该行。<br>嘉宾从活动看板加入，不挂在台本行上。'
                  :'先点选一行（或活动卡），再点这里 → 物资/场地挂到该行。';
   }else{
@@ -1598,19 +1643,19 @@ function viewSheet(){
     </select>
     ${e&&!S.readonly?`<button class="btn ghost sm" onclick="goDay()">当天</button>
     <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
-    ${e?`<button class="btn ghost sm" onclick="cloneEvent('${e.id}')">🔁 再办一场</button>`:''}
+    ${e?`<button class="btn ghost sm" onclick="cloneEvent('${e.id}')">${ico('again')}再办一场</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
     ${e&&!S.readonly&&evPhase(e)==='plan'?`<span class="icx" title="删除这场活动（仅筹备中可删）" onclick="delEvent()">✕</span>`:''}
   </div>`;
   const roBanner=S.readonly?`<div class="hintbar" style="border:1px solid var(--brass-dim);border-radius:5px;padding:9px 11px">
-    🔒 只读回看（已归档活动）· <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读编辑</span></div>`:'';
+    ${ico('lock')}只读回看（已归档活动）· <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读编辑</span></div>`:'';
   if(!e)return `<div class="wrap"><div class="panel">${libPanel()}</div>
     <div class="main">${sw}<div class="empty">还没有活动。<br>点「＋ 新活动」，或从左侧资产库点一个模板开始。</div></div></div>
-    <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>`;
+    <button class="fab" onclick="S.drawer=true;render()">${ico('books')}资产库</button>`;
   const rc=resCounts(e),mt=moneyTotals(e);
   const strips=`<div class="strips">
     <div class="strip"><div class="hd"><span class="lbl">资源 · 跟进</span>
-      <button class="btn ghost sm" onclick="remindAll()">📤 催未确认</button></div>
+      <button class="btn ghost sm" onclick="remindAll()">${ico('send')}催未确认</button></div>
       <div class="stcounts">
         <div class="c ${rc[0]?'warn':''}"><div class="n num">${rc[0]}</div><div class="l">未联系</div></div>
         <div class="c"><div class="n num">${rc[1]}</div><div class="l">已联系</div></div>
@@ -1638,15 +1683,15 @@ function viewSheet(){
         onclick="event.stopPropagation();selRow('header')" onchange="e_upd('start',this.value)">
       <input style="flex:2;min-width:130px" value="${esc(e.venue)}" placeholder="场地"
         onclick="event.stopPropagation();selRow('header')" onchange="e_upd('venue',this.value)"></div>
-    ${(()=>{const vh=venueHistory(e);return vh?`<div class="reusehint" onclick="event.stopPropagation();venueHistDetail()">🏛 这个场地办过 ${vh.count} 场${vh.lastCost?' · 上次场租 '+yen(vh.lastCost):''} · 点看日期</div>`:'';})()}
+    ${(()=>{const vh=venueHistory(e);return vh?`<div class="reusehint" onclick="event.stopPropagation();venueHistDetail()">${ico('house')}这个场地办过 ${vh.count} 场${vh.lastCost?' · 上次场租 '+yen(vh.lastCost):''} · 点看日期</div>`:'';})()}
     <div class="chips">${chipsHtml(e.header,'header')}</div>
     <div class="lbl" style="margin-top:8px">活动全场 — 点选此卡后，从资产库挂「全场」资源/收支</div>
     <label class="dfld" style="margin-top:10px" onclick="event.stopPropagation()">
       <span class="l">给嘉宾的通知（着装 · 交通 · 注意事项 —— 已授权的嘉宾会在自己页面看到）</span>
       <div class="descwrap"><input id="e_notice" value="${esc(e.notice||'')}"
-        placeholder="几个关键词即可，点 ✨ 补写" onchange="e_upd('notice',this.value)">
+        placeholder="几个关键词即可，点右边的星标补写" onchange="e_upd('notice',this.value)">
         <button class="aibtn" title="AI 补写（先写几个关键词）"
-          onclick="aiPhrase('e_notice','给嘉宾的通知','${escJs(e.name||'活动')}')">✨</button></div></label>
+          onclick="aiPhrase('e_notice','给嘉宾的通知','${escJs(e.name||'活动')}')">${ico('ai')}</button></div></label>
     <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:flex;
       gap:9px;align-items:center;flex-wrap:wrap" onclick="event.stopPropagation()">
       <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer">
@@ -1669,12 +1714,12 @@ function viewSheet(){
           onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','owner',this.value)">
       </div>
       <div class="descwrap">
-        <input class="descsi" value="${esc(r.desc||'')}" placeholder="这个环节的简介 / 说明（写几个关键词，点 ✨ 补写）"
+        <input class="descsi" value="${esc(r.desc||'')}" placeholder="这个环节的简介 / 说明（写几个关键词，点右边的星标补写）"
           onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','desc',this.value)">
         <button class="aibtn" title="AI 补写（先写几个关键词）"
-          onclick="event.stopPropagation();aiPhrase(this.parentElement.querySelector('.descsi'),'环节说明','${escJs(r.seg||'环节')}')">✨</button></div>
+          onclick="event.stopPropagation();aiPhrase(this.parentElement.querySelector('.descsi'),'环节说明','${escJs(r.seg||'环节')}')">${ico('ai')}</button></div>
       <div class="chips">${chipsHtml(r,r.id)}</div>
-      <div class="rowfiles">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">📎 ${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" multiple style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
+      <div class="rowfiles">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">${ico('clip')}${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" multiple style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
     </div>
     <div class="rowops">
       <button onclick="event.stopPropagation();moveRow('${r.id}',-1)" ${i===0?'disabled':''}>▲</button>
@@ -1685,7 +1730,7 @@ function viewSheet(){
   const kickoff=(e&&!S.readonly)?(e.status==='run'
     ?`<div class="kickoff run"><span class="st">● 执行跟踪中</span>
         <button class="btn sm" onclick="goExec('${e.id}')">▶ 执行看板</button></div>`
-    :`<div class="kickoff plan"><button class="btn big" onclick="enterExec()">🚀 计划好了 · 开始跟踪执行</button>
+    :`<div class="kickoff plan"><button class="btn big" onclick="enterExec()">${ico('go')}计划好了 · 开始跟踪执行</button>
         <span class="rem">把计划变成会自己提醒你的执行看板</span></div>`):'';
   return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main${S.readonly?' ro':''}">
     ${sw}${roBanner}
@@ -1693,11 +1738,11 @@ function viewSheet(){
       <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不会上云或公开到官网。
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
       <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
-    <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧/📚 资产库点选应用。</div>
+    <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧的资产库点选应用。</div>
     ${strips}${participantsStrip(e)}${S.costDraft?costDraftCard():''}${hd}${kickoff}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
-  <button class="fab" onclick="S.drawer=true;render()">📚 资产库</button>
+  <button class="fab" onclick="S.drawer=true;render()">${ico('books')}资产库</button>
   ${S.gate?gateCard():''}`;
 }
 // folded 环节 summary — major item stays (time/环节/负责人), details (chips) hide behind this
@@ -1706,12 +1751,12 @@ function chipsHtml(holder,loc){
     if((c.type||'人')==='任务'){   // a JOB — a 要做的事 for this 环节 (booking / setup / tools …)
       const b=taskBucket(c);
       return `<span class="chip job b${b}${c.ignored?' ig':''}" onclick="event.stopPropagation();cycleJob('${loc}','${c.id}')"
-        title="要做的事 · 点击翻状态">📌 ${esc(c.name)}
-        <span class="lbl">${c.ignored?'已搁置':(c.open?'📣 已发布':TASK_ST[b])}</span>
+        title="要做的事 · 点击翻状态">${ico('pin')}${esc(c.name)}
+        <span class="lbl">${c.ignored?'已搁置':(c.open?ico('mega')+'已发布':TASK_ST[b])}</span>
         <span class="x" onclick="event.stopPropagation();delChip('${loc}','res','${c.id}')">✕</span></span>`;
     }
     return `<span class="chip s${c.status||0}" onclick="event.stopPropagation();cycleRes('${loc}','${c.id}')"
-      title="点击翻状态 · ${RES_ST[c.status||0]}">${c.type==='物'?'📦':'👤'} ${esc(c.name)}
+      title="点击翻状态 · ${RES_ST[c.status||0]}">${ico(c.type==='物'?'box':'person')}${esc(c.name)}
       <span class="lbl">${RES_ST[c.status||0]}</span>
       <span class="x" onclick="event.stopPropagation();delChip('${loc}','res','${c.id}')">✕</span></span>`;
   }).join('');
@@ -1745,10 +1790,10 @@ function aiPhrase(el,kind,ctx,longForm){
   if(typeof el==='string')el=document.getElementById(el);
   if(!el)return;
   const t=(el.value||'').trim();
-  if(!t){toast('先写几个关键词，再点 ✨');el.focus();return;}
+  if(!t){toast('先写几个关键词，再点星标');el.focus();return;}
   const btn=(el.parentElement&&el.parentElement.querySelector('.aibtn'))||document.querySelector('.aibtn.for-'+el.id);
   if(btn){btn.disabled=true;btn.textContent='…';}
-  const done=()=>{if(btn){btn.disabled=false;btn.textContent='✨';}};
+  const done=()=>{if(btn){btn.disabled=false;btn.innerHTML=ico('ai');}};
   fetch(API+'/api/phrase',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({text:t,kind:kind||'',context:ctx||'',long:!!longForm,
       user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
@@ -1818,13 +1863,13 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
   const pick=(arr,fn)=>arr.length?`<div class="jepick">${arr.map(n=>`<span onclick="${fn}(this.textContent)">${esc(n)}</span>`).join('')}</div>`:'';
   return `<div class="drawerbg" onclick="S.jobEdit=null;render()"></div>
     <div class="exdlg jobdlg">
-      <div class="hd"><span class="tp">📌 ${c?'这件要做的事':'加一件要做的事'}</span>
+      <div class="hd"><span class="tp">${ico('pin')}${c?'这件要做的事':'加一件要做的事'}</span>
         <button class="btn ghost sm" onclick="S.jobEdit=null;render()">✕</button></div>
       <div class="sub" style="margin:0 0 4px">${esc(where)}</div>
       <label class="dfld"><span class="l">要做什么</span>
-        <div class="descwrap"><input id="je_name" value="${esc(d.name)}" oninput="jeKeep()" placeholder="几个关键词即可，点 ✨ 补写">
+        <div class="descwrap"><input id="je_name" value="${esc(d.name)}" oninput="jeKeep()" placeholder="几个关键词即可，点右边的星标补写">
           <button class="aibtn" title="AI 补写（先写几个关键词）"
-            onclick="aiPhrase('je_name','要做的事','${escJs(where)}')">✨</button></div></label>
+            onclick="aiPhrase('je_name','要做的事','${escJs(where)}')">${ico('ai')}</button></div></label>
       <label class="dfld"><span class="l">谁来做（负责人）</span>
         <input id="je_role" value="${esc(d.role||'')}" oninput="jeKeep()" placeholder="选一个人，或直接写新名字" list="peoplelist"></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
       <label class="dfld"><span class="l">需要什么（资源）</span>
@@ -1838,7 +1883,7 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
           ?`<label class="dfld"><span class="l">没写负责人时：要不要放进认领池</span></label>
             <div class="pubseg">
               <div class="sb ${je.open?'':'on'}" onclick="jeOpenTog(0)">不发布</div>
-              <div class="sb ${je.open?'on':''}" onclick="jeOpenTog(1)">📣 发布 · 先点先得</div></div>`
+              <div class="sb ${je.open?'on':''}" onclick="jeOpenTog(1)">${ico('mega')}发布 · 先点先得</div></div>`
           :'')}
       ${c?pendBlock(c.id):''}
       ${c?`<div class="exseg" style="margin-top:12px">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="jeStatus(${i})">${l}</div>`).join('')}</div>`:''}
@@ -1850,12 +1895,14 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
    Mounted as a DETACHED overlay on <body>, never through render(): the 发布 editor is a
    contenteditable holding unsaved typing, and a re-render mid-edit would throw it away. */
 let _ask=null;
+// o.title 不再 esc：它可能含 ico() 的 SVG。所有把用户数据放进 title 的调用点必须自己 esc()
+// （grantRevoke / libDel / joinReject 都是这么做的）。
 function ask(o){
   askClose();_ask=o;
   const w=document.createElement('div');w.id='askwrap';
   w.innerHTML=`<div class="drawerbg" onclick="askClose()"></div>
     <div class="exdlg jobdlg askdlg">
-      <div class="hd"><span class="tp">${esc(o.title||'')}</span>
+      <div class="hd"><span class="tp">${o.title||''}</span>
         <button class="btn ghost sm" onclick="askClose()">✕</button></div>
       ${o.note?`<div class="sub" style="margin:0 0 8px">${esc(o.note)}</div>`:''}
       ${(o.fields||[]).map((f,i)=>`<label class="dfld"><span class="l">${esc(f.label||'')}</span>
@@ -1917,7 +1964,7 @@ function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
 function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.money.find(x=>x.id===cid);if(!c)return;
   const per=c.kind==='in'&&(String(c.name||'').indexOf('门票')>=0||c.unit>0);
   const num=v=>v===''?null:(parseInt(String(v).replace(/[^\d]/g,''),10)||0);
-  ask({title:(c.kind==='in'?'⊕ 收入':'⊖ 支出')+'「'+c.name+'」',
+  ask({title:(c.kind==='in'?'⊕ 收入':'⊖ 支出')+'「'+esc(c.name)+'」',
     note:per?'单价 × 到场人数 = 实收（在「日」页按「确认入账」结算）':'留空 = 还没发生',
     fields:[
       {label:'计划金额',type:'num',val:c.plan!=null?c.plan:'',ph:'0'},
@@ -1950,7 +1997,7 @@ function cloneEvent(srcId){
       resources:live(r.resources).map(cpR),money:(r.money||[]).map(cpM)})),   // rows KEEP their 要做的事 (jobs)
     participants:[]};
   STORE.events.push(ne);S.evId=ne.id;S.readonly=false;S.view='sheet';S.sel='header';S.gate=null;
-  save();render();toast('已照这份台本开了新一场 — 改个日期就能办 🎉');}
+  save();render();toast('已照这份台本开了新一场 — 改个日期就能办');}
 function delEvent(id){const e=id?STORE.events.find(x=>x.id===id):ev();if(!e)return;
   // only 筹备中 (plan) events can be deleted — kicked-off or finished ones are protected
   if(evPhase(e)!=='plan'){toast('已启动或已结束的活动不能删除');return;}
@@ -2021,7 +2068,7 @@ function viewLib(){
   }else if(S.libTab==='people'||S.libTab==='goods'){
     const isPeople=S.libTab==='people';
     const cat=isPeople?(S.peoCat||'volunteer'):'goods';
-    const icon=cat==='goods'?'📦':cat==='donor'?'🎁':'👤';
+    const icon=ico(cat==='goods'?'box':cat==='donor'?'gift':'person');
     list=peoList(cat).map(x=>{
       const hist=cat==='guest'?guestHistory(x.id):null;
       const meta=cat==='guest'
@@ -2030,11 +2077,11 @@ function viewLib(){
         ? `${esc(x.dtype||'个人')}${x.company?' · '+esc(x.company):''}${x.totalAmount?' · 累计 '+esc(x.totalAmount):''}`
         : `${esc(x.role||'')}${x.contact?' · '+esc(x.contact):''}${x.avail?' · '+esc(x.avail):''}`;
       return `<div class="libitem" style="cursor:pointer" onclick="libEditOpen('${cat}','${x.id}')">
-        <div class="t">${icon} ${esc(x.name)}${dtag(x)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}</div>
+        <div class="t">${icon}${esc(x.name)}${dtag(x)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}</div>
         <div class="m">${meta}${codeOf(x)?` · <span class="num" style="color:var(--brass)">${esc(codeState(x).code)}</span> · ${esc(codeState(x).t)}`:''}
         <span style="float:right">
-          ${cat==='goods'?`<button class="exchip b${(x.inv||0)===3?0:((x.inv||0)?1:0)}" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();cycleInv('${x.id}')">📦 ${INV_ST[x.inv||0]}</button> `:''}
-          ${cat!=='goods'?`<span class="ic${codeOf(x)?' on':''}" title="${codeOf(x)?'账号 '+esc(codeState(x).code)+' · '+esc(codeState(x).t)+' — 点开管理':'发邀请码'}" onclick="event.stopPropagation();grantOpen('${x.id}')">🔑</span>`:''}
+          ${cat==='goods'?`<button class="exchip b${(x.inv||0)===3?0:((x.inv||0)?1:0)}" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();cycleInv('${x.id}')">${ico('box')}${INV_ST[x.inv||0]}</button> `:''}
+          ${cat!=='goods'?`<span class="ic${codeOf(x)?' on':''}" title="${codeOf(x)?'账号 '+esc(codeState(x).code)+' · '+esc(codeState(x).t)+' — 点开管理':'发邀请码'}" onclick="event.stopPropagation();grantOpen('${x.id}')">${ico('key')}</span>`:''}
           <span class="ic del" title="删除" onclick="event.stopPropagation();libDel('resources','${x.id}')">✕</span></span></div></div>`;
     }).join('');
     if(cat==='volunteer')
@@ -2049,9 +2096,9 @@ function viewLib(){
           <input id="nr_role" style="width:110px" placeholder="职业"></div>
         <div class="frow"><input id="nr_contact" placeholder="联系方式（可选）"></div>
         <button class="btn sm" onclick="libAddRes('guest')">加入名册</button>
-        <p class="note9">嘉宾通常在活动当天由 📷 报名表 / ⬆名单CSV / 看板添加，会自动进入这里；
+        <p class="note9">嘉宾通常在活动当天由 报名表拍照 / 名单CSV / 看板添加，会自动进入这里；
           也可以先建档，之后在看板「＋ 名册添加」直接选。<br>
-          <b style="color:var(--brass)">🔒 嘉宾资料由主办方填写与保管：嘉宾本人、志愿者、其他任何人都看不到。授权账号后，嘉宾只看到公开信息、流程、自己的号牌和你的通知。</b></p></div>`;
+          <b style="color:var(--brass)">${ico('lock')}嘉宾资料由主办方填写与保管：嘉宾本人、志愿者、其他任何人都看不到。授权账号后，嘉宾只看到公开信息、流程、自己的号牌和你的通知。</b></p></div>`;
     else if(cat==='donor')
       form=`<div class="addform"><div class="lbl" style="margin-bottom:8px">新捐赠人</div>
         <div class="frow"><input id="nr_name" placeholder="捐赠人名称">
@@ -2083,7 +2130,7 @@ function viewLib(){
     ${subtabs}
     <div class="libgrid">${list||'<div class="empty">空</div>'}</div>${form}
     <p class="note9">点任一条目 → 打开资料卡（V1.0 完整字段）。带 <span class="demotag dim">示例</span> 的是练习用的种子数据。</p>
-    ${dn?`<button class="btn ghost sm" style="margin-top:6px" onclick="clearDemo()">🧹 清除所有示例数据（${dn} 项）</button>`:''}
+    ${dn?`<button class="btn ghost sm" style="margin-top:6px" onclick="clearDemo()">${ico('trash')}清除所有示例数据（${dn} 项）</button>`:''}
   </div>
     ${S.libEdit?libEditCard():''}`;
 }
@@ -2103,7 +2150,7 @@ function clearDemo(){
 }
 function libDel(k,id){const L=STORE.library;
   const rec=L[k].find(x=>x.id===id),a=rec?codeOf(rec):null;
-  ask({title:a?('删除 '+rec.name+'？'):'从资产库删除？',
+  ask({title:a?('删除 '+esc(rec.name)+'？'):'从资产库删除？',
     note:a?('TA 有成员账号（'+a.code+'）—— 删除会同时停用 TA 的访问。编号不会被回收。')
           :'已挂到活动上的不受影响。',
     fields:[],ok:'删除',fn:async()=>{
@@ -2222,7 +2269,7 @@ function libEditCard(){
       ${kind==='guest'?guestHistoryHtml(id):''}
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn" style="flex:1" onclick="libEditSave()">保存</button></div>
-      ${kind==='guest'?'<p class="note9">🔒 这份资料只有主办方看得到 — 嘉宾本人也看不到。照片随 Drive 媒体通道上线。</p>'
+      ${kind==='guest'?'<p class="note9">'+ico('lock')+'这份资料只有主办方看得到 — 嘉宾本人也看不到。照片随 Drive 媒体通道上线。</p>'
         :kind==='volunteer'?'<p class="note9">发邀请码后，TA 只看到自己负责的事和当天流程。星级决定 TA 能接多难的任务。</p>':''}
     </div></div>`;
 }
@@ -2330,9 +2377,9 @@ function dayBoard(e){
   return `<div class="cols">${colHtml(e,'男')}<div class="colsep"></div>${colHtml(e,'女')}</div>
     ${bar}
     <div class="boardops">
-      <label class="btn ghost sm" style="cursor:pointer">📷 报名表
+      <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}报名表
         <input type="file" accept="image/*" capture="environment" style="display:none" onchange="formPhoto(this)"></label>
-      <label class="btn ghost sm" style="cursor:pointer">⬆ 名单CSV
+      <label class="btn ghost sm" style="cursor:pointer">${ico('up')}名单CSV
         <input type="file" accept=".csv,text/csv" style="display:none" onchange="csvImport(this)"></label>
       <button class="btn ghost sm" onclick="S.pickGuest=!S.pickGuest;render()">＋ 名册添加</button>
       <button class="btn ghost sm" onclick="addP()">＋ 新建</button>
@@ -2364,7 +2411,7 @@ function pickGuestHtml(e){
       <button class="btn ghost sm" onclick="S.pickGuest=false;render()">关闭</button></div>
     ${avail.length?`<div class="chips">${avail.map(g=>`<span class="chip s1" onclick="addFromLib('${g.id}')">
       ${g.gender==='男'?'♂':'♀'} ${esc(g.name)}${g.occupation?`<span class="lbl"> ${esc(g.occupation)}</span>`:''}</span>`).join('')}</div>`
-    :`<div class="note9">名册里的嘉宾都已在本场。新嘉宾用 📷 报名表 / ⬆名单CSV / ＋新建。</div>`}</div>`;
+    :`<div class="note9">名册里的嘉宾都已在本场。新嘉宾用 报名表拍照 / 名单CSV / ＋新建。</div>`}</div>`;
 }
 function addFromLib(libId){
   const e=ev();const g=STORE.library.resources.find(r=>r.id===libId);if(!g)return;
@@ -2431,8 +2478,8 @@ function participantsStrip(e){
       <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`).join(''):'<span class="note9">还没有参加者 — 从名册选，或导入名单。</span>'}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
       <button class="btn ghost sm" onclick="S.pickGuest=true;render()">＋ 从名册选</button>
-      <button class="btn ghost sm" onclick="S.showImport=true;S.importRows=null;render()">⬆ 导入名单</button>
-      <label class="btn ghost sm" style="cursor:pointer">📷 名单截图<input type="file" accept="image/*"
+      <button class="btn ghost sm" onclick="S.showImport=true;S.importRows=null;render()">${ico('up')}导入名单</button>
+      <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}名单截图<input type="file" accept="image/*"
         style="display:none" onchange="rosterShot(this)"></label></div>
     ${joinStrip(e)}
     ${S.pickGuest?pickGuestHtml(e):''}</div>`;
@@ -2447,7 +2494,7 @@ function rosterShot(inp){if(S.readonly)return;const f=inp.files&&inp.files[0];in
         user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
     .then(r=>r.json()).then(res=>{
       const people=((res&&res.people)||[]).map(p=>({name:(p.name||'').trim(),gender:p.gender})).filter(p=>p.name);
-      if((res&&res.is_roster===false)||!people.length){toast('没认出名字 — 换一张更清楚的截图，或用「⬆ 导入名单」贴文字');return;}
+      if((res&&res.is_roster===false)||!people.length){toast('没认出名字 — 换一张更清楚的截图，或用「导入名单」贴文字');return;}
       const seen={};
       S.importRows=people.filter(p=>seen[p.name]?false:(seen[p.name]=1)).map(p=>{
         const hit=matchGuestByName(p.name);
@@ -2479,7 +2526,7 @@ function commitImport(){if(S.readonly||!S.importRows)return;const e=ev();let n=0
 function importListCard(){
   return `<div class="drawerbg" onclick="S.showImport=false;S.importRows=null;render()"></div>
     <div class="exdlg jobdlg" style="width:min(430px,calc(100vw - 24px))">
-      <div class="hd"><span class="tp">⬆ 导入参加者名单</span><button class="btn ghost sm" onclick="S.showImport=false;S.importRows=null;render()">✕</button></div>
+      <div class="hd"><span class="tp">${ico('up')}导入参加者名单</span><button class="btn ghost sm" onclick="S.showImport=false;S.importRows=null;render()">✕</button></div>
       ${!S.importRows?`<p class="note9" style="margin:2px 0 8px">从别处（微信 / LINE …）把名字复制贴进来，一行一个。名字前后可写 男/女。</p>
         <textarea id="imp_text" rows="6" style="width:100%;background:var(--felt);border:1px solid var(--line);border-radius:6px;color:var(--stock);padding:8px" placeholder="男 张三&#10;李四&#10;王五 女"></textarea>
         <div class="df"><button class="btn" style="flex:1" onclick="parseImport()">解析 →</button></div>`
@@ -2539,7 +2586,7 @@ function dayRec(e){
     <p class="note9" style="text-align:center">屏幕不会亮红点，对方看见的只有一条线。<br>说号码最稳：例「女7，沟通积极，建议多主动」。也可以说签到、翻状态、记收支。</p>`;
 }
 function recStart(){
-  if(S.recPhase==='rec')return;   // works from the 记录 tab (with 号牌 selected) or the 🎤 fab anywhere
+  if(S.recPhase==='rec')return;   // works from the 记录 tab (with 号牌 selected) or the mic fab anywhere
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     REC.chunks=[];REC.mr=new MediaRecorder(stream);REC.secs=0;
     REC.mr.ondataavailable=ev2=>REC.chunks.push(ev2.data);
@@ -2558,7 +2605,7 @@ function recStop(){
   clearInterval(REC.timer);S.recPhase='think';
   try{REC.mr.stop();}catch(e2){S.recPhase='idle';}
   render();
-  if(!(S.view==='day'&&S.dayTab==='rec'))toast('🎤 整理中…');
+  if(!(S.view==='day'&&S.dayTab==='rec'))toast('整理中…');
 }
 function recSend(){
   const type=(REC.mr&&REC.mr.mimeType)||'audio/webm';
@@ -2693,7 +2740,7 @@ function costDraftCard(){
   const d=S.costDraft;
   const blank=d.confidence==='low';
   return `<div class="stockcard">
-    <div class="schd"><span class="who" style="font-size:15px">📷 票据</span>
+    <div class="schd"><span class="who" style="font-size:15px">${ico('cam')}票据</span>
       <span class="sub">${d.source==='mock'?'示例解析':'AI识别 · '+esc(d.confidence||'')}</span></div>
     <div class="sgrid2">
       <div class="sfield ${blank?'blank':''}"><div class="fl">名目 / 店名</div><input id="cd_vendor" value="${esc(d.vendor||'')}"></div>
@@ -2732,7 +2779,7 @@ function formDraftCard(){
       <input id="fp_${key}" value="${esc(v2)}">
       ${blank?`<span class="hint9">${v2?'不太确定—请核对':'没看清—请补'}</span>`:''}</div>`;};
   return `<div class="stockcard">
-    <div class="schd"><span class="who" style="font-size:15px">📷 报名表</span>
+    <div class="schd"><span class="who" style="font-size:15px">${ico('cam')}报名表</span>
       <span class="sub">${d.source==='mock'?'示例解析':'AI识别'}</span></div>
     <div class="sgrid2">
       ${F('name','姓名',d.name)}${F('gender','性别',d.gender)}
@@ -2843,7 +2890,7 @@ function peFocusBody(){const el=$('po_body');if(el)el.focus();}
 function peCmd(cmd,arg){peFocusBody();try{document.execCommand(cmd,false,arg||null);}catch(e){}}
 function peLink(){
   const sel=window.getSelection(),saved=sel&&sel.rangeCount?sel.getRangeAt(0).cloneRange():null;
-  ask({title:'🔗 加链接',note:'只接受 https:// 或 mailto:',
+  ask({title:ico('link')+'加链接',note:'只接受 https:// 或 mailto:',
     fields:[{label:'链接地址',ph:'https://…'}],ok:'插入',fn:v=>{
       const safe=window.ymSanitize?window.ymSanitize.safeUrl(v[0],false):'';
       if(!safe){toast('只支持 https:// 或 mailto: 链接');return;}
@@ -2851,7 +2898,7 @@ function peLink(){
 }
 function peImg(){
   const sel=window.getSelection(),saved=sel&&sel.rangeCount?sel.getRangeAt(0).cloneRange():null;
-  ask({title:'🖼 加图片',note:'相册图片随 Drive 通道上线',
+  ask({title:ico('image')+'加图片',note:'相册图片随 Drive 通道上线',
     fields:[{label:'图片地址',ph:'https://…'}],ok:'插入',fn:v=>{
       const safe=window.ymSanitize?window.ymSanitize.safeUrl(v[0],true):'';
       if(!safe){toast('图片只支持 https:// 地址');return;}
@@ -3067,23 +3114,23 @@ function viewReview(){
     ${volSection(e)}
     <div class="rvsec"><div class="hd"><span class="lbl">复盘小结</span>
         ${!S.readonly?`<button class="aibtn for-rv_summary" title="AI 补写（先写几个关键词）"
-          onclick="aiPhrase('rv_summary','复盘小结','${escJs(e.name)}',true)">✨</button>`:''}</div>
+          onclick="aiPhrase('rv_summary','复盘小结','${escJs(e.name)}',true)">${ico('ai')}</button>`:''}</div>
       <textarea id="rv_summary" class="rvsum" rows="4" ${S.readonly?'readonly':''}
-        placeholder="写几个关键词就行，例如：女生到得早 · 快问快答最热 · 茶歇偏少 —— 再点 ✨ 补成一段。"
+        placeholder="写几个关键词就行，例如：女生到得早 · 快问快答最热 · 茶歇偏少 —— 再点星标补成一段。"
         onchange="e_upd('summary',this.value)">${esc(e.summary||'')}</textarea>
       <div class="rowfiles" style="margin-top:8px">
-        ${(e.files||[]).map(f=>`<span class="filechip" onclick="openEvFile('${f.id}')">📎 ${esc(f.name)}${!S.readonly?`<span class="x" onclick="event.stopPropagation();delEvFile('${f.id}')">✕</span>`:''}</span>`).join('')}
+        ${(e.files||[]).map(f=>`<span class="filechip" onclick="openEvFile('${f.id}')">${ico('clip')}${esc(f.name)}${!S.readonly?`<span class="x" onclick="event.stopPropagation();delEvFile('${f.id}')">✕</span>`:''}</span>`).join('')}
         ${!S.readonly?`<label class="fileadd">＋附件（可多选）<input type="file" multiple style="display:none" onchange="evAttach(this)"></label>`:''}</div>
       <p class="note9" style="margin-top:6px">照片、名单、票据都能附在这里；小文件直接存下，大文件先记文件名（接入云盘后自动升级）。</p></div>
     <div class="exports">
-      <button class="btn sm" onclick="startSaveBack()">💾 保存回资产库</button>
-      <button class="btn ghost sm" onclick="shareRundown()">📤 分享台本</button>
-      <button class="btn ghost sm" onclick="printRundown()">🖨 打印台本</button>
-      <button class="btn ghost sm" onclick="exportMoney()">⬇ 收支 CSV</button>
-      <button class="btn ghost sm" onclick="exportPeople()">⬇ 名单·评价 CSV</button></div>
+      <button class="btn sm" onclick="startSaveBack()">${ico('save')}保存回资产库</button>
+      <button class="btn ghost sm" onclick="shareRundown()">${ico('send')}分享台本</button>
+      <button class="btn ghost sm" onclick="printRundown()">${ico('print')}打印台本</button>
+      <button class="btn ghost sm" onclick="exportMoney()">${ico('down')}收支 CSV</button>
+      <button class="btn ghost sm" onclick="exportPeople()">${ico('down')}名单·评价 CSV</button></div>
     ${S.saveBack?saveBackCard():''}
     <div class="kickoff plan" style="margin:16px 0 4px">
-      <button class="btn big" onclick="cloneEvent('${e.id}')">🔁 再办一场（照这份台本开下一场）</button>
+      <button class="btn big" onclick="cloneEvent('${e.id}')">${ico('again')}再办一场（照这份台本开下一场）</button>
       <span class="rem">整份台本、资源、要做的事、收支项都搬过去；只留日期给你填</span></div>
     <p class="note9">保存回资产库＝这场活动变成下一场的起点：台本成模板、新环节成灵感、帮过忙的人进资源、实际价格更新收支项。</p>
   </div>`;
@@ -3128,7 +3175,7 @@ function volSection(e){
     const said=t.n?`<span class="selfrep">本人申报 ${t.hours%1?t.hours.toFixed(1):t.hours}h${
       t.cost?' · 自费 '+yen(t.cost):''}</span>`:'<span class="selfrep none">本人未申报</span>';
     return `<div class="rvrow volrow">
-      <span class="c2">👤 ${esc(p.name)}${a?`<span class="num" style="color:var(--brass);font-size:10.5px"> ${esc(a.code)}</span>`:''}
+      <span class="c2">${ico('person')}${esc(p.name)}${a?`<span class="num" style="color:var(--brass);font-size:10.5px"> ${esc(a.code)}</span>`:''}
         <span class="muted" style="font-size:11px"> ${esc(p.role||'')}</span></span>
       ${said}
       <input style="width:78px;padding:5px 8px" placeholder="主办记时长h" inputmode="decimal" value="${esc(log.hours||'')}"
@@ -3180,7 +3227,7 @@ function saveBackCard(){
   if(sb.ideas.length){h+=`<div class="sbsec">新灵感（库里没有的环节）</div>`+
     sb.ideas.map((x,i)=>sbItem(x.on,`sbToggle('ideas',${i})`,esc(x.seg),'约'+x.dur+'分')).join('');}
   if(sb.res.length){h+=`<div class="sbsec">新资源</div>`+
-    sb.res.map((x,i)=>sbItem(x.on,`sbToggle('res',${i})`,(x.type==='人'?'👤 ':'📦 ')+esc(x.name)+(x.role?' · '+esc(x.role):''))).join('');}
+    sb.res.map((x,i)=>sbItem(x.on,`sbToggle('res',${i})`,ico(x.type==='人'?'person':'box')+esc(x.name)+(x.role?' · '+esc(x.role):''))).join('');}
   if(sb.money.length){h+=`<div class="sbsec">收支项价格</div>`+
     sb.money.map((x,i)=>sbItem(x.on,`sbToggle('money',${i})`,esc(x.name)+(x.mode==='update'?'（更新价格）':'（新收支项）'),
       (x.from!=null?yen(x.from)+' → ':'')+yen(x.to))).join('');}
@@ -3277,14 +3324,14 @@ function heroHtml(e){
 }
 // the card shows only NAME + STATUS; 环节·负责 live in the hover/tap brief (owner: keep it calm)
 function taskCard(x){
-  const c=x.c,b=x.bucket,icon=c.type==='任务'?'📌':(c.type==='物'?'📦':'👤');
+  const c=x.c,b=x.bucket,icon=ico(c.type==='任务'?'pin':(c.type==='物'?'box':'person'));
   const due=c.due?`<span class="due${(c.due<todayStr()&&b<2)?' over':''}">截止${fmtDate(c.due)}</span>`:'';
   const brief=[esc(x.where),c.role?esc(c.role):'',c.owner?'负责 '+esc(c.owner):'',c.needs?'需要 '+esc(c.needs):'',c.due?'截止 '+fmtDate(c.due):''].filter(Boolean).join(' · ');
   return `<div class="extask${S.armed===c.id?' armed':''}" data-cid="${c.id}" onclick="taskTap('${c.id}')">
     <div class="nm"><span class="nmt">${icon} ${esc(c.name)}</span>${due}</div>
     <span class="exchip b${b}" onclick="event.stopPropagation();exAdvance('${c.id}')">${TASK_ST[b]}</span>
-    ${claimFor(c.id)?`<span class="pdot got" title="有人接了这件事，等你确认指派">🙋 有人接了</span>`
-      :(c.open?`<span class="pdot" title="在发布池里，志愿者先点先得">📣 已发布</span>`:'')}
+    ${claimFor(c.id)?`<span class="pdot got" title="有人接了这件事，等你确认指派">${ico('hand')}有人接了</span>`
+      :(c.open?`<span class="pdot" title="在发布池里，志愿者先点先得">${ico('mega')}已发布</span>`:'')}
     ${pendFor(c.id).length?`<span class="pdot" title="志愿者报了完成 / 传了票据">● 待确认</span>`:''}
     ${brief?`<div class="brief">${brief}</div>`:''}</div>`;
 }
@@ -3342,8 +3389,8 @@ function publishBar(e){
   const n=exOpenable(e).length,live=exPooled(e).length;
   if(S.readonly||(!n&&!live))return '';
   return `<div class="expub">
-    ${n?`<button class="exadd" style="margin:0" onclick="exPublishAll()">📣 一键发布 ${n} 项没人认领的</button>`:''}
-    ${live?`<span class="pl">🙋 池子里 ${live} 项等人接</span>`:''}</div>`;
+    ${n?`<button class="exadd" style="margin:0" onclick="exPublishAll()">${ico('mega')}一键发布 ${n} 项没人认领的</button>`:''}
+    ${live?`<span class="pl">${ico('hand')}池子里 ${live} 项等人接</span>`:''}</div>`;
 }
 function exPublishAll(){
   if(S.readonly)return;const e=ev();if(!e)return;
@@ -3374,7 +3421,7 @@ function viewExec(){
   return `<div class="main"><div class="extree">
     <div class="exback"><span class="bk" onclick="go('sheet')">← 计划</span> · 执行看板</div>
     <div style="text-align:center"><span style="font-size:13px;color:var(--stock);font-weight:600">${esc(e.name)}${dtag(e)}</span></div>
-    ${od.length?`<div class="exchase">⚠ ${od.length} 项已过截止还没完成 <span class="go" onclick="exRemindOverdue()">去催 →</span></div>`:''}
+    ${od.length?`<div class="exchase">${ico('warn')}${od.length} 项已过截止还没完成 <span class="go" onclick="exRemindOverdue()">去催 →</span></div>`:''}
     ${claimBanner(e)}
     ${execTree(e,todo,doing,done)}
     ${execFooter(e,mt,ign)}
@@ -3390,7 +3437,7 @@ function execMobile(e,todo,doing,done){
       <div class="lg"><span class="a">待办 <b>${todo.length}</b></span><span>进行中 <b>${doing.length}</b></span><span class="g">完成 <b>${done.length}</b></span></div></div>
     <div class="extrunk"></div>
     <div class="exband todo"><div class="bt"><span class="lbl"><i class="dot"></i>待办 <span class="n">${todo.length}</span></span></div>
-      ${todo.length?todo.map(card).join(''):'<div class="exempty">没有待办 — 都在推进或已完成 👍</div>'}
+      ${todo.length?todo.map(card).join(''):'<div class="exempty">没有待办 — 都在推进或已完成</div>'}
       <button class="exadd" onclick="exAddTodo()">＋ 加一个待办（如：打电话确认场地）</button>${publishBar(e)}</div>
     <div class="excols">
       <div class="exband doing"><div class="bt"><span class="lbl"><i class="dot"></i>进行中 <span class="n">${doing.length}</span></span></div>
@@ -3441,7 +3488,7 @@ function execTree(e,todo,doing,done){
      +`<div class="tlcell r" data-day="${r.day}">${cell(r.r,r.day,'r')}</div>`;
   const total=todo.length+doing.length+done.length,pct=total?Math.round(done.length/total*100):0;
   const canopy=`<div class="tlcanopy"><div class="hd"><i class="dot"></i>待办 <span style="opacity:.6;font-weight:400">${todo.length}</span></div>
-    ${todo.length?`<div class="row">${todo.map(taskCard).join('')}</div>`:'<div class="exempty" style="opacity:.7">没有待办 — 都在推进或已完成 👍</div>'}
+    ${todo.length?`<div class="row">${todo.map(taskCard).join('')}</div>`:'<div class="exempty" style="opacity:.7">没有待办 — 都在推进或已完成</div>'}
     <button class="exadd" onclick="exAddTodo()">＋ 加一个待办</button>${publishBar(e)}</div>`;
   const cd=d<0?String(-d):(d===0?'今天':String(d)),
         lab=d<0?(-d)+' 天前 · 已过':(d===0?'就是今天':'还有 '+d+' 天');
@@ -3456,13 +3503,13 @@ function execTree(e,todo,doing,done){
       <div class="lab">${lab} · ${fmtDate(e.date)} 活动日</div></div>`;
 }
 function execFooter(e,mt,ign){
-  return `${mt.length?`<div class="exmoney" style="max-width:520px;margin:18px auto 0"><span>💰 待记账 ${mt.length} 项：${mt.slice(0,3).map(x=>esc(x.c.name)).join('、')}${mt.length>3?' …':''}</span>
+  return `${mt.length?`<div class="exmoney" style="max-width:520px;margin:18px auto 0"><span>${ico('coin')}待记账 ${mt.length} 项：${mt.slice(0,3).map(x=>esc(x.c.name)).join('、')}${mt.length>3?' …':''}</span>
       <span class="exfold" onclick="go('sheet')">去填实际 →</span></div>`:''}
-    ${ign.length?`<div class="exignore" style="max-width:520px;margin:16px auto 0"><div class="lbl">🌱 已搁置 ${ign.length} · 保留为提示，不催办</div>
+    ${ign.length?`<div class="exignore" style="max-width:520px;margin:16px auto 0"><div class="lbl">${ico('seed')}已搁置 ${ign.length} · 保留为提示，不催办</div>
       ${ign.map(x=>`<div class="it"><span>${esc(x.c.name)} · ${esc(x.where)}</span>
         <span class="rz" onclick="exRestore('${x.c.id}')">↩ 恢复为待办</span></div>`).join('')}</div>`:''}
     ${orphanClaims(e).length?`<div class="exignore" style="max-width:520px;margin:16px auto 0">
-      <div class="lbl">🙋 ${orphanClaims(e).length} 条认领指向已删掉的事项</div>
+      <div class="lbl">${ico('hand')}${orphanClaims(e).length} 条认领指向已删掉的事项</div>
       ${orphanClaims(e).map(r=>`<div class="it"><span>${esc(pendWho(r))} 接的一项已被删除</span>
         <span class="rz" onclick="claimDropOrphan('${escJs(r.id)}')">清掉</span></div>`).join('')}</div>`:''}
     <div class="exend" style="max-width:520px;margin:18px auto 0">
@@ -3481,7 +3528,7 @@ function exAdvance(cid){if(S.readonly)return;const c=chipById(cid);if(!c)return;
 function exOpen(cid){openTask(cid);}
 function exDetailCard(){
   const c=chipById(S.exTask);if(!c){S.exTask=null;return '';}
-  const b=taskBucket(c),icon=c.type==='任务'?'📌':(c.type==='物'?'📦':'👤');
+  const b=taskBucket(c),icon=ico(c.type==='任务'?'pin':(c.type==='物'?'box':'person'));
   const kind=c.type==='任务'?'待办':(c.type==='物'?'物资':'人员');
   return `<div class="exdlgcatch" onclick="S.exTask=null;render()"></div>
     <div class="exdlg">
@@ -3499,7 +3546,7 @@ function exDetailCard(){
       <label class="dfld"><span class="l">难度（决定谁能接 · 默认 C）</span></label>
       ${diffPick(c.diff,`exDiff('${escJs(c.id)}',$D)`)}
       <div class="df">
-        ${b<2?`<button class="btn ghost sm" style="flex:1" onclick="exRemind('${c.id}')">📤 催办</button>`:''}
+        ${b<2?`<button class="btn ghost sm" style="flex:1" onclick="exRemind('${c.id}')">${ico('send')}催办</button>`:''}
         ${c.type==='任务'?`<span class="lnkdel" onclick="exDelTask('${c.id}')">删除</span>`
           :`<button class="btn ghost sm" onclick="exIgnore('${c.id}')">搁置</button>`}</div>
     </div>`;
@@ -3562,7 +3609,7 @@ function pendBlock(cid){
       <div class="ph">● ${esc(pendWho(mine[0]))} ${done.length?'交任务了':'传了票据'}</div>
       ${h||co?`<div class="pn">工时 ${esc(h)}h${co?' · 自费 '+yen(co)+'（不进收支）':''}</div>`:''}
       ${done.filter(r=>r.note).map(r=>`<div class="pn">「${esc(r.note)}」</div>`).join('')}
-      ${files.map(r=>`<div class="pf" onclick="pendOpenFile('${esc(r.id)}')">📎 ${esc(r.file_name||'附件')}</div>`).join('')}
+      ${files.map(r=>`<div class="pf" onclick="pendOpenFile('${esc(r.id)}')">${ico('clip')}${esc(r.file_name||'附件')}</div>`).join('')}
       <div id="pendview_${esc(cid)}"></div>
       <div class="df" style="margin-top:8px">
         <button class="btn sm" style="flex:1" onclick="pendAccept('${escJs(cid)}','${escJs(mc)}')">确认完成</button>
@@ -3610,7 +3657,7 @@ function claimBlock(cid){
   const r=claimFor(cid);if(!r)return '';
   const p=personByCode(r.member_code);
   return `<div class="pendbox">
-    <div class="ph">🙋 ${esc(p?p.name:(r.member_code||'成员'))} 接了这件事${r.diff?' · 难度 '+esc(r.diff):''}</div>
+    <div class="ph">${ico('hand')}${esc(p?p.name:(r.member_code||'成员'))} 接了这件事${r.diff?' · 难度 '+esc(r.diff):''}</div>
     <div class="pn">先点先得，已经判给 TA 了 —— 别人再点只会看到「该任务已经被领取」。
       确认后这件事就出现在 TA 自己的页面上，可以交工时和票据。</div>
     ${p?'':`<div class="pn" style="color:var(--alarm)">名册里找不到这个编号 —— 先在名册补一条再指派。</div>`}
@@ -3681,7 +3728,7 @@ function claimBanner(e){
   const cs=PENDING.filter(r=>r.kind==='claim'&&r.event_id===e.id&&chipById(r.chip_id));
   if(!cs.length)return '';
   return cs.map(r=>{const c=chipById(r.chip_id);
-    return `<div class="exchase">🙋 ${esc(pendWho(r))} 接了「${esc(c.name||'一项任务')}」
+    return `<div class="exchase">${ico('hand')}${esc(pendWho(r))} 接了「${esc(c.name||'一项任务')}」
       <span class="go" onclick="openTask('${escJs(r.chip_id)}')">去确认 →</span></div>`;}).join('');
 }
 // fetch the bytes for ONE row, only when the host actually asks to look
@@ -3704,7 +3751,7 @@ function pendOpenFile(sid){
       box.textContent='';
       if(mime==='application/pdf'){
         const a=document.createElement('a');a.className='pf';a.href=src;
-        a.download=name;a.textContent='⬇ '+name;box.appendChild(a);
+        a.download=name;a.textContent='下载 '+name;box.appendChild(a);
       }else{
         const im=document.createElement('img');im.src=src;
         im.style.cssText='max-width:100%;border-radius:6px;margin-top:6px';box.appendChild(im);
@@ -3749,7 +3796,7 @@ function gateConfirm(){const e=ev();if(!e||!S.gate)return;
 }
 function gateCard(){const e=ev();if(!e||!S.gate)return '';
   const unmet=followUps(e).filter(x=>x.type==='res'), bare=bareRows(e);
-  const ic=c=>c.type==='物'?'📦':(c.type==='任务'?'📌':'👤');
+  const ic=c=>ico(c.type==='物'?'box':(c.type==='任务'?'pin':'person'));
   const resRow=x=>{const ig=!!S.gate.ignore[x.c.id];
     return `<div class="gaterow"><span class="gn">${ic(x.c)} ${esc(x.c.name)}${x.c.role?' · '+esc(x.c.role):''}</span>
       <span class="gseg"><span class="gatetog todo${ig?'':' on'}" onclick="gateTog('${x.c.id}',0)">待办</span><span class="gatetog skip${ig?' on':''}" onclick="gateTog('${x.c.id}',1)">搁置</span></span></div>`;};
@@ -3786,7 +3833,7 @@ function viewDesk(){
       ${ph==='plan'?`<span class="dc-del" onclick="event.stopPropagation();delEvent('${e.id}')" title="删除（仅筹备中可删）">✕</span>`:''}
       <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}${pendCount(e)?` · <span style="color:var(--brass)">● 待确认 ${pendCount(e)}</span>`:''}</div>
-      <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">🔁 再办一场</span>`:''}</div></button>`;};
+      <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">${ico('again')}再办一场</span>`:''}</div></button>`;};
   const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
     (groups[k].length?groups[k].map(evCard).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);
   return `<div class="main" style="max-width:640px;margin:0 auto">
@@ -3809,7 +3856,7 @@ function peekCard(){
   const e=STORE.events.find(x=>x.id===S.peek);if(!e){S.peek=null;return '';}
   const ph=evPhase(e),f=followUps(e),mt=moneyTotals(e);
   const open=ph==='current'?`goExec('${e.id}')`:ph==='archived'?`openArchived('${e.id}')`:`S.evId='${e.id}';go('sheet')`;
-  const openLbl=ph==='current'?'▶ 打开执行看板':ph==='archived'?'👁 只读回看':ph==='hot'?'复盘 / 跟进':'打开计划';
+  const openLbl=ph==='current'?ico('go')+'打开执行看板':ph==='archived'?ico('eye')+'只读回看':ph==='hot'?'复盘 / 跟进':'打开计划';
   return `<div class="drawerbg" onclick="S.peek=null;render()"></div>
     <div class="modal-g"><div class="rvsec" style="margin:0">
       <div class="hd"><span class="lbl">${PHASE_LABEL[ph]}</span>
