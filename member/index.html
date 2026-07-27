@@ -67,6 +67,9 @@
   .badge .bl{font-size:11px;color:var(--muted);letter-spacing:.1em}
   .notice{margin-top:12px;padding:10px 11px;border:1px dashed var(--brass-dim);border-radius:6px;
     font-size:12.5px;line-height:1.8}
+  .cstat{display:flex;gap:18px;align-items:baseline}
+  .cstat b{font-family:Oswald,sans-serif;font-size:22px;color:var(--brass);display:block;line-height:1.1}
+  .cstat span{font-size:10px;letter-spacing:.16em;color:var(--muted)}
   .rv{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px}
   .rv b{color:var(--brass)}
   .note{font-size:10.5px;color:var(--muted);line-height:1.8;margin-top:18px}
@@ -220,7 +223,8 @@ function volShareHtml(row){
         ${j.review?`${j.hours?' · ':''}评价：${esc(j.review)}`:''}</div>`:''}</div>`;}).join('');
   return `<div style="margin-top:18px">
     <div class="lbl">你好，${esc(d.name||'')}${d.role?' · '+esc(d.role):''}</div>
-    ${jobs||'<div class="empty">暂无岗位安排</div>'}</div>`;
+    ${jobs||'<div class="empty">暂无岗位安排</div>'}
+    ${contribHtml(row)}</div>`;
 }
 
 // D / O — 公开信息 + 通知 + 流程（无说明）。没有可做的事，也没有任何写入面。
@@ -375,6 +379,38 @@ async function doBind(){
 /* 可报名 —— 主办已公开、但 TA 还没参加的活动。这是 ym_share_can_join() 唯一认的锚点：
    嘉宾自己的 jobs[] 是循环的（里面只有已经参加的），而 ym_post 的公开策略是 to anon，
    登录后的嘉宾在那里读到 0 行。 */
+/* 志愿者贡献 (PLAN-Y7 §B4) — 完成件数 · 累计工时 · 累计自费 · 主办的感谢 · 服务经历。
+   工时不重复计算：志愿者自报的（已确认的 ym_submit）进累计；复盘里主办填的 volLog.hours
+   单独显示为「主办登记」，因为那是另一个人对同一件事的记录，加起来会翻倍。 */
+function contribHtml(row){
+  const d=row.payload||{};
+  if(d.kind!=='vol')return '';
+  const ok=MINE.filter(r=>(r.kind==='submit'||r.kind==='done')&&r.status==='accepted');
+  const hrs=ok.reduce((s,r)=>s+(parseFloat(r.hours)||0),0);
+  const cost=ok.reduce((s,r)=>s+(parseInt(r.cost,10)||0),0);
+  const thanks=(d.jobs||[]).filter(j=>j.review).map(j=>({ev:j.event,t:j.review}));
+  const logged=(d.jobs||[]).reduce((s,j)=>s+(parseFloat(j.hours)||0),0);
+  const key='__contrib';
+  const open=OPEN[key];
+  if(!ok.length&&!thanks.length&&!logged)return '';
+  const name=cid=>{
+    for(const j of (d.jobs||[])) for(const x of (j.duties||[])) if(x.chipId===cid)return x.name||x.where||'';
+    return '一项任务';};
+  return `<div class="card" style="margin-top:18px">
+    <div class="lbl" style="margin-bottom:8px">我的贡献</div>
+    <div class="cstat">
+      <div><b class="num">${ok.length}</b><span>已确认</span></div>
+      <div><b class="num">${hrs%1?hrs.toFixed(1):hrs}</b><span>小时</span></div>
+      ${cost?`<div><b class="num">¥${cost.toLocaleString()}</b><span>自费</span></div>`:''}
+    </div>
+    ${logged?`<div class="dm" style="margin-top:6px">主办另有登记 ${logged}h（复盘记录，不计入上面）</div>`:''}
+    ${thanks.length?`<div class="rv">${thanks.map(x=>
+      `<div>${esc(x.ev)}：${esc(x.t)}</div>`).join('')}</div>`:''}
+    ${ok.length?`<div class="fold" onclick="fold('${key}')">${open?'▾':'▸'} 服务经历（${ok.length} 件）</div>
+      ${open?ok.map(r=>`<div class="rd"><span class="sg">${esc(name(r.chip_id))}${
+        r.hours?`<span class="ds">工时 ${esc(r.hours)}h${r.cost?' · 自费 ¥'+esc(r.cost):''}</span>`:''}</span></div>`).join(''):''}`:''}
+  </div>`;
+}
 function joinList(row){
   const d=row.payload||{},op=d.open||[];
   if(!op.length)return '';

@@ -453,6 +453,7 @@
   .pendbox .pn{font-size:12px;color:var(--stock-dim);margin-top:3px;line-height:1.6}
   .pendbox .pf{display:inline-block;font-size:11px;color:var(--brass);cursor:pointer;
     border:1px solid var(--line);border-radius:4px;padding:3px 7px;margin:5px 5px 0 0;text-decoration:none}
+  .diffseg .sb{font-family:Oswald,sans-serif;letter-spacing:.06em}
   .extask .pdot{font-size:9.5px;color:var(--brass);margin-left:6px;white-space:nowrap}
   /* destructive actions are LIGHT everywhere — never a heavy red button (owner's creed) */
   .lnkdel{color:var(--muted);cursor:pointer;font-size:11.5px;align-self:center;padding:0 8px;
@@ -1157,6 +1158,11 @@ function allMoneyChips(e){let out=e.header.money.map(c=>({c,where:'活动全场'
 function resCounts(e){const n=[0,0,0,0];allResChips(e).forEach(x=>{if(x.c.type!=='任务')n[x.c.status||0]++;});return n;}
 
 /* ===== execution: tasks are a PROJECTION of chips (owner 2026-07-21). No task store. ===== */
+const DIFF_ST=['C','B','A','S','SS'];          // 任务难度 (PLAN-Y7 §B1) — 默认 C
+// 点选，不是下拉：主办在手机上一眼看到全部五档，不用展开
+// call is a JS expression string; $D is substituted with the quoted letter
+function diffPick(cur,call){return `<div class="exseg diffseg">${DIFF_ST.map(d=>
+  `<div class="sb ${(cur||'C')===d?'on':''}" onclick="${call.replace('$D',"'"+d+"'")}">${d}</div>`).join('')}</div>`;}
 const TASK_ST=['待办','进行中','完成'];        // the ONE vocabulary — used by tree, member page, CSV
 const INV_ST=['待入库','已入库','已发放','已用完'];   // donation-material inventory — ONE field, not a CRM
 function cycleInv(id){const r=STORE.library.resources.find(x=>x.id===id);
@@ -1641,7 +1647,7 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
   // je.draft holds what the host has TYPED but not saved. Anything inside the dialog that
   // triggers render() (确认完成 / 退回 on a 志愿者 submission) would otherwise rebuild the fields
   // from the stored chip and silently discard it.
-  const d=je.draft||c||{name:'',role:'',needs:'',due:''};const b=c?taskBucket(c):0;
+  const d=je.draft||c||{name:'',role:'',needs:'',due:'',diff:'C'};const b=c?taskBucket(c):0;
   const where=je.loc==='header'?'活动全场':(()=>{const r=e.rows.find(x=>x.id===je.loc);return r?((r.time?r.time+' ':'')+(r.seg||'环节')):'环节';})();
   const pick=(arr,fn)=>arr.length?`<div class="jepick">${arr.map(n=>`<span onclick="${fn}(this.textContent)">${esc(n)}</span>`).join('')}</div>`:'';
   return `<div class="drawerbg" onclick="S.jobEdit=null;render()"></div>
@@ -1659,6 +1665,8 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
         <input id="je_needs" value="${esc(d.needs||'')}" oninput="jeKeep()" placeholder="从下面点添加，或直接写"></label>${pick(uniquePlanNames(e,'物'),'jeNeed')}
       <label class="dfld"><span class="l">什么时候前完成（可选）</span>
         <input id="je_due" type="date" value="${esc(d.due||'')}" oninput="jeKeep()"></label>
+      <label class="dfld"><span class="l">难度（决定谁能接 · 默认 C）</span></label>
+      ${diffPick(d.diff,'jeDiff($D)')}
       ${c?pendBlock(c.id):''}
       ${c?`<div class="exseg" style="margin-top:12px">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="jeStatus(${i})">${l}</div>`).join('')}</div>`:''}
       <div class="df"><button class="btn" style="flex:1" onclick="jobEditSave()">保存</button>
@@ -1693,20 +1701,28 @@ function askOk(){const o=_ask;if(!o)return;
   const vals=(o.fields||[]).map((f,i)=>{const el=$('ask_'+i);return el?el.value.trim():'';});
   askClose();o.fn(vals);}
 function jeKeep(){const je=S.jobEdit;if(!je)return;const g=i=>{const el=$(i);return el?el.value:'';};
-  je.draft={name:g('je_name'),role:g('je_role'),needs:g('je_needs'),due:g('je_due')};}
+  je.draft={name:g('je_name'),role:g('je_role'),needs:g('je_needs'),due:g('je_due'),
+    diff:je.diff||(je.cid&&(jobHolder(je.loc)||{resources:[]}).resources.find(x=>x.id===je.cid)||{}).diff||'C'};}
 function jeRole(n){const el=document.getElementById('je_role');if(el)el.value=n;jeKeep();}
 function jeNeed(n){const el=document.getElementById('je_needs');if(el)el.value=el.value.trim()?el.value.trim()+'、'+n:n;jeKeep();}
+function jeDiff(v){const je=S.jobEdit;if(!je)return;je.diff=v;
+  document.querySelectorAll('.jobdlg .diffseg .sb').forEach(n=>n.classList.toggle('on',n.textContent===v));}
 function jeStatus(i){document.querySelectorAll('.jobdlg .exseg .sb').forEach((s,j)=>s.classList.toggle('on',j===i));}
 function jobEditSave(){if(S.readonly||!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);if(!h)return;
   const name=(document.getElementById('je_name').value||'').trim();if(!name){toast('先写要做什么');return;}
   const role=(document.getElementById('je_role').value||'').trim();
   const needs=(document.getElementById('je_needs').value||'').trim();
   const due=document.getElementById('je_due').value||undefined;
-  const segEl=document.querySelector('.jobdlg .exseg');
+  // :not(.diffseg) — the 难度 picker is also an .exseg and sits ABOVE this one, so a bare
+  // querySelector would read the status off the difficulty row
+  const segEl=document.querySelector('.jobdlg .exseg:not(.diffseg)');
   const bi=segEl?[...segEl.querySelectorAll('.sb')].findIndex(s=>s.classList.contains('on')):0;
+  const dEl=document.querySelector('.jobdlg .diffseg .sb.on');
+  const diff=dEl?dEl.textContent.trim():'C';
   let c=je.cid?h.resources.find(x=>x.id===je.cid):null;
-  if(c){c.name=name;c.role=role;c.needs=needs;c.due=due;c.ignored=false;c.status=BUCKET_STATUS[Math.max(0,bi)];stampDone(c);}
-  else{h.resources.push({id:uid(),type:'任务',name:name,role:role,needs:needs,due:due,status:0});}
+  if(c){c.name=name;c.role=role;c.needs=needs;c.due=due;c.diff=diff;c.ignored=false;
+    c.status=BUCKET_STATUS[Math.max(0,bi)];stampDone(c);}
+  else{h.resources.push({id:uid(),type:'任务',name:name,role:role,needs:needs,due:due,diff:diff,status:0});}
   S.jobEdit=null;save();render();toast(c?'已更新':'已加到要做的事');}
 function jeDelete(){if(!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);
   if(h&&je.cid)h.resources=h.resources.filter(x=>x.id!==je.cid);S.jobEdit=null;save();render();}
@@ -1981,6 +1997,20 @@ function guestHistory(libId){
   return out;
 }
 function libEditOpen(kind,id){S.libEdit={kind,id};render();}
+// 星级 (PLAN-Y7 §B5) — 主办授予，决定 TA 能接多难的任务。存在 ym_code 上（服务端），不在名册里。
+function rankRow(rec){
+  const a=codeOf(rec);
+  if(!a||(a.role!=='V'))return '';       // 只有志愿者/有偿服务者接任务，别人没有星级
+  return `<div class="dfld"><span class="l">星级（决定 TA 能接多难的任务）</span>
+    <div class="exseg diffseg">${DIFF_ST.map(d=>
+      `<div class="sb ${(a.rank||'C')===d?'on':''}" onclick="setRank('${escJs(a.code)}','${d}')">${d}</div>`).join('')}</div></div>`;
+}
+async function setRank(code,r){
+  if(!canCloud())return;
+  const {data,error}=await sb.rpc('ym_set_rank',{p_code:code,p_rank:r});
+  if(error||data!=='ok'){toast('设置失败，请重试');return;}
+  await loadCodes();toast('已设为 '+r+' 级');
+}
 function libEditCard(){
   const {kind,id}=S.libEdit;
   const rec=STORE.library[libColl(kind)].find(x=>x.id===id);
@@ -2004,11 +2034,12 @@ function libEditCard(){
       <div class="hd"><span class="lbl">资料卡 — 按 V1.0 需求字段</span>
         <button class="btn ghost sm" onclick="S.libEdit=null;render()">✕</button></div>
       ${fields}
+      ${kind==='volunteer'?rankRow(rec):''}
       ${kind==='guest'?guestHistoryHtml(id):''}
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn" style="flex:1" onclick="libEditSave()">保存</button></div>
       ${kind==='guest'?'<p class="note9">🔒 这份资料只有主办方看得到 — 嘉宾本人也看不到。照片随 Drive 媒体通道上线。</p>'
-        :kind==='volunteer'?'<p class="note9">授权账号后，TA 只能看到自己的岗位与评价。照片随 Drive 媒体通道上线。</p>':''}
+        :kind==='volunteer'?'<p class="note9">发邀请码后，TA 只看到自己负责的事和当天流程。星级决定 TA 能接多难的任务。</p>':''}
     </div></div>`;
 }
 // 一个嘉宾参加多场活动，每场有独立评价记录 (V1.0 §三)
@@ -3158,6 +3189,8 @@ function exDetailCard(){
           onchange="exOwner('${c.id}',this.value)"></label>
       <label class="dfld"><span class="l">截止日期（可选 · 只提醒，不排期）</span>
         <input type="date" value="${esc(c.due||'')}" onchange="exDue('${c.id}',this.value)"></label>
+      <label class="dfld"><span class="l">难度（决定谁能接 · 默认 C）</span></label>
+      ${diffPick(c.diff,`exDiff('${escJs(c.id)}',$D)`)}
       <div class="df">
         ${b<2?`<button class="btn ghost sm" style="flex:1" onclick="exRemind('${c.id}')">📤 催办</button>`:''}
         ${c.type==='任务'?`<span class="lnkdel" onclick="exDelTask('${c.id}')">删除</span>`
@@ -3273,6 +3306,8 @@ function pendOpenFile(sid){
         im.style.cssText='max-width:100%;border-radius:6px;margin-top:6px';box.appendChild(im);
       }});
 }
+function exDiff(cid,v){if(S.readonly)return;const c=chipById(cid);if(!c)return;
+  c.diff=v;save();render();}
 function exDue(cid,v){const c=chipById(cid);if(c){c.due=v||undefined;save();}}
 function exOwner(cid,v){if(S.readonly)return;const c=chipById(cid);if(c){c.owner=(v||'').trim()||undefined;save();render();}}
 // which 环节 a chip sits on — the same context the hover/tap brief shows (plain data, no AI)
