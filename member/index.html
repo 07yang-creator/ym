@@ -92,52 +92,77 @@ function shrink(file,cb){ // photos → ≤1600px jpeg before upload (same as th
 }
 const SB_URL='https://ugkopxmeqsbtjeimultz.supabase.co', SB_KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
-let SESSION=null,SHARES=null,MINE=[],_busy=false,_bad='',OPEN={};
+const API='https://www.jjconnect.tokyo';
+let SESSION=null,MYCODES=null,SHARES=null,MINE=[],_busy=false,_bad='',OPEN={},TAB='login';
+// Role comes from ym_code (server data, read under RLS with our own token), never from the shape
+// of what was published to us, and never from user_metadata (which is user-writable).
+// An array, not maybeSingle(): one person may hold an identity with more than one host.
+function codeFor(h){return (MYCODES||[]).find(c=>c.host===h)||null;}
+function roleFor(h){const c=codeFor(h);return c?(c.role==='V'&&c.paid?'VN':c.role):'';}
+function myCode(){const c=(MYCODES||[])[0];return c?c.code:'';}
+const CAN_DUTY={V:1,VN:1}, CAN_JOIN={P:1};
 const $=id=>document.getElementById(id);
 
 /* ---------- render ---------- */
-// one person is either a 志愿者 or a 嘉宾 to a given host; the payload says which
-function isGuest(){return !!(SHARES&&SHARES.length&&SHARES.every(r=>(r.payload||{}).kind==='guest'));}
 function render(){
-  let body='';
-  if(!SESSION)body=_bad?badHtml():loginHtml();
-  else if(needPw())body=setPwHtml();
-  else if(SHARES===null)body=`<div class="empty">读取中…</div>`;
+  let body;
+  if(!SESSION)          body=_bad?badHtml():(TAB==='reg'?regHtml():loginHtml());
+  else if(MYCODES===null)body=`<div class="empty">读取中…</div>`;
+  else if(!MYCODES.length)body=bindHtml();     // signed in, but no 编码 bound to this account
+  else if(SHARES===null) body=`<div class="empty">读取中…</div>`;
   else if(!SHARES.length)body=revokedHtml();
   else body=SHARES.map(shareHtml).join('');
+  const guest=(MYCODES||[]).length&&(MYCODES||[]).every(c=>c.role==='P');
   $('app').innerHTML=`
-    <div class="top"><span class="logo">ym</span><span class="t">${isGuest()?'我的活动页':'我的志愿者页'}</span><span class="sp"></span>
+    <div class="top"><span class="logo">ym</span>
+      <span class="t">${guest?'我的活动页':'我的成员页'}</span><span class="sp"></span>
+      ${myCode()?`<span class="num" style="color:var(--brass);font-size:13px">${esc(myCode())}</span>`:''}
       ${SESSION?`<button class="btn ghost sm" onclick="signOut()">退出</button>`:''}</div>
     ${body}
-    <p class="note">${isGuest()
+    <p class="note">${guest
       ? '这里只显示主办方发布给你的内容：公开信息、当天流程、你的号牌和主办方通知。参加者之间互不可见 —— 有任何问题请直接联系主办方。'
-      : '这里只显示主办方发布给你本人的内容：公开信息、当天流程，和你负责的事。志愿者之间互不可见 —— 有任何问题请直接联系主办方。'}</p>`;
+      : '这里只显示主办方发布给你本人的内容。成员之间互不可见 —— 有任何问题请直接联系主办方。'}</p>`;
 }
 function loginHtml(){
   return `<div class="card" style="margin-top:28px">
-    <div class="lbl" style="margin-bottom:10px">用主办方给你的授权码进入</div>
-    <input id="em" type="email" placeholder="邮箱（主办方授权的那个）" style="margin-bottom:8px">
-    <input id="code" inputmode="numeric" placeholder="6 位授权码" style="margin-bottom:10px"
-      onkeydown="if(event.key==='Enter')useCode()">
-    <button class="btn" style="width:100%" onclick="useCode()">进入</button>
-    <p class="note">授权码 24 小时内有效，只能用一次。首次进入会让你设置一个密码，之后就用密码登录。</p>
-    <div class="lbl" style="margin:18px 0 8px">已经设过密码了</div>
-    <input id="pw" type="password" placeholder="密码" style="margin-bottom:10px"
-      onkeydown="if(event.key==='Enter')signIn()">
-    <button class="btn ghost" style="width:100%" onclick="signIn()">用密码登录</button></div>`;
+    <div class="lbl" style="margin-bottom:10px">用编号或邮箱登录</div>
+    <input id="lid" placeholder="编号（如 V0014）或邮箱" autocapitalize="characters" spellcheck="false" style="margin-bottom:8px">
+    <input id="lpw" type="password" placeholder="密码" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doLogin()">${_busy?'登录中…':'登录'}</button>
+    <p class="note">编号不区分空格和大小写：<b>v 14</b>、<b>V014</b> 都是 <b>V0014</b>。</p>
+    <div style="text-align:center;margin-top:14px">
+      <span class="fold" onclick="TAB='reg';render()">我有邀请码，还没注册 →</span></div></div>`;
 }
+function regHtml(){
+  return `<div class="card" style="margin-top:28px">
+    <div class="lbl" style="margin-bottom:10px">用主办方给你的邀请码注册</div>
+    <input id="rc" placeholder="16 位邀请码" autocapitalize="characters" autocomplete="off" spellcheck="false" style="margin-bottom:8px">
+    <input id="re" type="email" placeholder="你自己的邮箱" style="margin-bottom:8px">
+    <input id="rp" type="password" placeholder="设一个密码（至少 8 位）" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')doRegister()">
+    <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doRegister()">${_busy?'注册中…':'注册'}</button>
+    <p class="note">邮箱和密码都由你自己决定 —— 主办方不知道，也不需要知道。邀请码一周内有效，
+      只能用一次；注册成功后你会拿到一个永久编号（例如 V0014），以后用编号或邮箱登录都行。</p>
+    <div style="text-align:center;margin-top:14px">
+      <span class="fold" onclick="TAB='login';render()">← 我已经注册过了</span></div></div>`;
+}
+// Signed in but no 编码 on this account. THE ESCAPE HATCH for somebody who already had an account
+// here (a jjcashflow 会計士 who volunteers): /api/ym_reg refuses a duplicate address WITHOUT
+// saying so, because saying so would be an email-existence oracle. They log in, then bind here.
+function bindHtml(){
+  return `<div class="card" style="margin-top:28px">
+    <div class="lbl" style="margin-bottom:10px">绑定邀请码</div>
+    <div class="sub" style="margin-bottom:10px">你已经登录了，但这个账号还没有绑定主办方给你的编号。</div>
+    <input id="bc" placeholder="16 位邀请码" autocapitalize="characters" spellcheck="false" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')doBind()">
+    <button class="btn" style="width:100%" onclick="doBind()">绑定</button></div>`;
+}
+function normInvite(s){return (s||'').toUpperCase().replace(/[^0-9A-Z]/g,'');}
 function badHtml(){
   return `<div class="card" style="margin-top:28px"><div class="lbl" style="margin-bottom:8px">进不去</div>
     <div style="font-size:13px;line-height:1.9">${esc(_bad)}</div>
     <div style="margin-top:12px"><button class="btn ghost sm" onclick="_bad='';render()">重试</button></div></div>`;
-}
-function setPwHtml(){
-  return `<div class="card" style="margin-top:28px">
-    <div class="lbl" style="margin-bottom:10px">设置密码 —— 只需这一次</div>
-    <input id="np" type="password" placeholder="设一个密码（至少 6 位）" style="margin-bottom:10px"
-      onkeydown="if(event.key==='Enter')setPw()">
-    <button class="btn" style="width:100%" onclick="setPw()">保存并进入</button>
-    <p class="note">下次直接用邮箱和这个密码登录，不用再要授权码。</p></div>`;
 }
 function revokedHtml(){
   return `<div class="empty">主办方还没有发布内容给你，<br>或者已经收回了这个页面的权限。<br>
@@ -165,8 +190,9 @@ function guestShareHtml(row){
     <div class="lbl">你好，${esc(d.name||'')}</div>
     ${jobs||'<div class="empty">还没有你参加的活动。</div>'}</div>`;
 }
-function shareHtml(row){
-  if((row.payload||{}).kind==='guest')return guestShareHtml(row);
+// ONE switch, three shapes. Six roles collapse into three payload kinds on the HOST side, so
+// nothing here has to know what a 捐赠者 is.
+function volShareHtml(row){
   const d=row.payload||{},host=row.host;
   const jobs=(d.jobs||[]).map(j=>{
     const key=String(j.eventId||'');
@@ -188,51 +214,55 @@ function shareHtml(row){
     <div class="lbl">你好，${esc(d.name||'')}${d.role?' · '+esc(d.role):''}</div>
     ${jobs||'<div class="empty">暂无岗位安排</div>'}</div>`;
 }
-function dutyHtml(host,j,x){
-  const cid=x.chipId||'',evId=String(j.eventId||'');
-  const rows=MINE.filter(r=>r.chip_id===cid&&r.event_id===evId);
-  const done=rows.find(r=>r.kind==='done'),files=rows.filter(r=>r.kind==='file');
-  const meta=[x.where,x.time,x.needs?'需要 '+x.needs:'',x.due?'截止 '+fmtDate(x.due):''].filter(Boolean).join(' · ');
-  let act;
-  if(done&&done.status==='accepted')act=`<span class="said">✓ 主办方已确认</span>`;
-  else if(done&&done.status==='rejected')
-    act=`<span class="back">主办方退回了 —— 可以改完再报一次</span>
-      <button class="btn sm" onclick="claimDone('${esc(host)}','${esc(evId)}','${esc(cid)}')">重新报完成</button>`;
-  else if(done)
-    act=`<span class="said">● 已报完成 · 等主办方确认</span>
-      <span class="mine"><span class="x" onclick="withdraw('${esc(done.id)}')">撤回</span></span>`;
-  else
-    act=`<label class="fileup">📎 传票据<input type="file" accept="image/*,application/pdf" style="display:none"
-        onchange="upFile('${esc(host)}','${esc(evId)}','${esc(cid)}',this)"></label>
-      <button class="btn sm" onclick="claimDone('${esc(host)}','${esc(evId)}','${esc(cid)}')">我做完了</button>`;
-  return `<div class="duty">
-    <div class="dn">${esc(x.name||x.where||'')}</div>
-    ${meta?`<div class="dm">${esc(meta)}</div>`:''}
-    <div class="dm">主办方那边：<span class="st">${esc(x.status||'')}</span></div>
-    ${files.map(f=>`<div class="mine">📎 ${esc(f.file_name||'附件')}
-      ${f.status==='accepted'?'':`<span class="x" onclick="withdraw('${esc(f.id)}')">撤回</span>`}</div>`).join('')}
-    <div class="acts">${act}</div></div>`;
+
+// D / O — 公开信息 + 通知 + 流程（无说明）。没有可做的事，也没有任何写入面。
+function infoShareHtml(row){
+  const d=row.payload||{};
+  const jobs=(d.jobs||[]).map(j=>{
+    const key=String(j.eventId||''),open=OPEN[key],rd=j.rundown||[];
+    return `<div class="card">
+      <div class="ev">${esc(j.event||'')}</div>
+      <div class="meta">${fmtDate(j.date)}${j.start?' '+esc(j.start):''}${j.venue?' · '+esc(j.venue):''}</div>
+      ${j.theme?`<div class="meta">${esc(j.theme)}</div>`:''}
+      ${j.notice?`<div class="notice"><div class="lbl" style="margin-bottom:4px">主办方通知</div>${esc(j.notice)}</div>`:''}
+      ${rd.length?`<div class="fold" onclick="fold('${esc(key)}')">${open?'▾':'▸'} 当天流程（${rd.length} 个环节）</div>
+        ${open?`<div>${rd.map(r=>`<div class="rd">
+            <span class="tm">${esc(r.time||'--')}</span>
+            <span class="sg">${esc(r.seg||'')}</span></div>`).join('')}</div>`:''}`:''}</div>`;}).join('');
+  return `<div style="margin-top:18px">
+    <div class="lbl">你好，${esc(d.name||'')}</div>
+    ${jobs||'<div class="empty">暂时没有公开的活动。</div>'}</div>`;
+}
+
+function shareHtml(row){
+  const k=(row.payload||{}).kind;
+  if(k==='guest')return guestShareHtml(row);
+  if(k==='info') return infoShareHtml(row);     // D / O — public only, no write surface at all
+  return volShareHtml(row);                     // the existing L170-189 body, renamed
+}
+// edit = delete + re-insert (0014 §3): there is deliberately no member UPDATE policy, and slot=''
+// keeps ym_submit_one to exactly one 交任务 per chip.
+async function sendSubmit(host,evId,cid,hours,cost,note){
+  const prev=MINE.find(r=>r.chip_id===cid&&r.event_id===evId
+    &&(r.kind==='submit'||r.kind==='done'));
+  if(prev&&prev.status==='accepted'){toast('主办方已确认');return;}
+  if(prev){const d=await sb.from('ym_submit').delete().eq('id',prev.id);
+    if(d.error){toast('提交失败：'+d.error.message);return;}}
+  const h=parseFloat(hours),c=parseInt(String(cost||'').replace(/[^\d]/g,''),10);
+  const {error}=await sb.from('ym_submit').upsert(
+    {host,member:SESSION.user.id,event_id:evId,chip_id:cid,kind:'submit',slot:'',
+     note:String(note||'').slice(0,2000),
+     hours:isNaN(h)?null:Math.min(999,h),cost:isNaN(c)?null:Math.min(10000000,c)},
+    {onConflict:'host,member,event_id,chip_id,kind,slot',ignoreDuplicates:true});
+  if(error){toast(/row-level|policy/i.test(error.message)
+    ? '主办方还没发布这一项，请稍后再试' : '提交失败：'+error.message);return;}
+  await loadMine();render();toast('已交任务 —— 等主办方确认');
 }
 function fold(k){OPEN[k]=!OPEN[k];render();}
 
 /* ---------- auth ---------- */
-// 授权码 = GoTrue's own email_otp. verifyOtp is a POST with NO redirect, so it works whether or not
-// the redirect allow-list is configured — that is why it is the primary way in.
-function useCode(){
-  if(_busy||!sb)return;
-  const email=($('em').value||'').trim().toLowerCase(),token=($('code').value||'').trim();
-  if(!email||!token){toast('请输入邮箱和授权码');return;}
-  _busy=true;
-  sb.auth.verifyOtp({email,token,type:'invite'})
-    .then(r=>(r&&!r.error)?r:sb.auth.verifyOtp({email,token,type:'magiclink'}))
-    .then(r=>{_busy=false;
-      if(r&&r.error){
-        _bad=/expired|invalid/i.test(r.error.message||'')
-          ? '这个授权码已失效（只能用一次，24 小时内有效）。请让主办方重新发一次。'
-          : '进不去，请再试一次，或让主办方重新发一次授权码。';
-        render();}
-    }).catch(()=>{_busy=false;_bad='网络不太稳，请重试。';render();});
-}
+// Login is EMAIL + password only (PLAN-Y7 §A3). The 用户编码 is a display identity and touches no
+// auth path, so there is no 编码→email resolver and therefore no email-harvesting oracle.
 function signIn(){
   if(_busy||!sb)return;
   const email=($('em').value||'').trim().toLowerCase(),pw=$('pw').value||'';
@@ -242,26 +272,89 @@ function signIn(){
     if(error)toast('登录失败：邮箱或密码不对');});
 }
 // user_metadata is user-writable — a UX flag, never a boundary; the boundary is RLS.
-function needPw(){return !!(SESSION&&SESSION.user&&SESSION.user.user_metadata
-  &&SESSION.user.user_metadata.must_set_password);}
-function setPw(){
-  if(_busy||!sb)return;
-  const pw=$('np').value||'';
-  if(pw.length<6){toast('密码至少 6 位');return;}
-  _busy=true;
-  sb.auth.updateUser({password:pw,data:{must_set_password:false}}).then(({data,error})=>{_busy=false;
-    if(error){toast('设置失败：'+error.message);return;}
-    if(data&&data.user&&SESSION)SESSION.user=data.user;
-    toast('密码已设好');load();});
+async function post(path,b){
+  const r=await fetch(API+path,{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify(b)});
+  let j={};try{j=await r.json();}catch(e){}
+  return {status:r.status,j};
 }
-function signOut(){sb.auth.signOut().then(()=>{SHARES=null;MINE=[];render();});}
+async function install(sess){
+  if(!sess||!sess.access_token){toast('成功了 —— 请用编号和密码登录一次');return;}
+  const {error}=await sb.auth.setSession({access_token:sess.access_token,
+    refresh_token:sess.refresh_token});                     // onAuthStateChange calls load()
+  if(error)toast('登录失败：'+error.message);
+}
+async function doRegister(){
+  if(_busy)return;
+  const code=normInvite($('rc').value),email=($('re').value||'').trim().toLowerCase(),pw=$('rp').value||'';
+  if(code.length!==16){toast('邀请码是 16 位');return;}
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('邮箱格式不对');return;}
+  if(pw.length<8){toast('密码至少 8 位');return;}
+  _busy=true;render();
+  try{
+    const {status,j}=await post('/api/ym_reg',{code,email,password:pw});
+    _busy=false;
+    if(status===200&&j.ok){toast('注册成功 —— 你的编号是 '+j.code);return install(j.session);}
+    // ONE message for every failure. The endpoint deliberately does not say which one it was,
+    // because "this email already exists" is an email-existence oracle.
+    _bad=status===429?'试得太频繁了，请过一会儿再来。'
+      :'注册没成功。请确认邀请码没输错、没过期（一周）、也没被用过。\n'
+      +'如果你在本站已经有账号，请先用邮箱和密码「登录」，进去后再绑定这个邀请码。';
+    render();
+  }catch(e){_busy=false;_bad='网络不太稳，请重试。';render();}
+}
+async function doLogin(){
+  if(_busy)return;
+  const id=($('lid').value||'').trim(),pw=$('lpw').value||'';
+  if(!id||!pw){toast('请输入编号/邮箱和密码');return;}
+  _busy=true;render();
+  try{
+    // 编号 → 邮箱 is resolved SERVER-side and never comes back: 顺位 编号 are enumerable, so
+    // resolving them in the browser would turn the roster into a mailing list.
+    const {status,j}=await post('/api/ym_login',{id,password:pw});
+    _busy=false;
+    if(status===200&&j.ok)return install(j.session);
+    toast(status===429?'尝试太多次了，请 15 分钟后再试':'登录失败：编号/邮箱或密码不对');
+    render();
+  }catch(e){_busy=false;toast('网络不太稳，请重试');render();}
+}
+async function doBind(){
+  const code=normInvite($('bc').value);
+  if(code.length!==16){toast('邀请码是 16 位');return;}
+  const {data,error}=await sb.rpc('ym_bind_code',{p_invite:code});
+  if(error||!data||data.r!=='ok'){
+    toast(data&&data.r==='slow'?'试得太频繁了，请过一会儿再来'
+        :data&&data.r==='already'?'这个账号已经绑定过了':'绑定失败：码不对或已失效');return;}
+  toast('已绑定 —— 你的编号是 '+data.code);load();
+}
+function joinBtn(host,evId){
+  const mine=MINE.find(r=>r.event_id===evId&&r.kind==='join');
+  if(mine&&mine.status==='accepted')return `<div class="rv">✓ 主办方已确认你参加</div>`;
+  if(mine)return `<div class="rv">● 已报名 · 等主办方确认
+    <span class="mine"><span class="x" onclick="withdraw('${esc(mine.id)}')">撤回</span></span></div>`;
+  return `<div class="acts"><button class="btn sm" onclick="joinEvent('${esc(host)}','${esc(evId)}')">我想参加</button></div>`;
+}
+async function joinEvent(host,evId){
+  const {error}=await sb.from('ym_submit').upsert(
+    {host,member:SESSION.user.id,event_id:evId,chip_id:'',kind:'join',slot:'',note:''},
+    {onConflict:'host,member,event_id,chip_id,kind,slot',ignoreDuplicates:true});
+  if(error){toast(/row-level|policy/i.test(error.message)
+    ? '这场活动还不能报名' : '报名失败：'+error.message);return;}
+  await loadMine();render();toast('已报名 —— 等主办方确认，号牌出现就是通过了');
+}
+
+function signOut(){sb.auth.signOut().then(()=>{MYCODES=null;SHARES=null;MINE=[];TAB='login';render();});}
+
 
 /* ---------- data ---------- */
 async function load(){
-  SHARES=null;render();
-  // no empty catch: this rpc failing is exactly what explains "我拿到码了但什么都没有"
-  const cl=await sb.rpc('ym_claim_shares');
-  if(cl.error)toast('关联失败：'+cl.error.message);
+  MYCODES=null;SHARES=null;render();
+  // 0015: binding happens at REGISTRATION (ym_redeem_code) — there is no separate claim step that
+  // can silently bind nothing, which is what used to produce 「我拿到码了但什么都没有」.
+  const me=await sb.from('ym_code').select('code,role,paid,rank,revoked,host');
+  if(me.error){toast('读取身份失败：'+me.error.message);MYCODES=[];render();return;}
+  MYCODES=me.data||[];
+  if(!MYCODES.length){render();return;}
   const {data,error}=await sb.from('ym_share').select('host,payload,updated_at');
   if(error){toast('读取失败：'+error.message);SHARES=[];render();return;}
   SHARES=data||[];
@@ -270,21 +363,8 @@ async function load(){
 }
 async function loadMine(){
   const {data,error}=await sb.from('ym_submit')
-    .select('id,event_id,chip_id,kind,status,note,file_name,created_at');
+    .select('id,host,event_id,chip_id,kind,status,note,host_note,hours,cost,diff,file_name,created_at');
   MINE=error?[]:(data||[]);
-}
-async function claimDone(host,evId,cid){
-  const prev=MINE.find(r=>r.chip_id===cid&&r.event_id===evId&&r.kind==='done');
-  if(prev&&prev.status==='accepted'){toast('主办方已确认');return;}
-  if(prev){const d=await sb.from('ym_submit').delete().eq('id',prev.id);
-    if(d.error){toast('提交失败：'+d.error.message);return;}}
-  // ON CONFLICT DO NOTHING (needs no UPDATE policy) — a double tap must not error
-  const {error}=await sb.from('ym_submit').upsert(
-    {host,member:SESSION.user.id,event_id:evId,chip_id:cid,kind:'done',slot:'',note:''},
-    {onConflict:'host,member,event_id,chip_id,kind,slot',ignoreDuplicates:true});
-  if(error){toast(/row-level|policy/i.test(error.message)
-    ? '主办方还没发布这一项，请稍后再试' : '提交失败：'+error.message);return;}
-  await loadMine();render();toast('已报完成 —— 等主办方确认');
 }
 function upFile(host,evId,cid,input){
   const f=input.files&&input.files[0];input.value='';if(!f)return;

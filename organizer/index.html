@@ -659,210 +659,244 @@ function chipOwnedBy(c,p,idx){
    ym_share_has_chip() can never match for a guest, so the write surface is closed by the DATABASE,
    not merely by hiding buttons. */
 function guestDataFor(p){
-  const jobs=[];
+  const jobs=[],open=[];
   STORE.events.filter(e=>!e.demo).forEach(e=>{
     const me=(e.participants||[]).find(x=>x.libId===p.id);
-    if(!me)return;                                   // only events TA is actually signed up for
+    if(me){
+      jobs.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',venue:e.venue||'',
+        theme:e.theme||'',
+        badge:{gender:me.gender||'',n:me.n||0,arrived:!!me.arrived},
+        notice:e.notice||'',
+        rundown:e.rows.filter(r=>r.time||r.seg).map(r=>({time:r.time||'',seg:r.seg||''}))});
+      return;
+    }
+    // 可报名 — the 公开活动 TA is NOT signed up for yet. This list is the ONLY anchor
+    // ym_share_can_join() accepts: the guest's own jobs[] would be circular (it holds only events
+    // TA already attends), and ym_post's public policy is scoped `to anon` (0011 §2), so an
+    // authenticated guest reads zero rows there. Public fields only — what the website already
+    // shows the world.
+    if(e.publicOn)open.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',
+      venue:e.venue||'',theme:e.theme||''});
+  });
+  return {kind:'guest',name:p.name,jobs,open,at:new Date().toISOString()};
+}
+/* Three payload SHAPES, not six role branches:
+     kind:'vol'   (V, V…N) duties[] + pool[] + rundown WITH 说明 — the only shape with a chipId
+     kind:'guest' (P)      公开信息 + 号牌 + 通知 + rundown WITHOUT 说明 + open[] 可报名
+     kind:'info'  (D, O)   公开信息 + 通知 + rundown WITHOUT 说明. Nothing to do, nothing to send.
+   0015's ym_share_guest_guard() re-strips duties/pool/rank/desc from any P/D/O row AT THE
+   DATABASE, so this function is the convenience layer — not the boundary. */
+function shareDataFor(p,a){
+  const r=(a&&a.role)||'V';
+  if(r==='P')return guestDataFor(p);
+  if(r==='D'||r==='O')return infoDataFor(p,r);
+  return volDataFor(p,a);
+}
+function infoDataFor(p,role){
+  const jobs=[];
+  STORE.events.filter(e=>!e.demo&&e.publicOn).forEach(e=>{
     jobs.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',venue:e.venue||'',
-      theme:e.theme||'',
-      badge:{gender:me.gender||'',n:me.n||0,arrived:!!me.arrived},
-      notice:e.notice||'',
-      // 时间 + 环节名 only. r.desc is the volunteer's operating instruction ("把签到台摆在门口")
-      // and must never reach a guest.
+      theme:e.theme||'',notice:e.notice||'',
       rundown:e.rows.filter(r=>r.time||r.seg).map(r=>({time:r.time||'',seg:r.seg||''}))});
   });
-  return {kind:'guest',name:p.name,jobs,at:new Date().toISOString()};
+  return {kind:'info',role,name:p.name,jobs,at:new Date().toISOString()};
 }
-/* hub-and-spoke: publish each linked member's own view (0009 ym_share) */
-function shareDataFor(p){
-  if(catOf(p)==='guest')return guestDataFor(p);
+function volDataFor(p,a){
   const jobs=[],idx=volNameIndex();
-  // never publish 教学示例 duties to a real volunteer's page — the tutorial invites practice
   STORE.events.filter(e=>!e.demo).forEach(e=>{
-    const duties=[],mine={};
-    const scan=(holder,loc,where,time)=>holder.resources.forEach(c=>{
-      if(!chipOwnedBy(c,p,idx))return;mine[loc]=1;
-      duties.push({chipId:c.id,where,time,name:c.name||'',needs:c.needs||'',due:c.due||'',
-        status:taskLabel(c)});});                     // one vocabulary: 待办/进行中/完成
+    const duties=[],pool=[],mine={};
+    const scan=(h,loc,where,time)=>h.resources.forEach(c=>{
+      if(chipOwnedBy(c,p,idx)){mine[loc]=1;
+        duties.push({chipId:c.id,where,time,name:c.name||'',needs:c.needs||'',due:c.due||'',
+          diff:c.diff||'C',status:taskLabel(c)});return;}
+      // 发布池 (PLAN-Y7 §B6): 环节 / 时间 / 难度 / 说明 and NEVER another volunteer's name.
+      // Separate from duties[] on purpose: ym_share_has_chip() reads duties[], so a pooled chip
+      // in there would let any eligible volunteer file against a task they never won.
+      if(c.open&&!c.refId&&!String(c.role||c.owner||'').trim())
+        pool.push({chipId:c.id,where,time,name:c.name||'',needs:c.needs||'',due:c.due||'',
+          diff:c.diff||'C'});});
     scan(e.header,'header','活动全场','');
     e.rows.forEach(r=>scan(r,r.id,r.seg||'',r.time||''));
-    if(!duties.length)return;
+    if(!duties.length&&!pool.length)return;
     const log=(e.volLog||{})[p.id]||{};
-    // HUB AND SPOKE: the rundown publishes 时间 · 环节 · 说明 and one boolean, nothing else.
-    // r.owner and r.resources are DELIBERATELY absent — either would show one volunteer another
-    // volunteer's name. No money, no 嘉宾, ever.
     jobs.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',venue:e.venue||'',
       theme:e.theme||'',
       rundown:e.rows.filter(r=>r.time||r.seg||r.desc)
         .map(r=>({time:r.time||'',seg:r.seg||'',desc:r.desc||'',mine:!!mine[r.id]})),
-      duties,hours:log.hours||'',review:log.review||''});
+      duties,pool,hours:log.hours||'',review:log.review||''});
   });
-  return {name:p.name,role:p.role||'',jobs,at:new Date().toISOString()};
+  return {kind:'vol',name:p.name,role:p.role||'',rank:(a&&a.rank)||'C',
+          jobs,at:new Date().toISOString()};
 }
-// must match 0013's ym_share_email_shape CHECK exactly, or a save silently 500s server-side
-const EMAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-// returns the upsert promise: grantIssue() must await it, because /api/ym_invite refuses to mint
-// a code for an address that has no ym_share row yet
+// must match 0015's ym_share_code_shape CHECK exactly, or a save 500s server-side
+const CODE_RE=/^(H\d{3}|V\d{4}N?|D\d{4}|O\d{3}|P\d{6})$/;
 function pushShares(){
   if(!canCloud())return Promise.resolve();
-  // volunteers get their duties; 嘉宾 get the PUBLIC view only (shareDataFor branches on cat).
-  // 捐赠人 and anything else is still not publishable.
-  const linked=STORE.library.resources.filter(p=>
-    (catOf(p)==='volunteer'||catOf(p)==='guest')&&p.shareEmail);
-  if(!linked.length)return Promise.resolve();
-  // De-duplicate by address: ym_share's PK is (host, member_email), and two rows with the
-  // same key in ONE upsert makes Postgres abort the whole statement ("cannot affect row a
-  // second time") — which would silently freeze publishing for every other volunteer too.
-  // Two records claiming ONE address must publish NOTHING rather than an arbitrary winner: the
-  // payload SHAPE follows the record (volunteer vs 嘉宾), so guessing could hand a guest a
-  // volunteer payload — duties, 环节说明, and chipIds that would open the ym_submit write surface.
-  // grantIssue's clash check is client-side and per-device; two devices can each pass it and merge.
-  const byEmail={},dup={};
-  linked.forEach(p=>{
-    const em=String(p.shareEmail||'').trim().toLowerCase();
-    if(!EMAIL_RE.test(em)||em.length>320)return;      // never send what the CHECK will reject
-    if(byEmail[em]&&byEmail[em].id!==p.id)dup[em]=[byEmail[em].name,p.name];
-    byEmail[em]=p;
+  // (host, member_code) is a FK onto the code table — publish ONLY codes present in CODES, or one
+  // stale entry aborts the whole upsert. On error we re-read CODES and the next save self-heals.
+  const rows=[];
+  STORE.library.resources.forEach(p=>{
+    const a=CODES[p.id];
+    if(!a||a.revoked||!CODE_RE.test(a.code))return;
+    rows.push({host:SESSION.user.id,member_code:a.code,payload:shareDataFor(p,a)});
   });
-  const dups=Object.keys(dup);
-  dups.forEach(em=>{delete byEmail[em];});
-  if(dups.length){const d=dup[dups[0]];
-    toast('「'+d[0]+'」和「'+d[1]+'」用了同一个邮箱，两边都没发布 — 请先取消其中一个');}
-  const rows=Object.keys(byEmail).map(em=>({host:SESSION.user.id,member_email:em,
-    payload:shareDataFor(byEmail[em])}));
-  const bad=linked.length-rows.length;
-  if(!rows.length){if(bad)toast('成员邮箱格式有误，未发布');return Promise.resolve();}
-  return sb.from('ym_share').upsert(rows,{onConflict:'host,member_email'})
-    .then(r=>{if(r.error)toast('成员发布失败：'+r.error.message);
-      else if(bad)toast('已发布 '+rows.length+' 位（'+bad+' 位邮箱重复或有误，已跳过）');
-      return r;});
+  if(!rows.length)return Promise.resolve();
+  return sb.from('ym_share').upsert(rows,{onConflict:'host,member_code'})
+    .then(r=>{if(r.error){toast('成员发布失败：'+r.error.message);loadCodes();}return r;});
 }
 // revoking or re-addressing must actually take the old row away
-function dropShare(email){
-  if(!canCloud()||!email)return;
-  sb.from('ym_share').delete().match({host:SESSION.user.id,
-    member_email:String(email).trim().toLowerCase()}).then(()=>{});
+function dropShare(code){
+  if(!canCloud()||!code)return;
+  sb.from('ym_share').delete().match({host:SESSION.user.id,member_code:code}).then(()=>{});
 }
-/* ---------- 授权码 (0014 + /api/ym_invite) ----------
-   No schema change buys the account badge: ym_share.member already answers "has TA opened it".
-   未授权 = no row · 已发码待打开 = member is null · 使用中 = member set. */
-let SHARE_ST={},_grant=null;
-function loadShareStates(){ if(!canCloud())return;
-  sb.from('ym_share').select('member_email,member').then(({data})=>{SHARE_ST={};
-    (data||[]).forEach(r=>SHARE_ST[String(r.member_email).toLowerCase()]=!!r.member);render();});}
-function grantState(p){const em=String(p.shareEmail||'').toLowerCase();
-  if(!em)return {k:'none',t:''};
-  if(!(em in SHARE_ST))return {k:'sent',t:'待发布'};
-  return SHARE_ST[em]?{k:'live',t:'使用中'}:{k:'sent',t:'待打开'};}
+/* ---------- 用户编码 + 邀请码 (0015) ----------
+   The 16-char 邀请码 lives ONLY in _grant, for the one paint that shows it. It is NEVER written to
+   a 名册 record: cloudPushAll() uploads STORE.library verbatim into ym_doc.payload, so a stored
+   credential would sit in the database in plaintext forever, readable on every device this host
+   owns, surviving revocation. */
+let CODES={},_grant=null;                      // 名册 record id -> ym_code_list() row
+const ROLE_LBL={H:'主办者',V:'志愿者',VN:'有偿服务者',P:'嘉宾',D:'捐赠者',O:'记者 / 旁观'};
+// The roles a HOST may issue. 'H' is absent — but absence is NOT the enforcement: ym_mint_code()
+// refuses p_role='H' unless is_admin(), and ym_code_before_ins() RAISES on it as well (a trigger,
+// because the service key bypasses RLS but not triggers).
+function issuableRoles(cat){
+  return cat==='guest'?[['P','嘉宾']]
+       : cat==='donor'?[['D','捐赠者']]
+       : [['V','志愿者'],['VN','有偿服务者'],['O','记者 / 旁观']];
+}
+function roleKey(a){return a.role==='V'&&a.paid?'VN':a.role;}
+function loadCodes(){
+  if(!canCloud())return Promise.resolve();
+  return sb.rpc('ym_code_list').then(({data,error})=>{if(error)return;
+    CODES={};(data||[]).forEach(r=>{if(r.ref_id)CODES[r.ref_id]=r;});render();});
+}
+function codeOf(p){return (p&&CODES[p.id])||null;}
+function codeState(p){
+  const a=codeOf(p);
+  if(!a)return {k:'none',t:'',code:''};
+  if(a.revoked)return {k:'off',t:'已停用',code:a.code};
+  if(a.bound)  return {k:'live',t:'使用中',code:a.code};
+  const exp=a.invite_exp?Date.parse(a.invite_exp):0;
+  if(!exp)     return {k:'wait',t:'待发码',code:a.code};
+  if(exp<Date.now())return {k:'exp',t:'邀请码已过期',code:a.code};
+  return {k:'sent',t:'待注册 · 剩 '+Math.max(1,Math.ceil((exp-Date.now())/86400000))+' 天',code:a.code};
+}
 function grantOpen(pid){
   const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
-  // A 嘉宾 MAY hold an account (owner, 2026-07-22) — but it shows the PUBLIC view only, never
-  // their own 资料卡. That boundary lives in shareDataFor()/guestDataFor(), which is the thing
-  // that decides what is published; this is only the door. 捐赠人 still get nothing.
-  const cat=catOf(p);
-  if(cat!=='volunteer'&&cat!=='guest'){toast('只有志愿者或嘉宾可以授权账号');return;}
-  if(!canCloud()){toast('先登录并通过批准，才能授权成员账号');return;}
-  _grant={pid,code:'',link:'',linkOk:true,busy:false,taken:false};grantPaint();
+  if(catOf(p)==='goods'){toast('物资不能有账号');return;}
+  if(!canCloud()){toast('先登录并通过批准，才能给成员开账号');return;}
+  const a=codeOf(p);
+  _grant={pid,role:a?roleKey(a):issuableRoles(catOf(p))[0][0],invite:'',busy:false,err:''};
+  grantPaint();
 }
 function grantClose(){const w=$('grantwrap');if(w)w.remove();_grant=null;}
+function grantRole(r){if(_grant){_grant.role=r;grantPaint();}}
 function grantPaint(){
   const g=_grant;if(!g)return;
   const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p){grantClose();return;}
-  let w=$('grantwrap');
+  let w=$('grantwrap');                        // id KEPT — loadPending()'s repaint guard (L3151)
   if(!w){w=document.createElement('div');w.id='grantwrap';
     w.innerHTML=`<div class="drawerbg" onclick="grantClose()"></div>
       <div class="exdlg jobdlg askdlg"><div id="grantbody"></div></div>`;
     document.body.appendChild(w);}
-  // cat-aware: a duplicate 嘉宾 name matters MORE than a duplicate volunteer one, because a merged
-  // 嘉宾 record would show the account holder somebody else's events and 号牌
-  const st=grantState(p),dup=nameIndex(catOf(p))[String(p.name||'').trim()]==='DUP';
-  const cur=p.shareEmail||((p.contact||'').indexOf('@')>0?p.contact:'');
-  const head=`<div class="hd"><span class="tp">🔑 授权 ${esc(p.name)}</span>
+  const a=codeOf(p),st=codeState(p),cat=catOf(p);
+  const dup=nameIndex(cat)[String(p.name||'').trim()]==='DUP';
+  const head=`<div class="hd"><span class="tp">🔑 ${esc(p.name)}</span>
       <button class="btn ghost sm" onclick="grantClose()">✕</button></div>`;
   const warn=dup?`<div class="sub" style="color:var(--alarm);margin:0 0 8px">⚠ 名册里还有一位「${esc(p.name)}」——
-      ${catOf(p)==='guest'?'先确认这条记录就是 TA 本人，否则 TA 会看到另一个同名者的活动和号牌。'
+      ${cat==='guest'?'先确认这条记录就是 TA 本人，否则 TA 会看到另一个同名者的活动和号牌。'
         :'用姓名指定负责人的事项两人都收不到，请改名或改用名册指派。'}</div>`:'';
   let body;
-  if(g.taken){
-    body=`${head}${warn}<div class="sub" style="line-height:1.9">这个邮箱已经有账号了。<br>
-      让 TA 直接用原来的密码在 <b>ym.jjconnect.tokyo/member/</b> 登录即可，不需要授权码 —— 登录后会自动看到你发布的内容。</div>
-      <div class="df"><button class="btn ghost sm" style="flex:1" onclick="_grant.taken=false;grantPaint()">换个邮箱</button></div>`;
-  }else if(g.code){
+  if(g.invite){                                // the ONE paint that shows the credential
     body=`${head}${warn}
-      <div class="sub" style="margin:0 0 6px">${esc(p.shareEmail||'')}</div>
-      <div class="lbl">授权码 · 24 小时内有效</div>
-      <div class="num" style="font-size:30px;letter-spacing:.22em;color:var(--brass);margin:2px 0 10px">${esc(g.code)}</div>
-      ${g.linkOk&&g.link?`<div class="sub" style="word-break:break-all;margin-bottom:10px">${esc(g.link)}</div>`:''}
-      <div class="sub" style="color:var(--alarm);margin-bottom:10px">只发给 TA 本人，别发到群里 —— 拿到这条的人就能以 TA 的身份登录。</div>
+      <div class="lbl">用户编码 · 永久</div>
+      <div class="num" style="font-size:26px;letter-spacing:.16em;color:var(--brass);margin:2px 0 10px">${esc(st.code)}</div>
+      <div class="lbl">邀请码 · 一周内有效 · 只能用一次</div>
+      <div class="num" style="font-size:21px;letter-spacing:.2em;color:var(--brass);margin:2px 0 10px;word-break:break-all">${esc(g.invite)}</div>
+      <div class="sub" style="color:var(--alarm);margin-bottom:10px">只发给 TA 本人，别发到群里 —— 拿到这条的人就能用它注册成 ${esc(ROLE_LBL[g.role]||'')}。这串码只显示这一次。</div>
       <div class="df"><button class="btn" style="flex:1" onclick="grantSend()">📤 发送</button>
-        <button class="btn ghost sm" onclick="grantIssue(1)">↻ 重发</button></div>
-      <div style="text-align:center;margin-top:10px">
-        <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="grantRevoke()">取消授权</span></div>`;
-  }else{
+        <button class="btn ghost sm" onclick="grantClose()">收起</button></div>`;
+  }else if(a){
     body=`${head}${warn}
-      <div class="sub" style="margin:0 0 8px">填 TA 的邮箱，生成授权码发给 TA。${catOf(p)==='guest'
-        ?'嘉宾只能看到公开信息、当天流程、自己的号牌和你的通知 —— 看不到资料卡、评价，也看不到别的嘉宾。'
-        :'TA 只能看到公开信息、流程和自己负责的事。'}</div>
-      <label class="dfld"><span class="l">邮箱</span>
-        <input id="g_em" type="email" value="${esc(cur)}" placeholder="name@example.com"
-          onkeydown="if(event.key==='Enter')grantIssue()"></label>
-      <div class="df"><button class="btn" style="flex:1" ${g.busy?'disabled':''} onclick="grantIssue()">${g.busy?'生成中…':'生成授权码'}</button></div>
-      ${p.shareEmail?`<div style="text-align:center;margin-top:10px">
-        <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="grantRevoke()">取消授权（${esc(st.t)}）</span></div>`:''}`;
+      <div class="lbl">用户编码 · 永久</div>
+      <div class="num" style="font-size:26px;letter-spacing:.16em;color:var(--brass);margin:2px 0 6px">${esc(a.code)}</div>
+      <div class="sub" style="margin:0 0 10px">${esc(ROLE_LBL[roleKey(a)]||'')} · ${esc(st.t)}${a.invite_tail?' · 码尾 '+esc(a.invite_tail):''}</div>
+      ${a.bound?`<div class="sub" style="margin-bottom:10px">TA 已经注册好了。以后用 <b>${esc(a.code)}</b> 或自己的邮箱 + 密码登录。</div>`
+        :`<div class="df"><button class="btn" style="flex:1" ${g.busy?'disabled':''} onclick="codeReissue()">${g.busy?'生成中…':'↻ 重发邀请码'}</button></div>
+          <p class="note9">重发会立刻作废上一个邀请码，编号不变。</p>`}
+      <div style="text-align:center;margin-top:10px">
+        <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="grantRevoke()">${a.revoked?'恢复访问':'取消授权'}</span></div>
+      ${g.err?`<div class="sub" style="color:var(--alarm);margin-top:8px">${esc(g.err)}</div>`:''}`;
+  }else{
+    const rs=issuableRoles(cat);
+    body=`${head}${warn}
+      <div class="sub" style="margin:0 0 8px">给 TA 发一个邀请码。<b style="color:var(--brass)">你不需要知道 TA 的邮箱</b> —— 邮箱和密码由 TA 注册时自己填。${cat==='guest'
+        ?'嘉宾只看到公开信息、当天流程、自己的号牌和你的通知 —— 看不到资料卡、评价，也看不到别的嘉宾。'
+        :'TA 只看到公开信息、流程和自己负责的事。'}</div>
+      ${rs.length>1?`<label class="dfld"><span class="l">身份</span>
+        <select id="g_role" onchange="grantRole(this.value)">${rs.map(([k,l])=>
+          `<option value="${k}" ${g.role===k?'selected':''}>${l}</option>`).join('')}</select></label>`:''}
+      <div class="df"><button class="btn" style="flex:1" ${g.busy?'disabled':''} onclick="codeIssue()">${g.busy?'生成中…':'生成邀请码'}</button></div>
+      ${g.err?`<div class="sub" style="color:var(--alarm);margin-top:8px">${esc(g.err)}</div>`:''}`;
   }
-  const el=$('grantbody');const foc=document.activeElement;
-  // don't rebuild the field the host is typing in (the L1327 focus discipline)
-  if(foc&&foc.id==='g_em'&&el.querySelector('#g_em')&&!g.code&&!g.taken&&!g.busy)return;
-  el.innerHTML=body;
-  const inp=el.querySelector('#g_em');if(inp&&!g.code&&!g.busy){inp.focus();inp.select();}
+  $('grantbody').innerHTML=body;
 }
-async function grantIssue(again){
+async function codeIssue(){
   const g=_grant;if(!g||g.busy)return;
   const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
-  const v=again?String(p.shareEmail||''):String(($('g_em')||{}).value||'').trim().toLowerCase();
-  if(!EMAIL_RE.test(v)||v.length>320){toast('邮箱格式不对（需要 name@example.com 这样的完整地址）');return;}
-  const clash=STORE.library.resources.find(x=>x.id!==p.id&&String(x.shareEmail||'').toLowerCase()===v);
-  if(clash){toast('这个邮箱已授权给「'+clash.name+'」，请先取消那边');return;}
-  const old=p.shareEmail;
-  if(old&&old.toLowerCase()!==v){dropShare(old);      // don't leave the old address readable
-    if(canCloud())sb.from('ym_submit').delete()       // …and don't strand TA's uploads either
-      .match({host:SESSION.user.id,member_email:old.toLowerCase()}).then(()=>{});}
-  p.shareEmail=v;save();
-  g.busy=true;grantPaint();
-  try{
-    await pushShares();                               // the endpoint refuses an address with no ym_share row
-    const r=await fetch(API+'/api/ym_invite',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({email:v,user_token:SESSION.access_token})});
-    const j=await r.json().catch(()=>({}));
-    if(r.status===409||j.why==='taken'){g.busy=false;g.taken=true;grantPaint();loadShareStates();return;}
-    if(!r.ok||!j.code)throw new Error(j.error||('HTTP '+r.status));
-    g.code=j.code;g.link=j.link||'';g.linkOk=j.link_ok!==false;g.busy=false;
-    grantPaint();loadShareStates();
-    if(j.mailed)toast('授权码已生成，注册邮件已发出');
-  }catch(err){
-    g.busy=false;grantPaint();
-    toast('授权已保存，授权码生成失败（'+err.message+'）—— 可稍后重发');
-  }
+  g.busy=true;g.err='';grantPaint();
+  // the ROLE is a request, not a decision: ym_mint_code re-derives it, refuses 'H' for every
+  // caller, and allocates the number atomically in the database (PLAN-Y7 §E9)
+  const {data,error}=await sb.rpc('ym_mint_code',
+    {p_role:g.role==='VN'?'V':g.role,p_paid:g.role==='VN',p_ref:p.id});
+  g.busy=false;
+  if(error||!data||data.r!=='ok'){
+    g.err=data&&data.r==='full'?'名额已满':data&&data.r==='exists'?'这个人已经有编号了':'生成失败，请重试';
+    if(data&&data.r==='exists')await loadCodes();
+    grantPaint();return;}
+  // server-owned, and NOT in LIB_FIELDS. row.invite is deliberately NOT among them.
+  p.code=data.code;p.roleCode=g.role;p.codeTail=String(data.invite).slice(-4);
+  p.codeExp=data.exp;save();
+  g.invite=data.invite;
+  await loadCodes();await pushShares();grantPaint();
+}
+async function codeReissue(){
+  const g=_grant;if(!g||g.busy)return;
+  const p=STORE.library.resources.find(x=>x.id===g.pid),a=p&&codeOf(p);if(!a)return;
+  g.busy=true;g.err='';grantPaint();
+  const {data,error}=await sb.rpc('ym_reissue_code',{p_code:a.code});
+  g.busy=false;
+  if(error||!data||data.r!=='ok'){
+    g.err=data&&data.r==='bound'?'TA 已经注册过了 —— 已注册的编号不能重发邀请码':'重发失败，请重试';
+    grantPaint();return;}
+  p.codeTail=String(data.invite).slice(-4);p.codeExp=data.exp;save();
+  g.role=roleKey(a);g.invite=data.invite;
+  await loadCodes();grantPaint();
 }
 function grantSend(){
-  const g=_grant;if(!g||!g.code)return;
+  const g=_grant;if(!g||!g.invite)return;
   const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
-  share(['【缘满沙龙】'+p.name+' 你好，这是你的'+(catOf(p)==='guest'?'活动页':'志愿者页面')+'：',
-    (g.linkOk&&g.link)?g.link:'',
-    '打开 https://ym.jjconnect.tokyo/member/ ，输入邮箱 '+p.shareEmail+' 和授权码 '+g.code+'，',
-    '首次登录请设置一个密码。24 小时内有效。请勿转发。'].filter(Boolean).join('\n'));
+  const st=codeState(p);
+  share(['【缘满沙龙】'+p.name+' 你好，这是你的账号邀请：',
+    '打开 https://ym.jjconnect.tokyo/member/ → 选「注册」',
+    '邀请码：'+g.invite,
+    '你的编号（以后用它或邮箱登录）：'+st.code,
+    '注册时邮箱和密码由你自己填。邀请码一周内有效，只能用一次，请勿转发。'].join('\n'));
 }
 function grantRevoke(){
   const g=_grant;if(!g)return;
-  const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
-  const old=p.shareEmail;
-  grantClose();                                   // one window at a time — never stack two cards
-  ask({title:'取消 '+p.name+' 的授权？',note:'TA 会立刻看不到任何内容，已上传的票据也一并撤下。',
-    fields:[],ok:'取消授权',fn:()=>{
-      if(old){dropShare(old);
-        if(canCloud())sb.from('ym_submit').delete()
-          .match({host:SESSION.user.id,member_email:String(old).toLowerCase()}).then(()=>{});}
-      delete p.shareEmail;save();grantClose();loadShareStates();render();toast('已取消授权');}});
+  const p=STORE.library.resources.find(x=>x.id===g.pid),a=p&&codeOf(p);if(!a)return;
+  const off=!a.revoked;
+  grantClose();                                 // one window at a time — never stack two cards
+  ask({title:(off?'取消 ':'恢复 ')+p.name+' 的授权？',
+    note:off?('TA 会立刻看不到任何内容，已上传的票据也一并撤下。编号 '+a.code+' 保留，永远不会给别人。')
+            :'TA 会重新看到你发布给 TA 的内容。',
+    fields:[],ok:off?'取消授权':'恢复',fn:async()=>{
+      // one RPC: ym_code.revoked + ym_share + ym_submit, atomically
+      const {data,error}=await sb.rpc('ym_revoke_code',{p_code:a.code,p_off:off});
+      if(error||data!=='ok'){toast('操作失败，请重试');return;}
+      await loadCodes();if(!off)await pushShares();
+      render();toast(off?'已取消授权':'已恢复');}});
 }
 async function cloudLoad(){
   if(!sb||!SESSION){PROFILE=null;stopPoll();render();return;}
@@ -893,7 +927,7 @@ async function cloudLoad(){
       if(re.data)PROFILE=Object.assign({},re.data,{is_admin:PROFILE.is_admin});}
   }
   if(!canCloud()){startPoll();render();return;}   // pending → watch for the admin's approval
-  stopPoll();loadShareStates();loadPending();
+  stopPoll();loadCodes().then(pushShares);loadPending();
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
   if(error){toast('云端读取失败：'+error.message);render();return;}
   const cloudEvs=(rows||[]).filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
@@ -1307,7 +1341,7 @@ function recheck(){
 function doSignOut(){clearPendingCode();   // never carry a code across identities
   // …and never carry the previous host's volunteer data either: PENDING holds their members'
   // names and 确认完成 stays wired, so the next person on this device could flip a chip.
-  PENDING=[];SHARE_ST={};if(_pendT){clearInterval(_pendT);_pendT=null;}
+  PENDING=[];CODES={};if(_pendT){clearInterval(_pendT);_pendT=null;}
   if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
 
 /* ---------- reuse prompts (read-time projections — the assets remember themselves) ---------- */
@@ -1796,10 +1830,10 @@ function viewLib(){
         : `${esc(x.role||'')}${x.contact?' · '+esc(x.contact):''}${x.avail?' · '+esc(x.avail):''}`;
       return `<div class="libitem" style="cursor:pointer" onclick="libEditOpen('${cat}','${x.id}')">
         <div class="t">${icon} ${esc(x.name)}${dtag(x)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}</div>
-        <div class="m">${meta}${x.shareEmail?` · <span style="color:var(--brass)">☁ ${esc(x.shareEmail)}</span> · ${esc(grantState(x).t)}`:''}
+        <div class="m">${meta}${codeOf(x)?` · <span class="num" style="color:var(--brass)">${esc(codeState(x).code)}</span> · ${esc(codeState(x).t)}`:''}
         <span style="float:right">
           ${cat==='goods'?`<button class="exchip b${(x.inv||0)===3?0:((x.inv||0)?1:0)}" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();cycleInv('${x.id}')">📦 ${INV_ST[x.inv||0]}</button> `:''}
-          ${cat==='volunteer'||cat==='guest'?`<span class="ic${x.shareEmail?' on':''}" title="${x.shareEmail?'账号 · '+esc(grantState(x).t)+' — 点开管理':(cat==='guest'?'授权账号（只看公开信息）':'授权账号')}" onclick="event.stopPropagation();grantOpen('${x.id}')">🔑</span>`:''}
+          ${cat!=='goods'?`<span class="ic${codeOf(x)?' on':''}" title="${codeOf(x)?'账号 '+esc(codeState(x).code)+' · '+esc(codeState(x).t)+' — 点开管理':'发邀请码'}" onclick="event.stopPropagation();grantOpen('${x.id}')">🔑</span>`:''}
           <span class="ic del" title="删除" onclick="event.stopPropagation();libDel('resources','${x.id}')">✕</span></span></div></div>`;
     }).join('');
     if(cat==='volunteer')
@@ -1867,16 +1901,14 @@ function clearDemo(){
   save();render();toast('已清除示例数据');
 }
 function libDel(k,id){const L=STORE.library;
-  const rec=L[k].find(x=>x.id===id);
-  ask({title:rec&&rec.shareEmail?('删除 '+rec.name+'？'):'从资产库删除？',
-    note:rec&&rec.shareEmail
-      ? 'TA 有成员账号（'+rec.shareEmail+'）—— 删除会同时收回 TA 的查看权限。'
-      : '已挂到活动上的不受影响。',
-    fields:[],ok:'删除',fn:()=>{
-      if(rec&&rec.shareEmail){dropShare(rec.shareEmail);   // otherwise they keep reading forever
-        if(canCloud())sb.from('ym_submit').delete()
-          .match({host:SESSION.user.id,member_email:String(rec.shareEmail).toLowerCase()}).then(()=>{});}
-      L[k]=L[k].filter(x=>x.id!==id);save();render();}});}
+  const rec=L[k].find(x=>x.id===id),a=rec?codeOf(rec):null;
+  ask({title:a?('删除 '+rec.name+'？'):'从资产库删除？',
+    note:a?('TA 有成员账号（'+a.code+'）—— 删除会同时停用 TA 的访问。编号不会被回收。')
+          :'已挂到活动上的不受影响。',
+    fields:[],ok:'删除',fn:async()=>{
+      if(a&&canCloud())await sb.rpc('ym_revoke_code',{p_code:a.code,p_off:true});
+      L[k]=L[k].filter(x=>x.id!==id);
+      save();await loadCodes();render();}});}
 /* ---- item detail editor — full information fields per 缘满沙龙 V1.0 ---- */
 const LIB_FIELDS={
   // 志愿者名册 (V1.0)
@@ -1920,10 +1952,10 @@ function fileGuest(p){
   // and a merged record can now hold an ACCOUNT — at which point the merge would show one guest the
   // other's events and 号牌. So never auto-merge into a record that has been granted one; that
   // person must be linked deliberately (从名册选), by the host's own hand.
-  let rec=peoList('guest').find(r=>!r.shareEmail&&(r.name||'').trim()===key
+  let rec=peoList('guest').find(r=>!r.code&&(r.name||'').trim()===key
     &&(!r.gender||!p.gender||r.gender===p.gender));
-  if(!rec&&peoList('guest').some(r=>r.shareEmail&&(r.name||'').trim()===key))
-    toast('名册里已有同名嘉宾（已授权账号）— 若是同一人，请改从名册选');
+  if(!rec&&peoList('guest').some(r=>r.code&&(r.name||'').trim()===key))
+    toast('名册里已有同名嘉宾（已发账号）— 若是同一人，请改从名册选');
   if(!rec){
     rec={id:uid(),cat:'guest',type:'人',name:key,gender:p.gender||'',
       occupation:p.job||'',role:''};
@@ -3140,7 +3172,7 @@ let PENDING=[],_pendT=null;
 function loadPending(){
   if(!canCloud())return;
   // never select file_data — the poll would drag base64 receipts across the wire every minute
-  sb.from('ym_submit').select('id,member_email,event_id,chip_id,kind,note,file_name,file_mime,created_at')
+  sb.from('ym_submit').select('id,member_code,event_id,chip_id,kind,note,hours,cost,diff,file_name,file_mime,created_at')
     .eq('status','pending').order('created_at')
     .then(({data,error})=>{if(error)return;
       const next=data||[],same=JSON.stringify(next)===JSON.stringify(PENDING);
@@ -3153,56 +3185,66 @@ function loadPending(){
 }
 // em filters to ONE submitter: two volunteers can report on the same chip, and the host must not
 // accept B's receipt under A's name with a single tap.
-function pendFor(cid,em){const e=ev();
+// code filters to ONE submitter: two volunteers can report on the same chip, and the host must not
+// accept B's receipt under A's name with a single tap.
+function pendFor(cid,mc){const e=ev();
   return PENDING.filter(r=>r.chip_id===cid&&(!e||r.event_id===e.id)
-    &&(!em||String(r.member_email||'').toLowerCase()===em));}
+    &&(!mc||String(r.member_code||'')===mc));}
+// the roster name behind a 编码, so the host reads 「小林 交任务了」 not V0014
 function pendCount(e){return e?PENDING.filter(r=>r.event_id===e.id).length:0;}
 // the roster name behind an address, so the host reads 「小林 说完成了」 not an email
-function pendWho(r){const p=STORE.library.resources.find(x=>
-  String(x.shareEmail||'').toLowerCase()===String(r.member_email||'').toLowerCase());
-  return p?p.name:(r.member_email||'志愿者');}
-// one box PER SUBMITTER — never one box labelled with rows[0]'s name covering everyone's rows
+// the roster name behind a 编码, so the host reads 「小林 交任务了」 not V0014
+function pendWho(r){const c=String(r.member_code||'');
+  const p=STORE.library.resources.find(x=>{const a=CODES[x.id];return a&&a.code===c;});
+  return p?p.name:(c||'成员');}
 function pendBlock(cid){
   const rows=pendFor(cid);if(!rows.length)return '';
-  const ems=[];rows.forEach(r=>{const e=String(r.member_email||'').toLowerCase();
-    if(ems.indexOf(e)<0)ems.push(e);});
-  return ems.map(em=>{
-    const mine=pendFor(cid,em),done=mine.filter(r=>r.kind==='done'),files=mine.filter(r=>r.kind==='file');
+  const cs=[];rows.forEach(r=>{const c=String(r.member_code||'');if(cs.indexOf(c)<0)cs.push(c);});
+  return cs.map(mc=>{
+    const mine=pendFor(cid,mc);
+    const done=mine.filter(r=>r.kind==='submit'||r.kind==='done'),files=mine.filter(r=>r.kind==='file');
+    const h=done.reduce((s,r)=>s+(parseFloat(r.hours)||0),0);
+    const co=done.reduce((s,r)=>s+(parseInt(r.cost,10)||0),0);
     return `<div class="pendbox">
-      <div class="ph">● ${esc(pendWho(mine[0]))} ${done.length?'说完成了':'传了票据'}</div>
+      <div class="ph">● ${esc(pendWho(mine[0]))} ${done.length?'交任务了':'传了票据'}</div>
+      ${h||co?`<div class="pn">工时 ${esc(h)}h${co?' · 自费 '+yen(co)+'（不进收支）':''}</div>`:''}
       ${done.filter(r=>r.note).map(r=>`<div class="pn">「${esc(r.note)}」</div>`).join('')}
       ${files.map(r=>`<div class="pf" onclick="pendOpenFile('${esc(r.id)}')">📎 ${esc(r.file_name||'附件')}</div>`).join('')}
       <div id="pendview_${esc(cid)}"></div>
       <div class="df" style="margin-top:8px">
-        <button class="btn sm" style="flex:1" onclick="pendAccept('${escJs(cid)}','${escJs(em)}')">确认完成</button>
+        <button class="btn sm" style="flex:1" onclick="pendAccept('${escJs(cid)}','${escJs(mc)}')">确认完成</button>
         <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px;align-self:center;padding:0 8px"
-          onclick="pendReject('${escJs(cid)}','${escJs(em)}')">退回</span></div></div>`;}).join('');
+          onclick="pendReject('${escJs(cid)}','${escJs(mc)}')">退回</span></div></div>`;}).join('');
 }
-async function pendAccept(cid,em){
+async function pendAccept(cid,mc){
   if(S.readonly||!canCloud())return;
-  const rows=pendFor(cid,em);if(!rows.length)return;
+  const rows=pendFor(cid,mc);if(!rows.length)return;
   const evId=rows[0].event_id;
   // local-first: confirming from a second device whose copy of this event is stale would push the
   // stale doc over the 800ms debounce and quietly undo work done elsewhere.
   if(!ev()||ev().id!==evId){await cloudLoad();S.evId=evId;}
   if(!chipById(cid)){toast('这项已经不在台本里了');loadPending();return;}
   exSet(cid,2);                                   // the host's own hand — RES_ST semantics untouched
-  const ids=pendFor(cid,em).map(r=>r.id);         // 确认 accepts THAT person's 票据 too: one tap, not four
+  const ids=pendFor(cid,mc).map(r=>r.id);         // 确认 accepts THAT person's 票据 too: one tap, not four
   const {error}=await sb.from('ym_submit').update({status:'accepted'}).in('id',ids);
   if(error)toast('已翻状态，但回执未标记：'+error.message);
   loadPending();
 }
-async function pendReject(cid,em){
+async function pendReject(cid,mc){
   if(S.readonly||!canCloud())return;
-  const rows=pendFor(cid,em);if(!rows.length)return;
-  // 退回 the CLAIM only. Rejecting the 票据 too would strand them: the member has no UPDATE policy
-  // (by design) and re-submitting only replaces the done row, so the receipts would leave the
-  // host's inbox forever while the volunteer's page still shows them attached.
-  const done=rows.filter(r=>r.kind==='done');
-  const ids=(done.length?done:rows).map(r=>r.id);
-  const {error}=await sb.from('ym_submit').update({status:'rejected'}).in('id',ids);
-  if(error){toast('退回失败：'+error.message);return;}
-  toast('已退回 —— TA 可以改完再报一次');loadPending();
+  const rows=pendFor(cid,mc);if(!rows.length)return;
+  ask({title:'退回这一项？',note:'必须写清楚要 TA 改什么 —— TA 只看得到这句话。',
+    fields:[{label:'退回说明（必填）',ph:'例如：票据拍糊了，请重拍一张'}],ok:'退回',
+    fn:async(v)=>{
+      const why=(v[0]||'').trim();
+      if(!why){toast('请写一句退回说明');return;}
+      // 退回 the CLAIM only. Rejecting the 票据 too strands them: there is no member UPDATE policy.
+      const done=rows.filter(r=>r.kind==='submit'||r.kind==='done');
+      const ids=(done.length?done:rows).map(r=>r.id);
+      const {error}=await sb.from('ym_submit')
+        .update({status:'rejected',host_note:why.slice(0,2000)}).in('id',ids);
+      if(error){toast('退回失败：'+error.message);return;}
+      toast('已退回 —— TA 可以改完再报一次');loadPending();}});
 }
 // fetch the bytes for ONE row, only when the host actually asks to look
 function pendOpenFile(sid){
