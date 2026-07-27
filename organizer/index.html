@@ -77,10 +77,6 @@
   .rfab.rec{background:var(--alarm);border-color:var(--alarm);color:#fff;animation:rfabpulse 1.1s infinite}
   @keyframes rfabpulse{0%,100%{box-shadow:0 0 0 0 rgba(210,96,74,.5),0 4px 14px rgba(0,0,0,.45)}
     50%{box-shadow:0 0 0 10px rgba(210,96,74,0),0 4px 14px rgba(0,0,0,.45)}}
-  .fabmenu{position:fixed;z-index:39;right:max(16px,calc(50vw - var(--w)/2 + 16px));
-    display:flex;flex-direction:column;gap:7px;align-items:flex-end}
-  .fabmenu label{background:var(--stock);color:var(--ink);border-radius:4px;padding:10px 14px;
-    font-size:12.5px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px -6px rgba(0,0,0,.7)}
   .modal-g{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:50;
     width:min(94vw,520px);max-height:80vh;overflow:auto}
   /* ===== 发布 (Y6) ===== */
@@ -1452,17 +1448,12 @@ function fabsHtml(){
   if(!ev())return '';
   const base=S.view==='day'?84:20;   // clear the day tab bar
   const recTab=S.view==='day'&&S.dayTab==='rec';
-  const menu=S.fabMenu?`<div class="fabmenu" style="bottom:${base+124}px">
-      <label>${ico('cam')}票据 → 收支<input type="file" accept="image/*" capture="environment"
-        style="display:none" onchange="S.fabMenu=false;costPhoto(this)"></label>
-      <label>${ico('cam')}报名表 → 名册<input type="file" accept="image/*" capture="environment"
-        style="display:none" onchange="S.fabMenu=false;formPhoto(this)"></label></div>`:'';
-  const hide=S.view==='exec'?' exhide':'';   // desktop 执行 tree: fabs would cover the 进行中 column (CSS hides ≥760px)
-  // the fabs are position:fixed in the bottom-right — without this the last row of content
-  // (e.g. ＋新建 on 日) ends UNDERNEATH them at full scroll. No overlapping, ever.
-  return `<div class="fabspace${hide}" style="height:${base+116}px"></div>${menu}
-    <button class="rfab${hide}" style="bottom:${base+62}px" title="拍照（票据/报名表）"
-      onclick="S.fabMenu=!S.fabMenu;render()">${ico('cam','lg')}</button>
+  const hide=S.view==='exec'?' exhide':'';   // desktop 执行 tree: the fab would cover the 进行中 column
+  // 相机圆钮去掉了 (owner 2026-07-27: 「并不常用，我们作成页面中的按钮即可」)。它的两个动作在
+  // 页面里本来就各有按钮 —— 票据在收支条上、报名表在日看板上 —— 所以圆钮只是重复。
+  // 话筒留着：按住说话是活动当天高频动作，那正是浮动按钮该存在的理由。
+  // fab 是 position:fixed，没有这块占位的话最后一行内容会压在它下面。绝不重叠。
+  return `<div class="fabspace${hide}" style="height:${base+56}px"></div>
     ${recTab?'':`<button class="rfab${hide}" id="micfab" style="bottom:${base}px" title="按住说话（签到/翻状态/评价/记账）"
       onmousedown="recStart()" onmouseup="recStop()" onmouseleave="recStop()"
       ontouchstart="event.preventDefault();recStart()" ontouchend="recStop()">${ico('mic','lg')}</button>`}
@@ -1663,7 +1654,7 @@ function viewSheet(){
         <div class="c ok"><div class="n num">${rc[3]}</div><div class="l">到位</div></div>
       </div></div>
     <div class="strip"><div class="hd"><span class="lbl">收支 · 计划 / 实际</span>
-      <label class="btn ghost sm" style="cursor:pointer">票据
+      <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}票据
         <input type="file" accept="image/*" capture="environment" style="display:none" onchange="costPhoto(this)"></label></div>
       <div class="mline"><span>收入</span><span class="num">${yen(mt.inPlan)} / ${yen(mt.inActual)}</span></div>
       <div class="mline"><span>支出</span><span class="num">${yen(mt.outPlan)} / ${yen(mt.outActual)}</span></div>
