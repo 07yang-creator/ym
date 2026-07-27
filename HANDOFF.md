@@ -73,8 +73,10 @@ insert into ym_entry(host,entry_date,direction,amount) values (auth.uid(),'2026-
   `ym_doc.payload`（全系统唯一没有上限的面），每次 800ms 保存都整个重传。Y8 绕开了它，复盘那句
   提示也改成把票据引去总账了，但**它本身没动**。要修得先做数据审计：现有 payload 可能已经超过
   任何将要设的上限，那时加 CHECK 会让 owner 下一次保存直接 500。
-- **`formPhoto` / `rosterShot` 仍然没有 `user_token`** —— OCR 调用不计量。`rcParse` 已经带上了，
-  这是第一次能看见 ym 的 OCR 成本；上线后看一周 `usage_event`，顺手把那两处也补上。
+- **OCR 计量已经补齐**：`rcParse`（票据）· `rosterShot`（名单截图，之前就带着）· `formPhoto`
+  （报名表，这次补的）三处都带 `user_token` 了 —— 在这之前 ym 的 OCR **一次都没被计量过**。
+  上线后看一周 `usage_event`，这周的数才是全的。套件里有一条会数「每一个 /api/parse 调用点
+  都带 user_token」，再加新的调用点会被挡下来。
 - **PDF 走 Gemini 那条路没有 schema**（`api/parse.py` 一个字没改，这是有意的）。PDF 请求书会诚实地
   退化成 mock → 空白卡 → 手填。真要修是两行：`media_type=='application/pdf'` 一律走 `call_claude`。
 - **赤伝没有做**：取消是 `status='void'` + 必填理由，行留着。等这个沙龙真的用这套账报过一次税，

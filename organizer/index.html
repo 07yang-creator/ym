@@ -3359,7 +3359,9 @@ function formPhoto(inp){
   toast('识别报名表中…');
   shrink(f,b64=>{
     fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({image:b64,media_type:'image/jpeg',mode:'ym_form'})})
+      // log_usage() 只认经服务端验证的 JWT —— 不带它这一路 OCR 就是不计量的（rosterShot 已经带了）
+      body:JSON.stringify({image:b64,media_type:'image/jpeg',mode:'ym_form',
+        user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
     .then(r=>r.json()).then(res=>{
       if(res.is_form===false){toast('这张不像报名表，请重拍');return;}
       S.formDraft=res;render();})
