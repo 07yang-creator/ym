@@ -455,6 +455,16 @@
     border:1px solid var(--line);border-radius:4px;padding:3px 7px;margin:5px 5px 0 0;text-decoration:none}
   .diffseg .sb{font-family:Oswald,sans-serif;letter-spacing:.06em}
   .extask .pdot{font-size:9.5px;color:var(--brass);margin-left:6px;white-space:nowrap}
+  .extask .pdot.got{color:var(--ok)}
+  /* 一键发布 (Y7 §B6) */
+  .expub{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;margin:6px 0 0}
+  .expub .pl{font-size:11px;color:var(--brass);white-space:nowrap}
+  /* deliberately NOT an .exseg: jobEditSave() finds the status row with
+     '.jobdlg .exseg:not(.diffseg)' and a third .exseg in that dialog would be read as the status */
+  .pubseg{display:flex;gap:6px;margin:2px 0 10px}
+  .pubseg .sb{flex:1;text-align:center;font-size:11.5px;padding:8px 4px;border:1px solid var(--line);
+    border-radius:6px;color:var(--stock-dim);cursor:pointer}
+  .pubseg .sb.on{border-color:var(--brass);color:var(--brass)}
   /* destructive actions are LIGHT everywhere — never a heavy red button (owner's creed) */
   .lnkdel{color:var(--muted);cursor:pointer;font-size:11.5px;align-self:center;padding:0 8px;
     white-space:nowrap}
@@ -648,10 +658,27 @@ function nameIndex(cat){const m={};STORE.library.resources.forEach(r=>{
   m[n]=m[n]?'DUP':r.id;});return m;}
 function volNameIndex(){return nameIndex('volunteer');}
 function chipOwnedBy(c,p,idx){
+  // 抢单 winner (Y7 step 7): a HARD LINK, checked first. Name matching below reaches NOBODY when
+  // two 名册 records share a name (nameIndex → 'DUP') or when the record's name is blank
+  // (nameIndex skips it) — so a task assigned by name alone can land in neither the pool nor
+  // anyone's duties[]: a silent black hole. volId is a NEW field with exactly one meaning, so
+  // nothing existing is re-semanticised (refId's readers — volSection/applyRes/usedEvents — are
+  // untouched), and cloneEvent()/applySaveBack() already rebuild 任务 chips as {id,type,name,
+  // status} and therefore drop it, which is what we want: a new event re-allocates its people.
+  if(c.volId)return c.volId===p.id;
   if(c.refId)return c.refId===p.id;                  // resource chip: hard link, unambiguous
   if((c.type||'')!=='任务')return false;
   const who=String(c.role||c.owner||'').trim();if(!who)return false;
   return idx[who]===p.id;                            // 'DUP' matches nobody → fail closed
+}
+/* 「没人认领的待办」 — ONE definition, deliberately shared by the 发布 sweep (exOpenable) and by
+   volDataFor()'s pool[]. 0016's ym_claim_task() re-reads that published pool[] as THE authority on
+   "was this task published to this person", and takes the 难度 from the same entry, so the list the
+   host sweeps and the list the database trusts must never be two predicates that can drift apart.
+   已指派(volId/refId/role/owner) · 已搁置 · 不是待办 · 不是任务 are all excluded. */
+function unclaimed(c){
+  return (c.type||'')==='任务'&&!c.refId&&!c.volId&&!c.ignored&&taskBucket(c)===0
+    &&!String(c.role||c.owner||'').trim();
 }
 /* 嘉宾 view — PUBLIC ONLY (owner, 2026-07-22). A 嘉宾 account exists so TA can check when/where and
    what their 号牌 is; it is NOT a window onto their own record. 资料卡 / 职业 / 择偶 / 评价 stay
@@ -710,10 +737,13 @@ function volDataFor(p,a){
       if(chipOwnedBy(c,p,idx)){mine[loc]=1;
         duties.push({chipId:c.id,where,time,name:c.name||'',needs:c.needs||'',due:c.due||'',
           diff:c.diff||'C',status:taskLabel(c)});return;}
-      // 发布池 (PLAN-Y7 §B6): 环节 / 时间 / 难度 / 说明 and NEVER another volunteer's name.
+      // 发布池 (PLAN-Y7 §B6): 环节 / 时间 / 难度 / 说明 and NEVER another volunteer's name — not
+      // who owns it, not who claimed it, not how many people are looking at it. That is what makes
+      // hub-and-spoke true ON THE WIRE and not merely in the UI.
       // Separate from duties[] on purpose: ym_share_has_chip() reads duties[], so a pooled chip
       // in there would let any eligible volunteer file against a task they never won.
-      if(c.open&&!c.refId&&!String(c.role||c.owner||'').trim())
+      // unclaimed() is shared with exOpenable() — see its comment: 0016 reads this list as truth.
+      if(c.open&&unclaimed(c))
         pool.push({chipId:c.id,where,time,name:c.name||'',needs:c.needs||'',due:c.due||'',
           diff:c.diff||'C'});});
     scan(e.header,'header','活动全场','');
@@ -1543,7 +1573,7 @@ function chipsHtml(holder,loc){
       const b=taskBucket(c);
       return `<span class="chip job b${b}${c.ignored?' ig':''}" onclick="event.stopPropagation();cycleJob('${loc}','${c.id}')"
         title="要做的事 · 点击翻状态">📌 ${esc(c.name)}
-        <span class="lbl">${c.ignored?'已搁置':TASK_ST[b]}</span>
+        <span class="lbl">${c.ignored?'已搁置':(c.open?'📣 已发布':TASK_ST[b])}</span>
         <span class="x" onclick="event.stopPropagation();delChip('${loc}','res','${c.id}')">✕</span></span>`;
     }
     return `<span class="chip s${c.status||0}" onclick="event.stopPropagation();cycleRes('${loc}','${c.id}')"
@@ -1648,6 +1678,8 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
   // triggers render() (确认完成 / 退回 on a 志愿者 submission) would otherwise rebuild the fields
   // from the stored chip and silently discard it.
   const d=je.draft||c||{name:'',role:'',needs:'',due:'',diff:'C'};const b=c?taskBucket(c):0;
+  // 发布池 flag lives on je (NOT je.draft), so jeKeep()'s rebuild on every keystroke carries it
+  if(je.open===undefined)je.open=!!(c&&c.open);
   const where=je.loc==='header'?'活动全场':(()=>{const r=e.rows.find(x=>x.id===je.loc);return r?((r.time?r.time+' ':'')+(r.seg||'环节')):'环节';})();
   const pick=(arr,fn)=>arr.length?`<div class="jepick">${arr.map(n=>`<span onclick="${fn}(this.textContent)">${esc(n)}</span>`).join('')}</div>`:'';
   return `<div class="drawerbg" onclick="S.jobEdit=null;render()"></div>
@@ -1667,6 +1699,13 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
         <input id="je_due" type="date" value="${esc(d.due||'')}" oninput="jeKeep()"></label>
       <label class="dfld"><span class="l">难度（决定谁能接 · 默认 C）</span></label>
       ${diffPick(d.diff,'jeDiff($D)')}
+      ${c&&claimFor(c.id)?claimBlock(c.id)
+        :(c&&unclaimed(c)
+          ?`<label class="dfld"><span class="l">没写负责人时：要不要放进认领池</span></label>
+            <div class="pubseg">
+              <div class="sb ${je.open?'':'on'}" onclick="jeOpenTog(0)">不发布</div>
+              <div class="sb ${je.open?'on':''}" onclick="jeOpenTog(1)">📣 发布 · 先点先得</div></div>`
+          :'')}
       ${c?pendBlock(c.id):''}
       ${c?`<div class="exseg" style="margin-top:12px">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="jeStatus(${i})">${l}</div>`).join('')}</div>`:''}
       <div class="df"><button class="btn" style="flex:1" onclick="jobEditSave()">保存</button>
@@ -1723,8 +1762,16 @@ function jobEditSave(){if(S.readonly||!S.jobEdit)return;const je=S.jobEdit;const
   const dEl=document.querySelector('.jobdlg .diffseg .sb.on');
   const diff=dEl?dEl.textContent.trim():'C';
   let c=je.cid?h.resources.find(x=>x.id===je.cid):null;
+  const b2=Math.max(0,bi);
   if(c){c.name=name;c.role=role;c.needs=needs;c.due=due;c.diff=diff;c.ignored=false;
-    c.status=BUCKET_STATUS[Math.max(0,bi)];stampDone(c);}
+    c.status=BUCKET_STATUS[b2];stampDone(c);
+    // 手动改了负责人 → 上一次抢单的硬链接作废。否则 chipOwnedBy() 仍按 volId 送给旧的那个人，
+    // 卡片上却写着新名字 —— 一件谁都发现不了的错投。
+    if(c.volId){const vp=STORE.library.resources.find(x=>x.id===c.volId);
+      if(!vp||String(vp.name||'').trim()!==role)c.volId=undefined;}
+    // 指定了负责人 / 不再是待办 = 不再是公开认领的事。volDataFor() 也会过滤掉，但把存下来的
+    // chip 写诚实，比依赖下游过滤安全。
+    c.open=(role||b2>0)?undefined:(je.open?true:undefined);}
   else{h.resources.push({id:uid(),type:'任务',name:name,role:role,needs:needs,due:due,diff:diff,status:0});}
   S.jobEdit=null;save();render();toast(c?'已更新':'已加到要做的事');}
 function jeDelete(){if(!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);
@@ -3018,6 +3065,8 @@ function taskCard(x){
   return `<div class="extask${S.armed===c.id?' armed':''}" data-cid="${c.id}" onclick="taskTap('${c.id}')">
     <div class="nm"><span class="nmt">${icon} ${esc(c.name)}</span>${due}</div>
     <span class="exchip b${b}" onclick="event.stopPropagation();exAdvance('${c.id}')">${TASK_ST[b]}</span>
+    ${claimFor(c.id)?`<span class="pdot got" title="有人接了这件事，等你确认指派">🙋 有人接了</span>`
+      :(c.open?`<span class="pdot" title="在发布池里，志愿者先点先得">📣 已发布</span>`:'')}
     ${pendFor(c.id).length?`<span class="pdot" title="志愿者报了完成 / 传了票据">● 待确认</span>`:''}
     ${brief?`<div class="brief">${brief}</div>`:''}</div>`;
 }
@@ -3064,6 +3113,38 @@ function taskDay(e,x){const c=x.c,b=x.bucket;           // a task's day on the t
 }
 function stampDone(c){if(taskBucket(c)===2){if(!c.doneAt)c.doneAt=todayStr();}else{c.doneAt=undefined;}}
 function overdueTasks(e){return tasks(e).filter(x=>x.c.due&&x.c.due<todayStr()&&x.bucket<2);}
+/* ---------- 一键发布 (PLAN-Y7 §B6) ----------
+   发布 writes ONE boolean, c.open, onto chips that have NOBODY'S NAME on them. It does not touch
+   chip.status, it writes no ym_submit row, and it assigns nothing: the pool is an INVITATION, and
+   0016's ym_claim_task() decides the race server-side. unclaimed() is the shared predicate the
+   published pool[] uses, so what the host sweeps is exactly what the database will honour. */
+function exOpenable(e){return allResChips(e).filter(x=>unclaimed(x.c)&&!x.c.open).map(x=>x.c);}
+function exPooled(e){return allResChips(e).filter(x=>unclaimed(x.c)&&x.c.open).map(x=>x.c);}
+function publishBar(e){
+  const n=exOpenable(e).length,live=exPooled(e).length;
+  if(S.readonly||(!n&&!live))return '';
+  return `<div class="expub">
+    ${n?`<button class="exadd" style="margin:0" onclick="exPublishAll()">📣 一键发布 ${n} 项没人认领的</button>`:''}
+    ${live?`<span class="pl">🙋 池子里 ${live} 项等人接</span>`:''}</div>`;
+}
+function exPublishAll(){
+  if(S.readonly)return;const e=ev();if(!e)return;
+  if(e.demo){toast('教学示例不会发布给志愿者');return;}
+  if(!canCloud()){toast('先登录并通过批准，才能发布任务');return;}
+  const list=exOpenable(e);
+  if(!list.length){toast('没有可发布的 —— 只有「还没写负责人」的待办才能发布');return;}
+  ask({title:'一键发布 '+list.length+' 项？',
+    note:'这些还没指定负责人的待办会出现在每位志愿者自己的页面上（只有环节、时间、难度和说明，'
+        +'看不到别人）。先点「接任务」的人拿到，后点的会看到「该任务已经被领取」。'
+        +'星级不够的看得见但接不了。已经写了负责人的、已搁置的、已完成的都不会发布。',
+    fields:[],ok:'发布',
+    fn:()=>{list.forEach(c=>{c.open=true;});save();render();
+      toast('已发布 '+list.length+' 项 —— 志愿者刷新页面就能看到');}});
+}
+/* per-chip toggle, called from the job window. Safe while the dialog holds unsaved typing: it
+   repaints its own two buttons by hand and never calls render() (the jeDiff pattern). */
+function jeOpenTog(v){const je=S.jobEdit;if(!je)return;je.open=!!v;
+  document.querySelectorAll('.jobdlg .pubseg .sb').forEach((n,i)=>n.classList.toggle('on',(i===1)===!!v));}
 function viewExec(){
   const e=ev();if(!e)return `<div class="main"><div class="empty">还没有活动。去「活动」页新建一个。</div></div>`;
   const ph=evPhase(e);
@@ -3076,6 +3157,7 @@ function viewExec(){
     <div class="exback"><span class="bk" onclick="go('sheet')">← 计划</span> · 执行看板</div>
     <div style="text-align:center"><span style="font-size:13px;color:var(--stock);font-weight:600">${esc(e.name)}${dtag(e)}</span></div>
     ${od.length?`<div class="exchase">⚠ ${od.length} 项已过截止还没完成 <span class="go" onclick="exRemindOverdue()">去催 →</span></div>`:''}
+    ${claimBanner(e)}
     ${execTree(e,todo,doing,done)}
     ${execFooter(e,mt,ign)}
     <p class="note9">时间树：树干顶＝计划开始、根＝活动日，「今天」每天下移；右(进行中)做好当天滑到左(完成)，有截止的钉 ● 标记。空白日子会收成「空 N 天」。点任务看详情、催办、设截止或搁置。</p>
@@ -3091,7 +3173,7 @@ function execMobile(e,todo,doing,done){
     <div class="extrunk"></div>
     <div class="exband todo"><div class="bt"><span class="lbl"><i class="dot"></i>待办 <span class="n">${todo.length}</span></span></div>
       ${todo.length?todo.map(card).join(''):'<div class="exempty">没有待办 — 都在推进或已完成 👍</div>'}
-      <button class="exadd" onclick="exAddTodo()">＋ 加一个待办（如：打电话确认场地）</button></div>
+      <button class="exadd" onclick="exAddTodo()">＋ 加一个待办（如：打电话确认场地）</button>${publishBar(e)}</div>
     <div class="excols">
       <div class="exband doing"><div class="bt"><span class="lbl"><i class="dot"></i>进行中 <span class="n">${doing.length}</span></span></div>
         ${doing.length?doing.map(card).join(''):'<div class="exempty">还没有推进中的</div>'}</div>
@@ -3142,7 +3224,7 @@ function execTree(e,todo,doing,done){
   const total=todo.length+doing.length+done.length,pct=total?Math.round(done.length/total*100):0;
   const canopy=`<div class="tlcanopy"><div class="hd"><i class="dot"></i>待办 <span style="opacity:.6;font-weight:400">${todo.length}</span></div>
     ${todo.length?`<div class="row">${todo.map(taskCard).join('')}</div>`:'<div class="exempty" style="opacity:.7">没有待办 — 都在推进或已完成 👍</div>'}
-    <button class="exadd" onclick="exAddTodo()">＋ 加一个待办</button></div>`;
+    <button class="exadd" onclick="exAddTodo()">＋ 加一个待办</button>${publishBar(e)}</div>`;
   const cd=d<0?String(-d):(d===0?'今天':String(d)),
         lab=d<0?(-d)+' 天前 · 已过':(d===0?'就是今天':'还有 '+d+' 天');
   return `<div style="text-align:center;margin-top:8px">${heroHtml(e)}</div>
@@ -3161,6 +3243,10 @@ function execFooter(e,mt,ign){
     ${ign.length?`<div class="exignore" style="max-width:520px;margin:16px auto 0"><div class="lbl">🌱 已搁置 ${ign.length} · 保留为提示，不催办</div>
       ${ign.map(x=>`<div class="it"><span>${esc(x.c.name)} · ${esc(x.where)}</span>
         <span class="rz" onclick="exRestore('${x.c.id}')">↩ 恢复为待办</span></div>`).join('')}</div>`:''}
+    ${orphanClaims(e).length?`<div class="exignore" style="max-width:520px;margin:16px auto 0">
+      <div class="lbl">🙋 ${orphanClaims(e).length} 条认领指向已删掉的事项</div>
+      ${orphanClaims(e).map(r=>`<div class="it"><span>${esc(pendWho(r))} 接的一项已被删除</span>
+        <span class="rz" onclick="claimDropOrphan('${escJs(r.id)}')">清掉</span></div>`).join('')}</div>`:''}
     <div class="exend" style="max-width:520px;margin:18px auto 0">
       <button class="btn ghost sm" onclick="go('sheet')" title="回计划页改台本 · 跟踪不会重来">✎ 调整计划</button>
       <button class="btn" style="flex:1" onclick="endExec('done')">✓ 完成活动</button>
@@ -3224,15 +3310,27 @@ function loadPending(){
 // accept B's receipt under A's name with a single tap.
 // code filters to ONE submitter: two volunteers can report on the same chip, and the host must not
 // accept B's receipt under A's name with a single tap.
+// 抢单 is EXCLUDED here, structurally rather than by a render-time branch: 交任务 means 「我做完了」
+// and 抢单 means 「这件事给我」. A claim reaching pendBlock() would be rendered as 传了票据 with a
+// 确认完成 button wired to exSet(cid,2) — one tap would mark an untouched task 完成 and stamp the
+// claim 'accepted', which also (correctly) frees the arbiter. Two verbs, two boxes, two accessors.
 function pendFor(cid,mc){const e=ev();
-  return PENDING.filter(r=>r.chip_id===cid&&(!e||r.event_id===e.id)
+  return PENDING.filter(r=>r.chip_id===cid&&r.kind!=='claim'&&(!e||r.event_id===e.id)
     &&(!mc||String(r.member_code||'')===mc));}
+// 0016 guarantees AT MOST ONE live claim per chip, so this is always one person or nobody.
+// PENDING holds only status='pending' rows (loadPending filters), so a 退回'd or already-assigned
+// claim is not here — which is exactly right: both have left the arbiter too.
+function claimFor(cid){const e=ev();
+  return PENDING.find(r=>r.kind==='claim'&&r.chip_id===cid&&(!e||r.event_id===e.id))||null;}
 // the roster name behind a 编码, so the host reads 「小林 交任务了」 not V0014
 function pendCount(e){return e?PENDING.filter(r=>r.event_id===e.id).length:0;}
 // the roster name behind an address, so the host reads 「小林 说完成了」 not an email
 // the roster name behind a 编码, so the host reads 「小林 交任务了」 not V0014
+// the 名册 RECORD behind a 编码 — claimAccept needs the record (for its id), not just the name
+function personByCode(mc){const c=String(mc||'');if(!c)return null;
+  return STORE.library.resources.find(x=>{const a=CODES[x.id];return a&&a.code===c;})||null;}
 function pendWho(r){const c=String(r.member_code||'');
-  const p=STORE.library.resources.find(x=>{const a=CODES[x.id];return a&&a.code===c;});
+  const p=personByCode(c);
   return p?p.name:(c||'成员');}
 function pendBlock(cid){
   const rows=pendFor(cid);if(!rows.length)return '';
@@ -3282,6 +3380,91 @@ async function pendReject(cid,mc){
         .update({status:'rejected',host_note:why.slice(0,2000)}).in('id',ids);
       if(error){toast('退回失败：'+error.message);return;}
       toast('已退回 —— TA 可以改完再报一次');loadPending();}});
+}
+
+/* ---------- 抢单 (PLAN-Y7 §B6) —— 数据库已经定了胜负，主办只决定要不要把事交出去 ----------
+   ym_claim_task() guarantees at most one live claim per chip, so claimFor() is always ONE person.
+   确认指派 is the ONLY thing that writes the chip, and it runs in the HOST'S session: chip.volId +
+   chip.role go into ym_doc, exactly as if the host had typed the name. Nothing member-side ever
+   writes ym_doc (hard constraint 1), and 0016 does not even READ it — this function is where the
+   host's own document gets its say about whether the task is still assignable. */
+function claimBlock(cid){
+  const r=claimFor(cid);if(!r)return '';
+  const p=personByCode(r.member_code);
+  return `<div class="pendbox">
+    <div class="ph">🙋 ${esc(p?p.name:(r.member_code||'成员'))} 接了这件事${r.diff?' · 难度 '+esc(r.diff):''}</div>
+    <div class="pn">先点先得，已经判给 TA 了 —— 别人再点只会看到「该任务已经被领取」。
+      确认后这件事就出现在 TA 自己的页面上，可以交工时和票据。</div>
+    ${p?'':`<div class="pn" style="color:var(--alarm)">名册里找不到这个编号 —— 先在名册补一条再指派。</div>`}
+    <div class="df" style="margin-top:8px">
+      <button class="btn sm" style="flex:1" ${p?'':'disabled'}
+        onclick="claimAccept('${escJs(cid)}')">确认指派给 TA</button>
+      <span class="lnkdel" onclick="claimReject('${escJs(cid)}')">退回</span></div></div>`;
+}
+/* 转化点。ORDER IS LOAD-BEARING: 先写台本 → 等发布推上去（这一步让任务离开所有人的认领池）→
+   最后才删掉那条认领回执（这一步才把 0016 的唯一索引让出来）。反过来会出现「已经归 TA 了，
+   但池子里还挂着、名额又空着」的一秒钟，别人能在那一秒里抢到一件已经有主的事。 */
+async function claimAccept(cid){
+  if(S.readonly||!canCloud())return;
+  const r=claimFor(cid);if(!r)return;
+  // local-first, exactly as pendAccept: confirming from a second device whose copy of this event
+  // is stale would push that stale doc over the 800ms debounce and quietly undo work done elsewhere
+  if(!ev()||ev().id!==r.event_id){await cloudLoad();S.evId=r.event_id;}
+  const c=chipById(cid);
+  if(!c){toast('这项已经不在台本里了 —— 已清掉这条认领');await claimDrop(r.id);render();return;}
+  const p=personByCode(r.member_code);
+  if(!p){toast('名册里找不到这个编号 —— 先在名册补一条，再指派');return;}
+  // THE HOST'S OWN DOCUMENT HAS THE LAST WORD. 0016 checks the published pool, which lags the 台本
+  // by one save; this checks the live chip, which only this session can see. `c.volId===p.id` is
+  // the retry path: if the receipt delete failed last time, tapping again finishes the job.
+  if(!unclaimed(c)&&c.volId!==p.id){
+    toast('这项已经有负责人 / 已搁置 / 已完成了 —— 请改用「退回」');return;}
+  // 归 TA 了：volId 是硬链接（重名或空名的名册记录也能准确送达），role 只是给人看的
+  c.volId=p.id;c.role=p.name;c.open=undefined;
+  save();                       // ym_doc + ym_share — HOST session only
+  await pushShares();           // the chip leaves EVERY pool before the arbiter slot is freed
+  const ok=await claimDrop(r.id);
+  render();
+  toast(ok?('已指派给 '+p.name+' —— TA 的页面上会出现这件事')
+         :'已指派，但这条认领回执没清掉 —— 再点一次「确认指派」即可');
+}
+/* 退回 = status 'rejected' + 一句必填说明 (§B3)。0016 §1 的唯一索引只盖 pending，所以这一下
+   立刻把名额让回认领池，同时把解释留给 TA 看 —— 删行也能让出名额，但会把解释一起销毁。 */
+function claimReject(cid){
+  if(S.readonly||!canCloud())return;
+  const r=claimFor(cid);if(!r)return;
+  ask({title:'退回这次认领？',
+    note:'这件事会立刻回到认领池，别人可以接。必须写一句说明 —— TA 只看得到这句话。',
+    fields:[{label:'说明（必填）',ph:'例如：这件事我另外安排了，你先做签到台'}],ok:'退回',
+    fn:async(v)=>{
+      const why=(v[0]||'').trim();
+      if(!why){toast('请写一句说明');return;}
+      const {error}=await sb.from('ym_submit')
+        .update({status:'rejected',host_note:why.slice(0,2000)}).eq('id',r.id);
+      if(error){toast('退回失败：'+error.message);return;}
+      toast('已退回 —— 这项又回到认领池了');loadPending();}});
+}
+// 删掉一条认领回执。指派完成后这条行已经没有读者了（谁抢到的记录是 chip.volId 本身），而留着它
+// 会永远占住 ym_submit_claim_one：主办日后收回负责人、重新发布，这件事就再也没人接得了。
+async function claimDrop(id){
+  const {error}=await sb.from('ym_submit').delete().eq('id',id);
+  loadPending();
+  if(error){toast('回执没清掉：'+error.message);return false;}
+  return true;
+}
+// a claim whose chip the host has since deleted: invisible in every chip-scoped box, so it is
+// surfaced once in the footer. Host CRUD on their own rows (ym_submit_host, 0014 §3).
+function orphanClaims(e){
+  return e?PENDING.filter(r=>r.kind==='claim'&&r.event_id===e.id&&!chipById(r.chip_id)):[];}
+async function claimDropOrphan(id){
+  if(await claimDrop(id))toast('已清掉');}
+// the host must be able to SEE a claim without opening every card
+function claimBanner(e){
+  const cs=PENDING.filter(r=>r.kind==='claim'&&r.event_id===e.id&&chipById(r.chip_id));
+  if(!cs.length)return '';
+  return cs.map(r=>{const c=chipById(r.chip_id);
+    return `<div class="exchase">🙋 ${esc(pendWho(r))} 接了「${esc(c.name||'一项任务')}」
+      <span class="go" onclick="openTask('${escJs(r.chip_id)}')">去确认 →</span></div>`;}).join('');
 }
 // fetch the bytes for ONE row, only when the host actually asks to look
 function pendOpenFile(sid){

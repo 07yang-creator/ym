@@ -46,6 +46,9 @@
   .duty .back{font-size:11.5px;color:var(--alarm)}
   .duty .diff{font-size:9.5px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:3px;
     padding:1px 5px;margin-left:6px;vertical-align:middle}
+  /* 发布池: 星级不够的显示但锁住 (§B5) —— 藏起来只会让人以为没任务，锁住才有升级动力 */
+  .duty.lk{opacity:.55}
+  .duty .lock{font-size:11.5px;color:var(--muted)}
   .subm{width:100%;margin-top:6px}
   .subm input{margin-bottom:6px;padding:8px 10px;font-size:12.5px}
   .fileup{border:1px solid var(--brass-dim);color:var(--brass);border-radius:4px;
@@ -111,6 +114,17 @@ function codeFor(h){return (MYCODES||[]).find(c=>c.host===h)||null;}
 function roleFor(h){const c=codeFor(h);return c?(c.role==='V'&&c.paid?'VN':c.role):'';}
 function myCode(){const c=(MYCODES||[])[0];return c?c.code:'';}
 const CAN_DUTY={V:1,VN:1}, CAN_JOIN={P:1};
+// mirrors 0015's ym_rank_n() exactly. A drift here only mis-greys a button — the gate is the RPC,
+// which reads ym_code.rank server-side — but keep them equal anyway.
+const RANK_N={C:0,B:1,A:2,S:3,SS:4};
+// 星级 comes from MY OWN ym_code row (read under RLS with my own token), NEVER from payload.rank,
+// which is a display copy the host may not have refreshed.
+function rankFor(h){const c=codeFor(h);return c&&c.rank?String(c.rank).toUpperCase():'C';}
+// chips this SESSION has learned are gone, from a 'taken' answer. It never says who took them, it
+// is never published to anyone, and it is not persisted: the chip leaves the pool for good on the
+// host's next save. Publishing a `taken` flag into everybody's payload would be telling volunteers
+// about each other, which is exactly what hub-and-spoke forbids.
+let TAKEN={},_clk=false;
 const $=id=>document.getElementById(id);
 
 /* ---------- render ---------- */
@@ -208,12 +222,14 @@ function volShareHtml(row){
   const jobs=(d.jobs||[]).map(j=>{
     const key=String(j.eventId||'');
     const duties=(j.duties||[]).map(x=>dutyHtml(host,j,x)).join('');
+    const pool=(j.pool||[]).map(x=>poolHtml(host,j,x)).join('');
     const rd=j.rundown||[],open=OPEN[key];
     return `<div class="card">
       <div class="ev">${esc(j.event||'')}</div>
       <div class="meta">${fmtDate(j.date)}${j.start?' '+esc(j.start):''}${j.venue?' · '+esc(j.venue):''}</div>
       ${j.theme?`<div class="meta">${esc(j.theme)}</div>`:''}
       ${duties?`<div class="lbl" style="margin:14px 0 2px">你要做的 ${j.duties.length} 件事</div>${duties}`:''}
+      ${pool?`<div class="lbl" style="margin:14px 0 2px">可以接的任务 ${j.pool.length} 件 · 先点先得</div>${pool}`:''}
       ${rd.length?`<div class="fold" onclick="fold('${esc(key)}')">${open?'▾':'▸'} 当天流程（${rd.length} 个环节）</div>
         ${open?`<div>${rd.map(r=>`<div class="rd">
             <span class="tm">${esc(r.time||'--')}</span>
@@ -222,8 +238,9 @@ function volShareHtml(row){
       ${(j.hours||j.review)?`<div class="rv">${j.hours?`服务时长 <b class="num">${esc(j.hours)}h</b>`:''}
         ${j.review?`${j.hours?' · ':''}评价：${esc(j.review)}`:''}</div>`:''}</div>`;}).join('');
   return `<div style="margin-top:18px">
-    <div class="lbl">你好，${esc(d.name||'')}${d.role?' · '+esc(d.role):''}</div>
+    <div class="lbl">你好，${esc(d.name||'')}${d.role?' · '+esc(d.role):''} · 你的星级 ${esc(rankFor(row.host))}</div>
     ${jobs||'<div class="empty">暂无岗位安排</div>'}
+    ${claimNotes(row)}
     ${contribHtml(row)}</div>`;
 }
 
@@ -289,6 +306,81 @@ function dutyHtml(host,j,x){
     ${files.map(f=>`<div class="mine">📎 ${esc(f.file_name||'附件')}
       ${f.status==='accepted'?'':`<span class="x" onclick="withdraw('${escq(f.id)}')">撤回</span>`}</div>`).join('')}
     <div class="acts">${act}</div></div>`;
+}
+/* 发布池的一项 (PLAN-Y7 §B6)。这里只有 环节 / 时间 / 难度 / 说明 —— 绝不会出现另一位志愿者的
+   名字，被别人接走后也只显示「该任务已经被领取」，不会显示是谁，也不会在你没点之前就告诉你
+   有人动过。星级不够的显示但锁住 (§B5)。
+   这里所有的判断都只是把按钮画对；真正的胜负由 0016 的 ym_claim_task() 在数据库里定。 */
+function poolHtml(host,j,x){
+  const cid=String(x.chipId||''),evId=String(j.eventId||''),k=evId+'|'+cid;
+  const need=String(x.diff||'C').toUpperCase(),my=rankFor(host);
+  const locked=(RANK_N[need]||0)>(RANK_N[my]||0);
+  const mine=MINE.find(r=>r.kind==='claim'&&r.host===host&&r.chip_id===cid&&r.event_id===evId);
+  const meta=[x.where,x.time,x.needs?'需要 '+x.needs:'',x.due?'截止 '+fmtDate(x.due):'']
+    .filter(Boolean).join(' · ');
+  let act;
+  if(mine&&mine.status==='accepted')
+    act=`<span class="said">✓ 这件事归你了 —— 在上面「你要做的事」里交</span>`;
+  else if(mine&&mine.status==='rejected')
+    act=`<span class="back">主办方另有安排</span>
+      ${mine.host_note?`<div class="back" style="width:100%">主办方：${esc(mine.host_note)}</div>`:''}
+      <button class="btn ghost sm" onclick="dropClaim('${escq(mine.id)}',1)">知道了 · 可以重新接</button>`;
+  else if(mine)
+    act=`<span class="said">● 已接下 · 等主办方确认指派</span>
+      <span class="mine"><span class="x" onclick="dropClaim('${escq(mine.id)}',0)">放弃</span></span>`;
+  else if(TAKEN[k])act=`<span class="muted">该任务已经被领取</span>`;
+  else if(locked)act=`<span class="lock">🔒 需 ${esc(need)} 级 · 你现在是 ${esc(my)} 级</span>`;
+  else act=`<button class="btn sm"
+      onclick="claimTask('${escq(host)}','${escq(evId)}','${escq(cid)}')">接任务</button>`;
+  return `<div class="duty${((locked&&!mine)||TAKEN[k])?' lk':''}">
+    <div class="dn">${esc(x.name||x.where||'')}<span class="diff">${esc(need)}</span></div>
+    ${meta?`<div class="dm">${esc(meta)}</div>`:''}
+    <div class="acts">${act}</div></div>`;
+}
+/* 主办退回过的认领。如果那件事已经不在你的认领池里（主办改派了、或收回了发布），上面就没有地方
+   显示 §B3 那句必填的说明 —— 而那条被退回的行还会一直挡着你以后再接同一件事。所以单独列出来。*/
+function claimNotes(row){
+  const d=row.payload||{},host=row.host,shown={};
+  (d.jobs||[]).forEach(j=>{const k=String(j.eventId||'');
+    (j.pool||[]).forEach(x=>{shown[k+'|'+String(x.chipId||'')]=1;});
+    (j.duties||[]).forEach(x=>{shown[k+'|'+String(x.chipId||'')]=1;});});
+  const rows=MINE.filter(r=>r.host===host&&r.kind==='claim'&&r.status==='rejected'
+    &&!shown[r.event_id+'|'+r.chip_id]);
+  if(!rows.length)return '';
+  return `<div class="card"><div class="lbl" style="margin-bottom:6px">主办方的回复</div>`
+    +rows.map(r=>`<div class="duty">
+        <div class="dn">你接过的一件事 —— 主办方另有安排</div>
+        ${r.host_note?`<div class="back">主办方：${esc(r.host_note)}</div>`:''}
+        <div class="acts"><button class="btn ghost sm"
+          onclick="dropClaim('${escq(r.id)}',1)">知道了</button></div></div>`).join('')+`</div>`;
+}
+/* 抢单。胜负在服务端定，不在这里 —— 这个函数唯一的工作是把三个 id 交给 RPC 并把回答念出来。
+   绝不直接往 ym_submit 插一行认领：0015 的策略把 claim 那一支写死成 false，先到先得必须由数据库
+   的唯一索引来定，前端谁先发出请求不算数。 */
+async function claimTask(host,evId,cid){
+  if(_clk||!sb)return;_clk=true;
+  let data=null,error=null;
+  // try/finally, not a bare await: a network exception that escaped would leave _clk stuck true
+  // and the 接任务 button dead for the rest of the session, with nothing on screen to explain it.
+  try{({data,error}=await sb.rpc('ym_claim_task',{p_host:host,p_event:evId,p_chip:cid}));}
+  catch(e){error=e;}
+  finally{_clk=false;}
+  if(error){toast('网络不太稳，请再点一次');return;}
+  const r=String(data||'');
+  if(r==='ok'){await loadMine();render();toast('接到了 —— 等主办方确认指派');return;}
+  if(r==='mine'){await loadMine();render();toast('你已经接下这一项了');return;}
+  if(r==='taken'){TAKEN[evId+'|'+cid]=1;render();toast('该任务已经被领取');return;}
+  if(r==='rank'){toast('这一项的难度高于你的星级 —— 先做几件低难度的，主办方会给你升星');return;}
+  if(r==='back'){await loadMine();render();toast('主办方退回过这一项 —— 先看 TA 的说明再重新接');return;}
+  if(r==='full'){toast('你手上还有没确认的任务，先做完再接新的');return;}
+  if(r==='slow'){toast('点得太快了，过一会儿再试');return;}
+  toast('现在接不了这一项 —— 刷新页面再试一次');   // 'invalid' / 'no-session': never says why
+}
+async function dropClaim(id,seen){
+  const {error}=await sb.from('ym_submit').delete().eq('id',id);
+  if(error){toast('操作失败：'+error.message);return;}
+  await loadMine();render();
+  toast(seen?'知道了 —— 这一项你可以重新接':'已放弃 —— 别人可以接了');
 }
 function submitFrom(host,evId,cid){
   const g=i=>{const el=$('f_'+cid+i);return el?el.value.trim():'';};
@@ -445,7 +537,7 @@ function signOut(){sb.auth.signOut().then(()=>{MYCODES=null;SHARES=null;MINE=[];
 
 /* ---------- data ---------- */
 async function load(){
-  MYCODES=null;SHARES=null;render();
+  MYCODES=null;SHARES=null;TAKEN={};render();
   // 0015: binding happens at REGISTRATION (ym_redeem_code) — there is no separate claim step that
   // can silently bind nothing, which is what used to produce 「我拿到码了但什么都没有」.
   const me=await sb.from('ym_code').select('code,role,paid,rank,revoked,host');
