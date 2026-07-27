@@ -389,6 +389,11 @@
   @media(hover:hover){.deskcard:hover .dc-brief{display:block}}
   .deskcard .dc-brief .t{color:var(--brass);cursor:pointer;font-weight:700}
   .deskcard .dc-del{position:absolute;top:6px;right:10px;color:var(--brass-dim);cursor:pointer;font-size:14px;line-height:1;padding:2px 5px}
+  /* 计划 / 当天 / 复盘 —— 一场活动的三个阶段，跟着活动卡走 (owner 2026-07-27) */
+  .deskcard .dc-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+  .deskcard .dc-go{font-size:11.5px;color:var(--brass);border:1px solid var(--brass-dim);
+    border-radius:20px;padding:4px 11px;cursor:pointer;white-space:nowrap}
+  .deskcard .dc-go:hover{background:rgba(201,163,86,.12)}
   .deskcard .dc-del:hover{color:var(--alarm)}
   /* kickoff bar (planning UI) + gate */
   .kickoff{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:11px 14px;border-radius:10px}
@@ -1252,6 +1257,10 @@ function authInit(){
   sb.auth.onAuthStateChange((ev2,s2)=>{
     const key=s2?s2.user.id:null;
     SESSION=s2;
+    // 点重设邮件的链接回来：supabase-js 先建立一个 recovery 会话，再发这个事件。必须在
+    // cloudLoad 之前接住并把登录抽屉打开到「设新密码」，否则主办直接落进工作台，
+    // 那封信就白发了 —— 成员页早就是这么做的 (member L~709)。
+    if(ev2==='PASSWORD_RECOVERY'){_authKey=key;S.authRecovery=true;S.auth=true;render();return;}
     if(key===_authKey)return;   // token refresh etc — never re-render over user input
     _authKey=key;cloudLoad();
   });
@@ -1548,7 +1557,10 @@ function authSheet(){
   else if(canCloud())
     inner=`<div style="font-size:13px;line-height:2">${ico('cloud')}<b>${esc(SESSION.user.email||'')}</b><br>
       <span class="muted">云同步已开启 — 活动与资产库自动备份，多设备可用。</span></div>
-      <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
+      ${S.authTab==='pw'?authNewPw(false)
+        :`<div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn ghost sm" onclick="S.authTab='pw';render()">修改密码</button>
+          <button class="btn ghost sm" onclick="doSignOut()">退出登录</button></div>`}`;
   else if(SESSION){
     const rejected=PROFILE&&PROFILE.status==='rejected';
     inner=`<div style="font-size:13px;line-height:2">${rejected?ico('ban'):ico('wait')} <b>${esc(SESSION.user.email||'')}</b><br>
@@ -1564,6 +1576,18 @@ function authSheet(){
         <p class="note9">批准后本页会自动开通（每15秒检查一次），也可以点上面的按钮立即刷新。</p>`}
       <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
   }
+  // 点重设邮件的链接回来时 supabase-js 先建立一个 recovery 会话再发 PASSWORD_RECOVERY。
+  // 必须挡在其他分支前面，否则页面直接进内容页，主办永远看不到「设新密码」这一步。
+  else if(S.authRecovery)inner=authNewPw(true);
+  else if(S.authTab==='forgot')
+    inner=`<div class="lbl" style="margin-bottom:10px">重设密码</div>
+      <p class="note9" style="margin:0 0 10px">填注册时用的邮箱，我们发一封信；点信里的链接回到这一页设新密码。</p>
+      <input id="au_fem" type="email" placeholder="你的邮箱" autocapitalize="off" spellcheck="false"
+        style="margin-bottom:10px" value="${esc(S.authEmail||'')}"
+        onkeydown="if(event.key==='Enter')doForgot()">
+      <button class="btn" style="width:100%" ${_authBusy?'disabled':''} onclick="doForgot()">${_authBusy?'发送中…':'发送重设邮件'}</button>
+      <div style="text-align:center;margin-top:12px">
+        <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.authTab='';render()">← 回登录</span></div>`;
   else
     inner=`<div class="lbl" style="margin-bottom:10px">登录主办台 — 开启云备份/多设备</div>
       <input id="au_email" type="email" placeholder="邮箱" style="margin-bottom:8px"
@@ -1572,6 +1596,8 @@ function authSheet(){
         onkeydown="if(event.key==='Enter')doSignIn()">
       <input id="au_code" placeholder="邀请码（可选 · 登录或注册都能用）" style="margin-bottom:10px">
       <button class="btn" style="width:100%" onclick="doSignIn()">登录</button>
+      <div style="text-align:center;margin-top:10px">
+        <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.authTab='forgot';render()">忘记密码了</span></div>
       <p class="note9" style="margin:10px 0 4px"><b style="color:var(--brass)">已经有 jjconnect / 记账账号？直接用它登录</b>
         —— 同一个账号可以同时是会计和主办方，不用重新注册。</p>
       <button class="btn ghost sm" style="width:100%" onclick="doSignUp()">我是新用户，注册主办方账号</button>
@@ -1580,7 +1606,43 @@ function authSheet(){
   return `<div class="drawerbg" onclick="S.auth=false;render()"></div>
     <div class="drawer" style="left:auto;right:0;animation:none">${inner}</div>`;
 }
+/* 设新密码 —— 邮件链接回来后用，也用于登录状态下主动改密码 */
+function authNewPw(recovery){
+  return `<div class="lbl" style="margin-bottom:10px">${recovery?'设一个新密码':'修改密码'}</div>
+    ${recovery?`<p class="note9" style="margin:0 0 10px">这是从重设邮件的链接进来的 —— 设好新密码就能继续。</p>`:''}
+    <input id="au_np1" type="password" placeholder="新密码（至少 8 位）" style="margin-bottom:8px">
+    <input id="au_np2" type="password" placeholder="再输一次" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')doNewPw()">
+    <button class="btn" style="width:100%" ${_authBusy?'disabled':''} onclick="doNewPw()">${_authBusy?'保存中…':'保存'}</button>
+    ${recovery?'':`<div style="text-align:center;margin-top:12px">
+      <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.authTab='';render()">← 不改了</span></div>`}`;
+}
 let _authBusy=false;
+/* 忘记密码 —— 主办自己走，不经过管理员。Supabase 发一封带链接的信，点开落回本页并进入
+   PASSWORD_RECOVERY。⚠ redirectTo 必须在 Supabase 的 Redirect URLs 白名单里，
+   否则 GoTrue 会静默换成 Site URL，链接就把人送去别的页面。 */
+async function doForgot(){
+  if(_authBusy||!sb)return;
+  const em=(($('au_fem')||{}).value||'').trim().toLowerCase();
+  if(!em){toast('请输入邮箱');return;}
+  _authBusy=true;render();
+  await sb.auth.resetPasswordForEmail(em,{redirectTo:'https://ym.jjconnect.tokyo/organizer/'});
+  _authBusy=false;S.authEmail=em;S.authTab='';render();
+  // 不区分「这个邮箱存不存在」—— 否则这个表单就成了账号存在性探测器
+  toast('如果这个邮箱有账号，信已经发出了 —— 请查收（也看一下垃圾邮件）');
+}
+async function doNewPw(){
+  if(_authBusy||!sb)return;
+  const a=($('au_np1')||{}).value||'',b=($('au_np2')||{}).value||'';
+  if(a.length<8){toast('密码至少 8 位');return;}
+  if(a!==b){toast('两次输入不一样');return;}
+  _authBusy=true;render();
+  const {error}=await sb.auth.updateUser({password:a});
+  _authBusy=false;
+  if(error){toast('改不了：'+error.message);render();return;}
+  S.authRecovery=false;S.authTab='';toast('密码已更新');
+  if(PROFILE===null||PROFILE===undefined)cloudLoad();else render();
+}
 function doSignIn(){
   if(_authBusy||!sb)return;_authBusy=true;
   const email=($('au_email').value||'').trim(),pw=$('au_pw').value||'';
@@ -1732,8 +1794,6 @@ function viewSheet(){
     <select onchange="S.evId=this.value;S.sel='header';render()">
       ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${x.demo?'【教学】':''}${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
     </select>
-    ${e&&!S.readonly?`<button class="btn ghost sm" onclick="goDay()">当天</button>
-    <button class="btn ghost sm" onclick="goReview()">复盘</button>`:''}
     ${e?`<button class="btn ghost sm" onclick="cloneEvent('${e.id}')">${ico('again')}再办一场</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
     ${e&&!S.readonly&&evPhase(e)==='plan'?`<span class="icx" title="删除这场活动（仅筹备中可删）" onclick="delEvent()">✕</span>`:''}
@@ -3085,12 +3145,21 @@ function rcCard(){
             :R.conf==='low'?'这张拍得不清楚，AI 自己也没把握 —— 请逐格核对':'';
   const seg=(cur,arr,fn)=>`<div class="exseg">${arr.map(x=>
     `<div class="sb ${cur===x[0]?'on':''}" onclick="${fn}('${x[0]}')">${esc(x[1])}</div>`).join('')}</div>`;
+  /* 从主办台拍的票据没有活动上下文，「归到哪」必须当面问 (owner 2026-07-27)：
+     财务是按这个分账的，藏在「更多」里等于默认全进一般费用。有活动上下文的入口（收支条 /
+     任务 / 复盘）不重复问 —— 那里答案已经写在屏幕上了。 */
+  const deskEntry=!c.evId;
+  const evOpts=`<option value="">一般费用（不挂具体活动）</option>`+
+    STORE.events.filter(x=>!x.demo).map(x=>`<option value="${esc(x.id)}"${x.id===f.ev?' selected':''}>${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('');
+  const evSel=`<div class="sfield"><div class="fl">这笔算在哪 —— 财务按这个归类</div>
+    <select id="rc_ev" onchange="rcEv(this.value)">${evOpts}</select></div>`;
   return `<div class="drawerbg" onclick="S.rc=null;render()"></div><div class="modal-g">
     <div class="stockcard">
       <div class="schd"><span class="who" style="font-size:15px">${ico('cam')}票据 → 台账</span>
         <span class="sub">${c.memberCode?esc(c.memberCode)+' 交来':'AI识别'}</span></div>
       ${warn?`<p class="rcwarn">${ico('warn')}${esc(warn)}</p>`:''}
       ${seg(R.dir,[['out','支出'],['in','收入']],'rcDir')}
+      ${deskEntry?evSel:''}
       ${c.src==='vol'?`<div class="rcwho"><div class="fl">这笔钱谁出的 —— 决定进不进收支</div>
         ${seg(R.who,[['host','主办已付'],['advance','主办报销'],['self','志愿者自付']],'rcWho')}
         ${R.who==='self'?`<p class="note9" style="color:var(--brass);margin:6px 0 0">自费不进收支、不进台账 —— 只留在 TA 的贡献记录里。</p>`:''}</div>`:''}
@@ -3120,17 +3189,14 @@ function rcCard(){
           <input id="rc_reg" value="${esc(f.reg)}" placeholder="T1234567890123"></div>
           <p class="note9">消費税：${R.tax.length?R.tax.map(t=>esc(t.r)+(t.r==='非課税'?'':'%')+' 税抜 '+yen(t.b)+' / 税 '+yen(t.t)+(t.auto?'（自动按内税10%拆）':'')).join('　'):'未読取'}</p>`
         :`<input type="hidden" id="rc_reg" value="${esc(f.reg)}">`}
-        ${STORE.events.filter(x=>!x.demo).length?`<div class="sfield"><div class="fl">记在哪一场（可不挂）</div>
-          <select id="rc_ev" onchange="rcEv(this.value)"><option value="">不挂活动 —— 共通</option>
-            ${STORE.events.filter(x=>!x.demo).map(x=>`<option value="${esc(x.id)}"${x.id===f.ev?' selected':''}>${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
-          </select></div>`:''}`
+        ${deskEntry?'':evSel}`
       :`<input type="hidden" id="rc_date" value="${esc(f.date)}">
         <input type="hidden" id="rc_paid" value="${esc(f.paid)}">
         <input type="hidden" id="rc_pay"  value="${esc(R.pay)}">
         <input type="hidden" id="rc_memo" value="${esc(f.memo)}">
         <input type="hidden" id="rc_reg"  value="${esc(f.reg)}">
-        <input type="hidden" id="rc_ev"   value="${esc(f.ev)}">`}
-      <p class="note9">${e?'记在「'+esc(e.name)+'」':'不挂活动 —— 共通'} · 借方 <b>${esc(j.dr)}</b> / 貸方 <b>${esc(j.cr)}</b></p>
+        ${deskEntry?'':`<input type="hidden" id="rc_ev" value="${esc(f.ev)}">`}`}
+      <p class="note9">${e?'记在「'+esc(e.name)+'」':'一般费用（不挂具体活动）'} · 借方 <b>${esc(j.dr)}</b> / 貸方 <b>${esc(j.cr)}</b></p>
       <div class="scbtns">
         ${R.who==='self'?`<button class="ok" onclick="rcSelfOnly()">只确认，不入账</button>`
                         :`<button class="ok" onclick="rcConfirm()">${ico('books')}确认入账</button>`}
@@ -3376,7 +3442,7 @@ function ledLine(r){
       ${!r.paid_date&&r.payment!=='現金'?`<span class="ledtag">未${r.direction==='in'?'収':'払'}</span>`:''}
       ${r.confidence==='mock'?'<span class="ledtag" style="color:var(--alarm)">要核对</span>':''}
       <span class="m">${esc(j.dr)} / ${esc(j.cr)}${r.memo?' · '+esc(r.memo):''}
-        · ${esc(evName(r.event_id)||'共通')}${r.member_code?' · '+esc(r.member_code):''}
+        · ${esc(evName(r.event_id)||'一般费用')}${r.member_code?' · '+esc(r.member_code):''}
         ${r.status==='void'?' · 取消：'+esc(r.void_reason):''}</span></span>
     <span class="a" style="color:${r.direction==='in'?'var(--ok)':'inherit'}"
       >${r.direction==='in'?'＋':'－'}${yen(r.amount)}</span>
@@ -3398,7 +3464,7 @@ function viewLedger(){
         ${ledYears().map(y=>`<option value="${y}"${y===fy?' selected':''}>${y} 年度</option>`).join('')}
         <option value="all"${fy==='all'?' selected':''}>全部年度</option></select>
       <select onchange="S.ledEv=this.value;render()"><option value="">全部活动</option>
-        <option value="__none"${S.ledEv==='__none'?' selected':''}>共通（不挂活动）</option>
+        <option value="__none"${S.ledEv==='__none'?' selected':''}>一般费用（不挂活动）</option>
         ${STORE.events.filter(e=>!e.demo).map(e=>`<option value="${esc(e.id)}"${S.ledEv===e.id?' selected':''}>${esc(e.name)}</option>`).join('')}</select>
       <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}记一张
         <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
@@ -3478,7 +3544,7 @@ function exportLedger(){
       i?'':r.vendor,i?'':r.reg_no,i?'':r.memo,i?'':(r.account||'（未分類）'),i?'':j.dr,i?'':j.cr,
       i?'':(r.direction==='in'?'収入':'支出'),i?'':r.amount,
       l.r||'',l.b||0,l.t||0,taxKubun(r,l.r),
-      i?'':evName(r.event_id),i?'':ledSrc(r.src),i?'':(r.image_url?'あり':'なし'),
+      i?'':(evName(r.event_id)||'一般費用'),i?'':ledSrc(r.src),i?'':(r.image_url?'あり':'なし'),
       i?'':r.created_at,i?'':(r.status==='void'?'取消':''),i?'':r.void_reason]));});
   const t=ledTotals(rows);
   out.push([]);
@@ -4601,11 +4667,21 @@ function viewDesk(){
   Object.keys(groups).forEach(k=>groups[k].sort(sortByDate));
   const evCard=(e)=>{const f=followUps(e),ph=evPhase(e),mt=moneyTotals(e);
     const act=ph==='current'?'执行看板':(ph==='archived'?'只读回看':(ph==='hot'?'复盘 / 跟进':'计划'));
-    return `<button class="deskcard${ph==='current'?' cur':''}" onclick="deskOpen('${e.id}')">
+    // 当天 / 复盘 从「计划」页搬到这里 (owner 2026-07-27)：它们是这场活动的三个阶段，
+    // 该跟活动卡放在一起，而不是藏在编辑台本的那一页里。
+    // ⚠ 卡片从 <button> 改成了 <div> —— 按钮里不能再套按钮，而这一行就是按钮。
+    const go2=(fn,label)=>`<span class="dc-go" onclick="event.stopPropagation();${fn}">${label}</span>`;
+    return `<div class="deskcard${ph==='current'?' cur':''}" role="button" tabindex="0" onclick="deskOpen('${e.id}')">
       ${ph==='plan'?`<span class="dc-del" onclick="event.stopPropagation();delEvent('${e.id}')" title="删除（仅筹备中可删）">✕</span>`:''}
       <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}${pendCount(e)?` · <span style="color:var(--brass)">● 待确认 ${pendCount(e)}</span>`:''}</div>
-      <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">${ico('again')}再办一场</span>`:''}</div></button>`;};
+      ${ph==='archived'?'':`<div class="dc-acts">
+        ${ph==='current'?go2(`goExec('${e.id}')`,ico('go')+'执行看板'):''}
+        ${go2(`S.evId='${e.id}';go('sheet')`,'计划')}
+        ${go2(`S.evId='${e.id}';goDay()`,'当天')}
+        ${go2(`S.evId='${e.id}';goReview()`,'复盘')}
+      </div>`}
+      <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">${ico('again')}再办一场</span>`:''}</div></div>`;};
   const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
     (groups[k].length?groups[k].map(evCard).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);
   return `<div class="main" style="max-width:640px;margin:0 auto">
