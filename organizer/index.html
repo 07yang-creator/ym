@@ -1247,11 +1247,20 @@ function mergeLibrary(cloud,local){
 /* An admin's approval writes to the DB and produces NO auth event, so an open pending
    session would sit on ⏳ forever. Poll while pending; stop the moment we're in. */
 let _pollT=null;
+/* ⚠ 以前这里每 15 秒跑一次完整 cloudLoad()，而 cloudLoad 结尾是 render() —— 整个 #app 重建，
+   主办正在输入的**邀请码连同光标一起被冲掉**（owner 2026-07-27：「没能输入完就被刷新掉了」）。
+   等待批准的那一屏恰恰就是要粘邀请码的那一屏，所以这是必然会撞上的。
+   现在只查状态，**有变化才** cloudLoad —— 没有消息就不该重绘。 */
 function startPoll(){
   if(_pollT||!SESSION)return;
   _pollT=setInterval(()=>{
     if(!SESSION||canCloud()){stopPoll();return;}
-    cloudLoad();
+    if(!sb)return;
+    sb.from('ym_member').select('status').eq('user_id',SESSION.user.id).maybeSingle()
+      .then(({data})=>{
+        const st=data?data.status:null;
+        if(st&&(!PROFILE||st!==PROFILE.status))cloudLoad();   // 真的被批准了，这时才重绘
+      });
   },15000);
 }
 function stopPoll(){if(_pollT){clearInterval(_pollT);_pollT=null;}}
@@ -1623,7 +1632,9 @@ function authSheet(){
           ${ico('again')}管理员已批准？点这里刷新</button>
         <div class="addform" style="margin-top:10px">
         <div class="lbl" style="margin-bottom:8px">有邀请码？粘进来立即开通（不用等批准）</div>
+        ${/* 值存在 S 里：任何一次 render（轮询、云同步、别处的操作）都不该把粘了一半的码弄丢 */''}
         <input id="au_code2" placeholder="邀请码" style="margin-bottom:8px"
+          value="${esc(S.authCode||'')}" oninput="S.authCode=this.value"
           onkeydown="if(event.key==='Enter')useCode()">
         <button class="btn sm" onclick="useCode()">使用邀请码</button></div>
         <p class="note9">批准后本页会自动开通（每15秒检查一次），也可以点上面的按钮立即刷新。</p>`}
@@ -1644,10 +1655,11 @@ function authSheet(){
   else
     inner=`<div class="lbl" style="margin-bottom:10px">登录主办台 — 开启云备份/多设备</div>
       <input id="au_email" type="email" placeholder="邮箱" style="margin-bottom:8px"
-        value="${esc(S.authEmail||'')}" onchange="S.authEmail=this.value">
+        value="${esc(S.authEmail||'')}" oninput="S.authEmail=this.value">
       <input id="au_pw" type="password" placeholder="密码" style="margin-bottom:8px"
         onkeydown="if(event.key==='Enter')doSignIn()">
-      <input id="au_code" placeholder="邀请码（可选 · 登录或注册都能用）" style="margin-bottom:10px">
+      <input id="au_code" placeholder="邀请码（可选 · 登录或注册都能用）" style="margin-bottom:10px"
+        value="${esc(S.authCode||'')}" oninput="S.authCode=this.value">
       <button class="btn" style="width:100%" onclick="doSignIn()">登录</button>
       <div style="text-align:center;margin-top:10px">
         <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.authTab='forgot';render()">忘记密码了</span></div>
