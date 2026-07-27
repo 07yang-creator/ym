@@ -1477,7 +1477,7 @@ function authSheet(){
       ${rejected?'':`<button class="btn" style="width:100%;margin-top:12px" onclick="recheck()">
           ${ico('again')}管理员已批准？点这里刷新</button>
         <div class="addform" style="margin-top:10px">
-        <div class="lbl" style="margin-bottom:8px">有邀请码？立即开通</div>
+        <div class="lbl" style="margin-bottom:8px">有邀请码？粘进来立即开通（不用等批准）</div>
         <input id="au_code2" placeholder="邀请码" style="margin-bottom:8px"
           onkeydown="if(event.key==='Enter')useCode()">
         <button class="btn sm" onclick="useCode()">使用邀请码</button></div>
@@ -1507,7 +1507,7 @@ function doSignIn(){
   const code=(($('au_code')||{}).value||'').trim();
   if(!email||!pw){toast('请输入邮箱和密码');_authBusy=false;return;}
   // a code typed on the LOGIN form must count too — the host logs in, they don't register
-  try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+30*60*1000}));}catch(e){}
+  try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+7*86400000}));}catch(e){}
   toast('登录中…');
   sb.auth.signInWithPassword({email,password:pw}).then(({error})=>{
     _authBusy=false;
@@ -1520,8 +1520,12 @@ function doSignUp(){
   const email=($('au_email').value||'').trim(),pw=$('au_pw').value||'';
   const code=(($('au_code')||{}).value||'').trim();
   if(!email||pw.length<6){toast('请输入邮箱和至少6位密码');_authBusy=false;return;}
-  // bound to this address and short-lived: the code is redeemed server-side after login
-  try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+30*60*1000}));
+  // Bound to this ADDRESS — that binding, not the clock, is what stops a shared device spending
+  // somebody's seat on the wrong account. The window was 30 minutes, which broke silently the
+  // moment SMTP started working: with confirmation on, the trip is 注册 → 收信 → 点链接, the link
+  // usually opens in the phone's mail browser, and localStorage there is empty. A week matches
+  // how long an invite lives.
+  try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+7*86400000}));
       else clearPendingCode();}catch(e){}
   sb.auth.signUp({email,password:pw,options:{emailRedirectTo:'https://ym.jjconnect.tokyo/organizer/'}}).then(({data,error})=>{
     _authBusy=false;
