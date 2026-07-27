@@ -859,8 +859,12 @@ function guestDataFor(p){
     // TA already attends), and ym_post's public policy is scoped `to anon` (0011 §2), so an
     // authenticated guest reads zero rows there. Public fields only — what the website already
     // shows the world.
+    // invited: 主办把 TA 放进了这场的「拟邀请」。这只是**告诉 TA 被邀请了**，报名与否仍然是
+    // TA 自己按「我想参加」—— owner 2026-07-27:「在被邀请用户同意以后」才计入报名侧。
+    // 只是一个布尔，不泄露还邀请了谁。
     if(e.publicOn)open.push({eventId:e.id,event:e.name,date:e.date,start:e.start||'',
-      venue:e.venue||'',theme:e.theme||''});
+      venue:e.venue||'',theme:e.theme||'',
+      invited:((e.invitees||[]).some(x=>x.libId===p.id))||undefined});
   });
   return {kind:'guest',name:p.name,jobs,open,at:new Date().toISOString()};
 }
@@ -2873,8 +2877,11 @@ async function joinAccept(sid){
   if(e.participants.some(x=>x.libId===p.id))toast(p.name+' 已经在名单里了');
   else{const g=p.gender==='男'?'男':'女';
     e.participants.push({id:uid(),libId:p.id,gender:g,n:nextBadge(e,g),name:p.name,
-      job:p.occupation||'',arrived:false,at:null,evals:[]});
-    save();}
+      job:p.occupation||'',arrived:false,at:null,evals:[]});}
+  // TA 同意了 → 从「拟邀请」挪走。留着的话同一个人会同时出现在两栏里，
+  // 而「拟邀请」的定义是「还没答应的人」。
+  if((e.invitees||[]).some(x=>x.libId===p.id))e.invitees=e.invitees.filter(x=>x.libId!==p.id);
+  save();
   const {error}=await sb.from('ym_submit').update({status:'accepted'}).eq('id',sid);
   if(error)toast('已加入名单，但回执未标记：'+error.message);
   await pushShares();loadPending();render();toast('已加入 —— TA 会看到自己的号牌');
@@ -2912,12 +2919,14 @@ function signupBlock(e){
       <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}名单截图<input type="file" accept="image/*"
         style="display:none" onchange="rosterShot(this)"></label></div>
     ${joinStrip(e)}
-    <div class="lbl" style="margin:14px 0 5px;padding-top:10px;border-top:1px solid var(--line)">拟邀请 · ${inv.length} 人 —— 还没报名，只是你打算叫的人</div>
+    <div class="lbl" style="margin:14px 0 5px;padding-top:10px;border-top:1px solid var(--line)">拟邀请 · ${inv.length} 人 —— 已经叫了，还没答应</div>
     <div class="plist">${inv.length?inv.map(x=>`<span class="chip s0">${x.gender==='男'?'♂':'♀'} ${esc(x.name)}
       <span class="rz" style="color:var(--brass);cursor:pointer;font-size:10.5px;margin-left:6px"
-        onclick="invToSignup('${escJs(x.id)}')">转为已报名</span>
+        title="TA 在别处（电话/微信）答应了，你替 TA 记上" onclick="invToSignup('${escJs(x.id)}')">代为确认</span>
       <span class="x" onclick="delInvitee('${escJs(x.id)}')">✕</span></span>`).join('')
-      :'<span class="note9">从嘉宾名册点选你想邀请的人 —— 他们不计入报名数。</span>'}</div>
+      :'<span class="note9">从嘉宾名册点选你想邀请的人。</span>'}</div>
+    <p class="note9">有账号的嘉宾会在自己页面上看到「主办方邀请你参加」，**TA 按了「我想参加」才算报名**
+      —— 那条会出现在上面的待确认里。没有账号的（还没发邀请码），口头答应了就用「代为确认」。</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
       <button class="btn ghost sm" onclick="S.pickInvite=!S.pickInvite;render()">＋ 从名册选</button></div>
     ${S.pickInvite?pickInviteHtml(e):''}
@@ -2939,6 +2948,8 @@ function addInvitee(libId){
   const e=ev();const g=STORE.library.resources.find(r=>r.id===libId);if(!e||!g)return;
   if(!e.invitees)e.invitees=[];
   if(e.invitees.some(x=>x.libId===libId))return;
+  // 已经报名的人不用再「邀请」—— 也不该同时出现在两栏里（UI 已经把他们过滤掉了，这是兜底）
+  if((e.participants||[]).some(p=>p.libId===libId)){toast(g.name+' 已经在已报名里了');return;}
   e.invitees.push({id:uid(),libId:g.id,name:g.name,gender:g.gender==='男'?'男':'女'});
   save();render();toast(g.name+' 已加入拟邀请');
 }
@@ -2952,7 +2963,7 @@ function invToSignup(id){
     job:(STORE.library.resources.find(r=>r.id===x.libId)||{}).occupation||'',
     arrived:false,at:null,evals:[],profile:null});
   e.invitees=e.invitees.filter(y=>y.id!==id);
-  save();render();toast(x.name+' 已转为已报名');
+  save();render();toast(x.name+' 已代为确认 —— 记入已报名');
 }
 // 📷 名单截图 → names → the SAME confirm/match list as ⬆导入名单.
 // The image is parsed in memory and never stored; nobody joins until the host confirms.

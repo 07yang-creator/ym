@@ -56,6 +56,9 @@
   .ico+*{margin-left:.34em}
   .fileup{border:1px solid var(--brass-dim);color:var(--brass);border-radius:4px;
     padding:7px 12px;font-size:11.5px;cursor:pointer}
+  /* 被主办方点名邀请的那一场 */
+  .card.invited{border-color:var(--brass-dim)}
+  .invtag{font-size:11px;color:var(--brass);margin-bottom:4px;letter-spacing:.04em}
   .mine{font-size:11px;color:var(--brass);margin-top:5px}
   .mine .x{color:var(--muted);cursor:pointer;margin-left:6px}
   /* 捐赠票据 —— .duty の外にあるので said/back/acts はここで持つ（同名クラスだが別スコープ） */
@@ -552,10 +555,14 @@ function contribHtml(row){
 function joinList(row){
   const d=row.payload||{},op=d.open||[];
   if(!op.length)return '';
-  return `<div class="lbl" style="margin:18px 0 2px">可以报名的活动</div>`+op.map(o=>{
+  // 被邀请的排在前面，并且明说「主办方邀请你」—— 但报名仍然要 TA 自己按
+  // （owner 2026-07-27:「在被邀请用户同意以后」才算进报名）。邀请 ≠ 报名。
+  const sorted=op.slice().sort((a,b)=>(b.invited?1:0)-(a.invited?1:0));
+  return `<div class="lbl" style="margin:18px 0 2px">可以报名的活动</div>`+sorted.map(o=>{
     const evId=String(o.eventId||'');
     const asked=MINE.some(r=>r.kind==='join'&&r.event_id===evId);
-    return `<div class="card">
+    return `<div class="card${o.invited?' invited':''}">
+      ${o.invited?`<div class="invtag">${ico('mega')}主办方邀请你参加</div>`:''}
       <div class="ev">${esc(o.event||'')}</div>
       <div class="meta">${fmtDate(o.date)}${o.start?' '+esc(o.start):''}${o.venue?' · '+esc(o.venue):''}</div>
       ${o.theme?`<div class="meta">${esc(o.theme)}</div>`:''}
