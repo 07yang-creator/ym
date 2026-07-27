@@ -1567,6 +1567,7 @@ function render(){
   // 总账 is NOT a nav tab (L42: 5 tabs already had to be tightened at 375px, and an admin owner
   // is already at 6) —— 从工作台和复盘进去。
   else if(S.view==='ledger'){loadLedger();body=viewLedger();}
+  else if(S.view==='signup')body=viewSignup();
   else if(S.view==='post')body=viewPost();
   else if(S.view==='admin')body=viewAdmin();
   else body=viewLib();
@@ -1596,6 +1597,7 @@ function render(){
 function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;if(v!=='sheet')S.readonly=false;
   if(v==='people')loadAccepted();          // 本人申报的数字来自 accepted 行，不在轮询里
   if(v==='ledger'){loadAccepted();loadLedger();}   // 自费脚注 + 行，都要有数据
+  if(v==='signup')loadPending();                   // 待确认的报名（join）要立刻显示，别等 60 秒
   render();}
 
 /* ---------- round corner fabs: photo + hold-to-talk (jjcashflow pattern) ---------- */
@@ -2903,6 +2905,18 @@ async function joinReject(sid){
 function invList(e){return (e&&e.invitees)||[];}
 function capOf(e){const n=parseInt(e&&e.cap,10);return n>0?n:0;}
 function signupText(e){const c=capOf(e);return e.participants.length+(c?'/'+c:'');}
+/* 报名情况得在**每个阶段**都够得着 (2026-07-27 复查发现)：它本来只长在 viewExec 里，
+   而 viewExec 对 已结束/已归档 会直接跳去复盘，筹备中的活动又要先按「开始跟踪执行」
+   才进得来 —— 于是一场还在筹备的活动，报名情况根本没有入口。可报名的窗口恰恰就是筹备期。 */
+function viewSignup(){
+  const e=ev();if(!e){S.view='desk';return viewDesk();}
+  return `<div class="main" style="max-width:640px;margin:0 auto">
+    <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('desk')">← 工作台</span> · 报名情况</div>
+      <div class="t">${esc(e.name)}${dtag(e)} · ${fmtDate(e.date)}</div></div></div>
+    ${signupBlock(e)}
+    <p class="note9">公开到官网之后，报名会自己进来；「拟邀请」是你点名叫的人，
+      要 TA 自己在页面上按「我想参加」才算报名。</p></div>`;
+}
 function signupBlock(e){
   const men=e.participants.filter(p=>p.gender==='男').length,women=e.participants.filter(p=>p.gender==='女').length;
   const inv=invList(e),cap=capOf(e);
@@ -4962,12 +4976,14 @@ function viewDesk(){
     return `<div class="deskcard${ph==='current'?' cur':''}${ph==='plan'?' plan':''}" role="button" tabindex="0" onclick="deskOpen('${e.id}')">
       ${ph==='plan'?`<span class="dc-del" onclick="event.stopPropagation();delEvent('${e.id}')" title="删除（仅筹备中可删）">✕</span>`:''}
       ${ph==='archived'?'':`<span class="dc-cap${capOf(e)&&e.participants.length>=capOf(e)?' full':''}"
-        title="已报名 / 名额">${ico('person')}${esc(signupText(e))}</span>`}
+        title="已报名 / 名额 —— 点开看报名情况"
+        onclick="event.stopPropagation();S.evId='${e.id}';go('signup')">${ico('person')}${esc(signupText(e))}</span>`}
       <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}${pendCount(e)?` · <span style="color:var(--brass)">● 待确认 ${pendCount(e)}</span>`:''}</div>
       ${ph==='archived'?'':`<div class="dc-acts">
         ${ph==='current'?go2(`goExec('${e.id}')`,ico('go')+'执行看板'):''}
         ${go2(`S.evId='${e.id}';go('sheet')`,'计划')}
+        ${go2(`S.evId='${e.id}';go('signup')`,'报名')}
         ${go2(`S.evId='${e.id}';goDay()`,'当天')}
         ${go2(`S.evId='${e.id}';goReview()`,'复盘')}
       </div>`}
