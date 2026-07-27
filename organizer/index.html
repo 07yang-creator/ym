@@ -129,6 +129,17 @@
   .rowcard.sel{border-color:var(--brass)}
   .rowcard .tm{width:64px;flex:none}
   .rowcard .tm input{padding:6px 4px;text-align:center;font-family:Oswald,sans-serif;font-size:14px}
+  /* 时长 + 排出来的结束时刻 (owner 2026-07-27) */
+  .rowcard .tm .durin{font-size:11.5px;padding:3px 4px;margin-top:3px;color:var(--brass)}
+  .rowcard .tm .tmend{display:block;text-align:center;font-family:Oswald,sans-serif;
+    font-size:10.5px;color:var(--muted);margin-top:2px}
+  .rowcard.dragging{opacity:.75;border-color:var(--brass);box-shadow:0 8px 20px -6px rgba(0,0,0,.6)}
+  .rowops .draghandle{color:var(--brass-dim);font-size:14px;line-height:1;padding:3px 5px;cursor:grab;
+    text-align:center;touch-action:none;user-select:none}
+  .rowops .draghandle:active{cursor:grabbing;color:var(--brass)}
+  .schedbar{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;
+    font-size:11.5px;color:var(--muted);margin:12px 2px 6px}
+  .schedbar .num{font-family:Oswald,sans-serif;font-size:13px;color:var(--brass)}
   .rowcard .bd{flex:1;min-width:0}
   .rowcard .bd input{padding:6px 8px}
   .rowcard .seg2{display:flex;gap:6px}
@@ -281,6 +292,9 @@
   .runrow .rt{font-family:Oswald,sans-serif;font-size:15px;width:52px;flex:none;color:var(--stock-dim)}
   .runrow .rs{flex:1;min-width:0;font-size:13.5px}
   .runrow .rs .ow{font-size:10.5px;color:var(--muted)}
+  /* 当天改时长 —— 不给宽度的话全局 input{width:100%} 会把环节名挤成一竖行 */
+  .runrow .durin{width:44px;flex:none;padding:4px 3px;text-align:center;
+    font-family:Oswald,sans-serif;font-size:12px;color:var(--brass)}
   .runrow .ra{font-family:Oswald,sans-serif;font-size:12px;color:var(--brass);flex:none}
   .runrow .tag9{font-size:9px;letter-spacing:.18em;color:var(--brass);flex:none}
   .runrow.done{opacity:.45}
@@ -1481,6 +1495,24 @@ function evPhase(e){
 }
 function nowMs(){return new Date().getTime();}
 const PHASE_LABEL={current:'当前',plan:'筹备中',hot:'已结束·仍热',archived:'已归档'};
+/* ===== 台本的时刻表 (owner 2026-07-27) =====
+   每个环节有 时长；开始时刻从 活动开始时间 一路累加下来，所以调换次序、改一个时长，
+   后面全部自己跟着动，末尾就是**预计结束时间**。
+   ⚠ r.time（手填的时刻）没有被夺走含义：填了就是**锚点** —— 从那一行起重新往下排。
+   主办已经填在台本上的时间因此一个都不会被改掉。 */
+function evSchedule(e){
+  const out=[];let cur=parseHM(e&&e.start);
+  ((e&&e.rows)||[]).forEach(r=>{
+    const t=parseHM(r.time);
+    if(t!=null)cur=t;                       // 手填 = 锚点
+    const d=Math.max(0,parseInt(r.dur,10)||0);
+    out.push({start:cur,end:cur==null?null:cur+d,dur:d,anchored:t!=null});
+    if(cur!=null)cur+=d;
+  });
+  return out;
+}
+function evEndMin(e){const s=evSchedule(e);for(let i=s.length-1;i>=0;i--)if(s[i].end!=null)return s[i].end;return null;}
+function evTotalMin(e){return ((e&&e.rows)||[]).reduce((n,r)=>n+Math.max(0,parseInt(r.dur,10)||0),0);}
 function moneyTotals(e){
   const t={inPlan:0,inActual:0,outPlan:0,outActual:0};
   allMoneyChips(e).forEach(x=>{const c=x.c;
@@ -1782,7 +1814,8 @@ function applyTpl(id){if(S.readonly)return;const t=STORE.library.templates.find(
 function applyIdea(id){if(S.readonly)return;const i=STORE.library.ideas.find(x=>x.id===id),e=ev();if(!i||!e)return;
   const chips=(i.res||[]).map(q=>{const r=STORE.library.resources.find(x=>x.role===q||x.name===q);
     return r?{id:uid(),refId:r.id,name:r.name,role:r.role,type:r.type,status:0}:null;}).filter(Boolean);
-  e.rows.push({id:uid(),time:'',seg:i.seg,owner:'',resources:chips,money:[]});
+  // 灵感本来就带着「约 N 分」，以前铺进台本时被丢掉了 —— 现在它就是这一行的时长
+  e.rows.push({id:uid(),time:'',seg:i.seg,dur:parseInt(i.dur,10)||undefined,owner:'',resources:chips,money:[]});
   S.sel=e.rows[e.rows.length-1].id;S.drawer=false;save();render();toast('已加入环节：'+i.seg);}
 function applyRes(id){if(S.readonly)return;const r=STORE.library.resources.find(x=>x.id===id),e=ev();if(!r||!e)return;
   const tgt=S.sel==='header'?e.header:e.rows.find(x=>x.id===S.sel);if(!tgt){toast('先点选一行');return;}
@@ -1864,9 +1897,15 @@ function viewSheet(){
         onchange="e_upd('signup',this.value)">`:'<span class="lbl">勾选后活动卡出现在官网</span>'}
     </div>
   </div>`;
+  const SCH=evSchedule(e);
   const rows=e.rows.map((r,i)=>`<div class="rowcard ${S.sel===r.id?'sel':''}" data-rid="${r.id}" onclick="selRow('${r.id}',event)">
-    <div class="tm"><input value="${esc(r.time)}" placeholder="--:--"
-      onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','time',this.value)"></div>
+    <div class="tm">
+      <input value="${esc(r.time)}" placeholder="${esc(hm(SCH[i].start)||'--:--')}"
+        title="${SCH[i].anchored?'手填的时刻 —— 从这一行起重新往下排':'按上面的时长自动排出来的；填一个就变成锚点'}"
+        onclick="event.stopPropagation();selRow('${r.id}')" onchange="r_upd('${r.id}','time',this.value)">
+      <input class="durin" value="${esc(r.dur||'')}" placeholder="分" inputmode="numeric" title="这个环节预计多久"
+        onclick="event.stopPropagation();selRow('${r.id}')" onchange="rowDur('${r.id}',this.value)">
+      ${SCH[i].end!=null&&SCH[i].dur?`<span class="tmend">→${esc(hm(SCH[i].end))}</span>`:''}</div>
     <div class="bd">
       <div class="seg2">
         <input class="segi" value="${esc(r.seg)}" placeholder="环节"
@@ -1883,10 +1922,15 @@ function viewSheet(){
       <div class="rowfiles">${(r.files||[]).map(f=>`<span class="filechip" onclick="event.stopPropagation();openFile('${r.id}','${f.id}')">${ico('clip')}${esc(f.name)}<span class="x" onclick="event.stopPropagation();delFile('${r.id}','${f.id}')">✕</span></span>`).join('')}<label class="fileadd" onclick="event.stopPropagation()">＋附件<input type="file" multiple style="display:none" onchange="rowAttach('${r.id}',this)"></label></div>
     </div>
     <div class="rowops">
+      <span class="draghandle" title="按住拖动，调整次序" onpointerdown="rowDragStart(event,'${escJs(r.id)}')">⠿</span>
       <button onclick="event.stopPropagation();moveRow('${r.id}',-1)" ${i===0?'disabled':''}>▲</button>
       <button onclick="event.stopPropagation();moveRow('${r.id}',1)" ${i===e.rows.length-1?'disabled':''}>▼</button>
       <button onclick="event.stopPropagation();delRow('${r.id}')">✕</button>
     </div></div>`).join('');
+  const endM=evEndMin(e),totM=evTotalMin(e);
+  const schedBar=`<div class="schedbar">
+    <span>${ico('go')}台本 ${e.rows.length} 个环节${totM?' · 全长 '+Math.floor(totM/60)+'小时'+(totM%60?(totM%60)+'分':''):''}</span>
+    <span class="num">${e.start?esc(e.start):'--:--'}${endM!=null?' → 预计结束 '+esc(hm(endM)):''}</span></div>`;
   // sits directly above the 台本 rows; when running it is status + button only — no extra copy (owner)
   const kickoff=(e&&!S.readonly)?(e.status==='run'
     ?`<div class="kickoff run"><span class="st">● 执行跟踪中</span>
@@ -1900,7 +1944,7 @@ function viewSheet(){
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
       <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧的资产库点选应用。</div>
-    ${strips}${giveStrip(e)}${hd}${kickoff}${rows}
+    ${strips}${giveStrip(e)}${hd}${kickoff}${schedBar}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
   <button class="fab" onclick="S.drawer=true;render()">${ico('books')}资产库</button>
@@ -1991,6 +2035,47 @@ function delRow(id){const e=ev();const r=e.rows.find(x=>x.id===id);
   e.rows=e.rows.filter(x=>x.id!==id);if(S.sel===id)S.sel='header';save();render();}
 function moveRow(id,d){const e=ev();const i=e.rows.findIndex(x=>x.id===id);const j=i+d;
   if(i<0||j<0||j>=e.rows.length)return;const t=e.rows[i];e.rows[i]=e.rows[j];e.rows[j]=t;save();render();}
+function rowDur(id,v){const r=ev().rows.find(x=>x.id===id);if(!r)return;
+  const n=parseInt(String(v).replace(/[^\d]/g,''),10)||0;
+  if(n)r.dur=n;else delete r.dur;save();render();}   // render: 后面每一行的时刻都要跟着变
+/* 拖动调次序 (owner 2026-07-27)。用 pointer 事件而不是 HTML5 draggable —— draggable 在触屏上
+   根本不触发，而这个 app 的主战场是手机。手柄上 touch-action:none，否则一按住就变成滚动页面。
+   放手时不是按坐标算索引，而是**把 DOM 的顺序读回模型**：中途 render() 一次就会前功尽弃，
+   所以拖动全程不 render，只挪节点。 */
+let _drag=null;
+function rowDragStart(ev2,id){
+  if(S.readonly)return;
+  ev2.preventDefault();ev2.stopPropagation();
+  const card=document.querySelector('[data-rid="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+  if(!card)return;
+  _drag={id,card};card.classList.add('dragging');
+  document.addEventListener('pointermove',rowDragMove);
+  document.addEventListener('pointerup',rowDragEnd,{once:true});
+  document.addEventListener('pointercancel',rowDragEnd,{once:true});
+}
+function rowDragMove(ev2){
+  if(!_drag)return;
+  const y=ev2.clientY;
+  [...document.querySelectorAll('.rowcard')].forEach(c=>{
+    if(c===_drag.card)return;
+    const b=c.getBoundingClientRect();
+    if(y>b.top&&y<b.bottom)
+      c.parentNode.insertBefore(_drag.card,y<b.top+b.height/2?c:c.nextSibling);
+  });
+}
+function rowDragEnd(){
+  document.removeEventListener('pointermove',rowDragMove);
+  if(!_drag)return;
+  _drag.card.classList.remove('dragging');_drag=null;
+  const e=ev();if(!e)return;
+  const order=[...document.querySelectorAll('.rowcard')].map(c=>c.getAttribute('data-rid'));
+  const by={};e.rows.forEach(r=>by[r.id]=r);
+  const next=order.map(id=>by[id]).filter(Boolean);
+  // 只有当 DOM 里的行和模型里的行**一一对应**时才接受这个新顺序 —— 少一行就说明读到的
+  // 不是这份台本（比如另一个视图也有 .rowcard），那时候写回去会静默丢环节。
+  if(next.length===e.rows.length)e.rows=next;
+  save();render();
+}
 function cycleRes(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
   if(c){c.status=((c.status||0)+1)%4;stampDone(c);save();render();}}
 // jobs = 要做的事 on a 环节 (a 任务 chip); 3-state like the tree (待办→进行中→完成)
@@ -2162,7 +2247,7 @@ function cloneEvent(srcId){
   const noTask=arr=>(arr||[]).filter(c=>(c.type||'人')!=='任务');   // header one-off chores don't carry over
   const ne={id:uid(),name:src.name,theme:src.theme||'',date:'',start:src.start||'',venue:src.venue||'',status:'plan',
     header:{resources:noTask(live(src.header.resources)).map(cpR),money:(src.header.money||[]).map(cpM)},
-    rows:(src.rows||[]).map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,desc:r.desc,
+    rows:(src.rows||[]).map(r=>({id:uid(),time:r.time,seg:r.seg,dur:r.dur,owner:r.owner,desc:r.desc,
       resources:live(r.resources).map(cpR),money:(r.money||[]).map(cpM)})),   // rows KEEP their 要做的事 (jobs)
     participants:[]};
   STORE.events.push(ne);S.evId=ne.id;S.readonly=false;S.view='sheet';S.sel='header';S.gate=null;
@@ -2887,19 +2972,27 @@ function importListCard(){
       ${guestDatalist()}</div>`;
 }
 /* ---- 台本 run ---- */
+/* 当天也看得到时刻表 (owner 2026-07-27)：现场真正会变的是**时长** —— 某个环节拖长了，
+   改一个数字，后面全部顺延，末尾直接告诉你今天几点能结束。
+   ⚠ 行从 <button> 改成了 <div>：按钮里塞不进输入框。点行仍然＝记实际开始时间。 */
 function dayRun(e){
-  const rows=e.rows;
+  const rows=e.rows,SCH=evSchedule(e);
   const nextIdx=rows.findIndex(r=>!r.actual);
   let lastDone=-1;rows.forEach((r,i)=>{if(r.actual)lastDone=i;});
-  return rows.map((r,i)=>{
+  const endM=evEndMin(e);
+  const bar=`<div class="schedbar"><span>${ico('go')}${rows.length} 个环节</span>
+    <span class="num">${e.start?esc(e.start):'--:--'}${endM!=null?' → 预计结束 '+esc(hm(endM)):''}</span></div>`;
+  return bar+rows.map((r,i)=>{
     const cls=r.actual?(i===lastDone?'now':'done'):(i===nextIdx?'next':'');
-    return `<button class="runrow ${cls}" onclick="tapRun('${r.id}')">
-      <span class="rt">${esc(r.time||'--:--')}</span>
+    return `<div class="runrow ${cls}" role="button" tabindex="0" onclick="tapRun('${r.id}')">
+      <span class="rt">${esc(r.time||hm(SCH[i].start)||'--:--')}</span>
       <span class="rs">${esc(r.seg||'（未命名）')}${r.owner?` <span class="ow">· ${esc(r.owner)}</span>`:''}</span>
+      <input class="durin" value="${esc(r.dur||'')}" placeholder="分" inputmode="numeric" title="改时长 —— 后面自动顺延"
+        onclick="event.stopPropagation()" onchange="event.stopPropagation();rowDur('${r.id}',this.value)">
       ${i===lastDone&&r.actual?'<span class="tag9">进行中</span>':''}
       ${i===nextIdx?'<span class="tag9" style="color:var(--brass-dim)">下一项</span>':''}
-      <span class="ra">${r.actual?'实际 '+esc(r.actual):''}</span></button>`;
-  }).join('')+`<p class="note9">点一行＝记下实际开始时间（再点撤销）。计划时间不变，复盘看差距。</p>`;
+      <span class="ra">${r.actual?'实际 '+esc(r.actual):''}</span></div>`;
+  }).join('')+`<p class="note9">点一行＝记下实际开始时间（再点撤销）。改「分」＝改时长，后面的时刻和预计结束会跟着动；计划时刻不变，复盘看差距。</p>`;
 }
 function tapRun(id){const r=ev().rows.find(x=>x.id===id);if(!r)return;
   r.actual=r.actual?null:nowHM();save();render();}
@@ -3950,6 +4043,8 @@ function adminRevokeCode(c){
 /* ================= 复盘 review + 保存回资产库 (pass ②) ================= */
 function goReview(){S.view='review';S.saveBack=null;render();}
 function parseHM(t){if(!t||!/^\d{1,2}:\d{2}$/.test(t))return null;const a=t.split(':');return (+a[0])*60+(+a[1]);}
+function hm(m){if(m==null)return '';const x=((m%1440)+1440)%1440;
+  return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0');}
 function fmtGap(plan,act){
   const p=parseHM(plan),a=parseHM(act);
   if(a==null)return {cls:'miss',txt:'未记'};
@@ -4131,7 +4226,7 @@ function applySaveBack(){
   if(sb.tpl.on){L.templates.push({id:uid(),name:sb.tpl.name,
     note:e.rows.length+'环节 · 来自 '+fmtDate(e.date),
     // rows KEEP their 要做的事 (jobs) so the same 环节 auto-suggests them next time (owner: absorb & reappear)
-    rows:e.rows.map(r=>({id:uid(),time:r.time,seg:r.seg,owner:r.owner,desc:r.desc,
+    rows:e.rows.map(r=>({id:uid(),time:r.time,seg:r.seg,dur:r.dur,owner:r.owner,desc:r.desc,
       resources:live(r.resources).map(cpR),money:r.money.map(cpM)})),
     header:{resources:noTask(live(e.header.resources)).map(cpR),money:e.header.money.map(cpM)}});n++;}
   sb.ideas.filter(x=>x.on).forEach(x=>{L.ideas.push({id:uid(),seg:x.seg,dur:x.dur,res:x.res});n++;});
