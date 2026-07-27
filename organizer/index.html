@@ -1421,8 +1421,9 @@ function ensureY2(){
     });});
     STORE.y8=1;
   }
-  if(!STORE.y9){                     // Y8 台账：默认免税事業者（STORE.y8 早被 示例 标记占用了）
-    if(!STORE.library.taxMode)STORE.library.taxMode='exempt';
+  if(!STORE.y9){                     // Y8 台账（STORE.y8 早被 示例 标记占用了）
+    // 2026-07-27 owner：「按含税来记，税务问题交给税理士思考」—— 課税/免税 的开关整个撤掉了，
+    // 老 store 里留着的 taxMode 现在没有任何读者，也就不必迁移。
     STORE.y9=1;
   }
   STORE.events.forEach(e=>{if(!e.invitees)e.invitees=[];});   // 拟邀请（owner 2026-07-27）
@@ -1652,9 +1653,7 @@ function authSheet(){
         <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.authTab='forgot';render()">忘记密码了</span></div>
       <p class="note9" style="margin:10px 0 4px"><b style="color:var(--brass)">已经有 jjconnect / 记账账号？直接用它登录</b>
         —— 同一个账号可以同时是会计和主办方，不用重新注册。</p>
-      <button class="btn ghost sm" style="width:100%" onclick="doSignUp()">我是新用户，注册主办方账号</button>
-      <p class="note9">未登录也能用 — 数据存在本机浏览器，登录后会合并上云，不会丢。<br>
-        开通方式：<b>邀请码</b>（立即）或<b>等待管理员批准</b>。</p>`;
+      <button class="btn ghost sm" style="width:100%" onclick="doSignUp()">我是新用户，注册主办方账号</button>`;
   return `<div class="drawerbg" onclick="S.auth=false;render()"></div>
     <div class="drawer" style="left:auto;right:0;animation:none">${inner}</div>`;
 }
@@ -3269,34 +3268,34 @@ let LEDGER_ERR='';                  // 上一次读失败的原因；空状态�
 // 課税/免税. 缘满沙龙 ≈ ¥6M 課税売上高 → 免税事業者、且 2割特例 covers 令和8年分 —— 仕入税額控除
 // はそもそも関係ない。だから既定は免税で、インボイス関連の表示は一切出さない。データは両方の
 // 場合とも保存する（parse.py が返すものを捨てないだけで、コストはゼロ）。
-function taxMode(){return (STORE.library||{}).taxMode==='taxed'?'taxed':'exempt';}
-function setTaxMode(v){STORE.library.taxMode=v==='taxed'?'taxed':'exempt';save();render();}
-// 少額特例：税込1万円未満の課税仕入はインボイス不要（〜2029-09-30）。これが無いと ¥300 の
-// レシート全部に「非適格」と出て、警告が読まれなくなる。免税モードでは常に false。
-function needsReg(r){return taxMode()==='taxed'&&r.direction==='out'
-  &&!/^T\d{13}$/.test(r.reg_no||'')&&(r.amount||0)>=10000;}
-// 経過措置：非適格からの課税仕入は 2026-09-30 まで 80%、2029-09-30 まで 50%、以後 0%
-function keigen(d){const s=String(d||'');return s<='2026-09-30'?80:(s<='2029-09-30'?50:0);}
+/* 记账一律按**含税**，消費税的课否判定交给税理士 (owner 2026-07-27)。
+   所以这里没有 課税/免税 开关，也没有 非適格 / 経過措置 / 少額特例 的任何提示 ——
+   那些都是「让主办替税理士思考」。amount 永远是税込，这一列才是权威。
+   票面上真读到的税率明细照存（对税理士有用、且不花钱），**读不到就不编**。 */
 // 借方/貸方 は direction + payment の純粋関数。だから payment はサーバ側で CHECK 列挙してある
 // —— このマップが全域でないと、記帳できない行が生まれる。
 function rcJournal(r){const ctr=RC_CTR[r.payment]||'現金';
   return r.direction==='out'
     ? {dr:r.account||'雑費',cr:ctr}
     : {dr:(r.payment==='現金'?'現金':r.payment==='振込'?'普通預金':'未収入金'),cr:r.account||'売上高(参加費)'};}
-function rcCheck(r){return r.confidence==='mock'||!r.account||needsReg(r);}
+// 要核对 = 解析服务没响应 ∪ 没写勘定科目。税に関する判定は入っていない（税理士の領分）。
+function rcCheck(r){return r.confidence==='mock'||!r.account;}
 function num0(v){const n=parseInt(String(v==null?'':v).replace(/[^\d]/g,''),10);return isNaN(n)?0:n;}
 // parse.py promises YYYY-MM-DD and validates NOTHING, so 2026/6/9 and 2026年6月9日 both arrive.
 function dateOf(s){const m=String(s||'').match(/(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/);
   return m?m[1]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[3]).padStart(2,'0'):'';}
-// 税率ごとの内訳。モデルが返さない／合計と合わないときは黙って捨てず、10% 内税で組み直す。
+/* 税率ごとの内訳は「票面に書いてあったもの」だけ。合計と合わなければ捨てる。
+   ⚠ 以前はここで 10% 内税として**組み立てて**いた。だが 8% の軽減税率も 非課税 も
+   同じ顔で 10% に化けるので、それは読み取りではなく**捏造**であり、税理士が読む列に
+   作り話が入る。金額は税込で記帳してあるのだから、内訳が無いのは何も失っていない
+   —— 課否判定は税理士の仕事 (owner 2026-07-27「按含税来记，税务问题交给税理士思考」)。 */
 function rcTax(lines,total){
   const ok=['10','8','0','非課税'];
   const out=(lines||[]).filter(x=>x&&ok.indexOf(String(x.rate))>=0)
     .map(x=>({r:String(x.rate),b:Math.max(0,num0(x.base)),t:Math.max(0,num0(x.tax))}));
   const sum=out.reduce((s,x)=>s+x.b+x.t,0);
-  if(out.length&&Math.abs(sum-total)<=2)return out;     // 端数 2 円までは一致とみなす
-  if(!total)return [];
-  const b=Math.floor(total/1.1);return [{r:'10',b,t:total-b,auto:1}];}
+  if(out.length&&total&&Math.abs(sum-total)<=2)return out;   // 端数 2 円までは一致とみなす
+  return [];}
 
 function loadLedger(force){
   if(!canCloud())return Promise.resolve();
@@ -3422,7 +3421,7 @@ function rcCard(){
         <select id="rc_chip"><option value="">不挂 —— 单独记一笔</option>
           ${chips.map(x=>`<option value="${esc(x.c.id)}"${f.chip===x.c.id?' selected':''}>${esc(x.c.name)} · 预算 ${yen(x.c.plan)}${x.c.actual!=null?' · 已记 '+yen(x.c.actual):''}</option>`).join('')}
         </select></div>`:`<input type="hidden" id="rc_chip" value="${esc(f.chip)}">`}
-      <div class="rcfold" onclick="rcMore()">${R.more?'▾':'▸'} 更多（日期 · 支付 · 摘要${taxMode()==='taxed'?' · 税':''}）</div>
+      <div class="rcfold" onclick="rcMore()">${R.more?'▾':'▸'} 更多（日期 · 支付 · 摘要 · 登録番号）</div>
       ${R.more?`<div class="sgrid2">
         <div class="sfield"><div class="fl">計上日（票据日期）</div>
           <input id="rc_date" type="date" value="${esc(f.date)}"></div>
@@ -3432,10 +3431,11 @@ function rcCard(){
           <select id="rc_pay">${RC_PAY.map(p=>`<option value="${esc(p)}"${p===R.pay?' selected':''}>${esc(p)}</option>`).join('')}</select></div>
         <div class="sfield"><div class="fl">摘要（给三年后的自己看的一句话）</div>
           <input id="rc_memo" value="${esc(f.memo)}"></div>
-        ${taxMode()==='taxed'?`<div class="sfield"><div class="fl">登録番号（T+13 · 不确定就留空）</div>
+        ${/* 登録番号 は票面に書いてある**データ**なので拾う。適格/非適格の判断はしない。 */''}
+        <div class="sfield"><div class="fl">登録番号（票面にあれば · 无就留空）</div>
           <input id="rc_reg" value="${esc(f.reg)}" placeholder="T1234567890123"></div>
-          <p class="note9">消費税：${R.tax.length?R.tax.map(t=>esc(t.r)+(t.r==='非課税'?'':'%')+' 税抜 '+yen(t.b)+' / 税 '+yen(t.t)+(t.auto?'（自动按内税10%拆）':'')).join('　'):'未読取'}</p>`
-        :`<input type="hidden" id="rc_reg" value="${esc(f.reg)}">`}
+        ${R.tax.length?`<p class="note9">票面上的税率明细：${R.tax.map(t=>esc(t.r)+(t.r==='非課税'?'':'%')+' 税抜 '+yen(t.b)+' / 税 '+yen(t.t)).join('　')}<br>
+          <span class="muted">记账按含税金额；消費税怎么算交给税理士。</span></p>`:''}
         ${deskEntry?'':evSel}`
       :`<input type="hidden" id="rc_date" value="${esc(f.date)}">
         <input type="hidden" id="rc_paid" value="${esc(f.paid)}">
@@ -3499,8 +3499,8 @@ async function rcConfirmDo(R){
      以后还沿用旧内訳，CSV 里的 税抜+税額 就和 税込 对不上 —— 消費税申告に使えない行になる。
      金额一变就按内税 10% 重算；寄付は 不課税 なので、そもそも税を立てない。 */
   const donation=(c.src==='donor')||f.acct==='受取寄付金';
-  const tax=donation?[]
-    :(amount===num0(R.seedAmt)?R.tax.map(t=>({r:t.r,b:t.b,t:t.t})):rcTax([],amount));
+  // 金额被改过 → 票面读到的内訳已经不属于这个数字了，直接丢掉（不重算、更不编）
+  const tax=(donation||amount!==num0(R.seedAmt))?[]:R.tax.map(t=>({r:t.r,b:t.b,t:t.t}));
   // 图片先进主办自己的 Drive，帳簿里只留引用 (owner 2026-07-27)。上传失败不挡主办自己拍的那张
   // —— 一行没有图的账目仍然是有用的记录。但成员/捐赠者交来的必须带凭证（0017 §2 的 CHECK），
   // 因为 ym_submit 那行随时会被 取消授权 删掉；那种情况下宁可不入账，也不能记一笔无据的钱。
@@ -3683,13 +3683,12 @@ function ledRows(){
 // 消費税 is split by DIRECTION: a lumped 10% bucket cannot produce a 納付税額, and design 1
 // exported exactly that.
 function ledTotals(rows){
-  const t={in:0,out:0,taxIn:0,taxOut:0,rate:{},unqual:0,open:0,nodoc:0,check:0};
+  const t={in:0,out:0,taxIn:0,taxOut:0,rate:{},open:0,nodoc:0,check:0};
   rows.forEach(r=>{if(r.status!=='posted')return;
     if(r.direction==='in'){t.in+=r.amount;t.taxIn+=r.tax_total||0;}
     else{t.out+=r.amount;t.taxOut+=r.tax_total||0;}
     (r.tax||[]).forEach(l=>{const k=String(l.r||'');if(!k)return;
       t.rate[k]=t.rate[k]||{b:0,t:0};t.rate[k].b+=l.b||0;t.rate[k].t+=l.t||0;});
-    if(needsReg(r))t.unqual+=r.amount;
     if(!r.paid_date&&r.payment!=='現金')t.open+=r.amount;
     if(!r.image_url&&r.src!=='ticket')t.nodoc++;
     if(rcCheck(r))t.check++;});
@@ -3702,11 +3701,10 @@ function ledByAccount(rows){const m={};
   return Object.keys(m).sort().map(k=>({k,v:m[k]}));}
 function evName(id){const e=STORE.events.find(x=>x.id===id);return e?e.name:'';}
 function ledLine(r){
-  const j=rcJournal(r),taxed=taxMode()==='taxed';
+  const j=rcJournal(r);
   return `<div class="ledrow${r.status==='posted'?'':' void'}">
     <span class="v">${esc(String(r.entry_date).slice(5))}<br>${esc(r.voucher_no)}</span>
     <span>${esc(r.vendor||r.account||'—')}
-      ${taxed&&needsReg(r)?'<span class="ledtag" style="color:var(--alarm)">非適格</span>':''}
       ${!r.paid_date&&r.payment!=='現金'?`<span class="ledtag">未${r.direction==='in'?'収':'払'}</span>`:''}
       ${r.confidence==='mock'?'<span class="ledtag" style="color:var(--alarm)">要核对</span>':''}
       <span class="m">${esc(j.dr)} / ${esc(j.cr)}${r.memo?' · '+esc(r.memo):''}
@@ -3725,7 +3723,7 @@ function viewLedger(){
     return `<div class="main"><div class="empty">${LEDGER_ERR
       ?ico('warn')+'台账没读到：'+esc(LEDGER_ERR)+'<br><span class="muted">先别导出 CSV —— 这不是「没有记录」，是没读到。</span><br><button class="btn ghost sm" style="margin-top:10px" onclick="loadLedger(1)">'+ico('again')+'重试</button>'
       :'读取中…'}</div></div>`;}
-  const rows=ledRows(),t=ledTotals(rows),fy=ledFy(),taxed=taxMode()==='taxed';
+  const rows=ledRows(),t=ledTotals(rows),fy=ledFy();
   const F=(k,l)=>`<span class="ledf ${(S.ledF||'all')===k?'on':''}" onclick="S.ledF='${k}';render()">${l}</span>`;
   return `<div class="main" style="max-width:760px;margin:0 auto">
     <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('desk')">← 工作台</span> · 收入及开支总账</div>
@@ -3748,16 +3746,6 @@ function viewLedger(){
       <div class="mline total"><span>差引</span><span class="num ${t.net<0?'neg':'pos'}">${yen(t.net)}</span></div>
       ${t.open?`<div class="mline"><span class="lbl">其中未決済</span><span class="num">${yen(t.open)}</span></div>`:''}
       <p class="note9">这是「这段时间的收支」，不是现金余额 —— 没有期首残高，就不装作有。</p></div>
-    ${taxed?`<div class="strip"><div class="hd"><span class="lbl">消費税 · 税率別</span></div>
-      ${Object.keys(t.rate).sort().map(k=>`<div class="mline"><span>${esc(k)}${k==='非課税'?'':'%'}</span>
-        <span class="num">税抜 ${yen(t.rate[k].b)} / 税 ${yen(t.rate[k].t)}</span></div>`).join('')
-        ||'<div class="mline"><span class="muted">还没有税率明细</span><span></span></div>'}
-      <div class="mline"><span>仮受消費税（売上）</span><span class="num">${yen(t.taxIn)}</span></div>
-      <div class="mline"><span>仮払消費税（仕入）</span><span class="num">${yen(t.taxOut)}</span></div>
-      ${t.unqual?`<div class="mline total"><span>非適格（1万円以上）の課税仕入</span>
-        <span class="num neg">${yen(t.unqual)}</span></div>
-        <p class="note9">経過措置で ${keigen(todayStr())}% しか控除できません（〜2026-09-30 は 80%、その後 50%）。
-          税込1万円未満は少額特例で登録番号不要 —— ここには数えていません。</p>`:''}</div>`:''}
     </div>
     <div class="ledbar">${LED_F.map(x=>F(x[0],x[1])).join('')}
       ${t.check?`<span class="muted" style="font-size:10.5px">要核对 ${t.check} 笔</span>`:''}
@@ -3769,20 +3757,12 @@ function viewLedger(){
     <div id="ledimg"></div>
     <div class="rvsec" style="margin-top:14px"><div class="hd"><span class="lbl">科目別 集計</span></div>
       ${ledByAccount(rows).map(x=>`<div class="mline"><span>${esc(x.k)}<span class="muted"> ×${x.v.n}</span></span>
-        <span class="num">${yen(x.v.amt)}${taxed?'<span class="muted"> / 税 '+yen(x.v.tax)+'</span>':''}</span></div>`).join('')
+        <span class="num">${yen(x.v.amt)}</span></div>`).join('')
         ||'<div class="empty">无</div>'}</div>
     <div class="exports">
       <button class="btn sm" onclick="exportLedger()">${ico('down')}総勘定元帳 CSV</button>
       <button class="btn ghost sm" onclick="exportJournal()">${ico('down')}仕訳 CSV（给税理士）</button>
       <button class="btn ghost sm" onclick="loadLedger(1)">${ico('again')}刷新</button></div>
-    <div class="rvsec"><div class="hd"><span class="lbl">本店的消費税身份</span></div>
-      <div class="exseg" style="max-width:340px">
-        <div class="sb ${taxed?'':'on'}" onclick="setTaxMode('exempt')">免税事業者</div>
-        <div class="sb ${taxed?'on':''}" onclick="setTaxMode('taxed')">課税事業者</div></div>
-      <p class="note9">課税売上高が 1,000万円以下なら<b>免税事業者</b>（既定）—— インボイスも仕入税額控除も
-        関係ないので、この画面はそれらを一切表示しません。登録している場合だけ「課税」に切り替えてください
-        （2割特例の期間中は仕入側の登録番号は不要です）。<b>どちらでも税率データは保存しています</b>ので、
-        あとから切り替えても過去分はそのまま使えます。<b>これは税理士に一度だけ確認してください。</b></p></div>
     ${ledSelfNote()}
     <p class="note9">日付＝票据上的発行日（発生日基準）。決済日を入れていない「振込/クレジット」は
       未払/未収として別に出しています。取消した行は消さず、理由付きで残します。</p>
@@ -3795,14 +3775,10 @@ function ledSelfNote(){
   return s?`<p class="note9" style="margin-top:12px">另有志愿者自费 ${yen(s)}（已确认）——
     这是主办不承担的贡献记录，<b>不计入以上任何合计</b>，也不出现在 CSV 里。</p>`:'';}
 
-function taxKubun(r,rate){
-  if(taxMode()!=='taxed')return '免税事業者';
-  if(rate==='非課税')return '非課税'+(r.direction==='in'?'売上':'仕入');
-  if(rate==='0'||!rate)return '対象外';
-  const g=rate==='8'?'8%(軽)':'10%';
-  if(r.direction==='in')return '課税売上'+g;
-  if(needsReg(r)){const k=keigen(r.entry_date);return '課税仕入'+g+(k?'(経過'+k+'%)':'(控除不可)');}
-  return '課税仕入'+g;}
+/* 税区分は**書かない**。以前はここが '免税事業者' や '課税仕入10%(経過80%)' を断定していたが、
+   その判定こそ税理士の仕事であり、こちらが埋めた欄は「確認済みの事実」として読まれてしまう。
+   票面から読めた税率だけは 税率/税抜/消費税 の列に残すので、区分はそれを見て埋めてもらう。 */
+function taxKubun(){return '';}
 function ledSrc(s){return s==='vol'?'志願者':s==='donor'?'寄付':s==='ticket'?'内部(門票)':'主催';}
 // ① 税理士が読む帳簿。一行 per 税率 —— 税込ひとまとめでは消費税申告に使えない。
 function exportLedger(){
@@ -3820,11 +3796,12 @@ function exportLedger(){
   const t=ledTotals(rows);
   out.push([]);
   out.push(['合計','収入',t.in,'支出',t.out,'差引',t.net]);
-  if(taxMode()==='taxed'){
-    out.push(['消費税','仮受(売上)',t.taxIn,'仮払(仕入)',t.taxOut]);
-    Object.keys(t.rate).sort().forEach(k=>out.push(['税率 '+k,'税抜',t.rate[k].b,'税額',t.rate[k].t]));
-    out.push(['','非適格(1万円以上)の課税仕入',t.unqual,'経過措置',keigen(todayStr())+'%']);
-  }else out.push(['※ 本店は免税事業者として記帳（消費税の申告対象外）']);
+  // 票面から読み取れた分だけ添える。読めなかった行は 税率/税抜/消費税 が空欄のまま＝「不明」。
+  const rk=Object.keys(t.rate).sort();
+  if(rk.length){out.push(['（票面から読み取れた税率内訳）']);
+    rk.forEach(k=>out.push(['税率 '+k,'税抜',t.rate[k].b,'税額',t.rate[k].t]));}
+  out.push(['※ 金額はすべて税込。消費税の課否判定・税区分は記載していません（税理士にお任せしています）']);
+  out.push(['※ 税率欄が空の行は、票面から内訳を読み取れなかった行です（推計はしていません）']);
   out.push(['※ 自費（志願者負担・主催が償還しない分）は本表に含まれません']);
   dlCSV('総勘定元帳_'+ledFy()+'.csv',out);}
 // ② 会計ソフト取込用の仕訳。勘定奉行の「汎用データ受入」は受入形式を OBC 側で列ごとに定義でき
