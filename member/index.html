@@ -44,6 +44,10 @@
   .duty .acts{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
   .duty .said{font-size:11.5px;color:var(--ok)}
   .duty .back{font-size:11.5px;color:var(--alarm)}
+  .duty .diff{font-size:9.5px;color:var(--brass);border:1px solid var(--brass-dim);border-radius:3px;
+    padding:1px 5px;margin-left:6px;vertical-align:middle}
+  .subm{width:100%;margin-top:6px}
+  .subm input{margin-bottom:6px;padding:8px 10px;font-size:12.5px}
   .fileup{border:1px solid var(--brass-dim);color:var(--brass);border-radius:4px;
     padding:7px 12px;font-size:11.5px;cursor:pointer}
   .mine{font-size:11px;color:var(--brass);margin-top:5px}
@@ -77,6 +81,9 @@
 'use strict';
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
   .replace(/'/g,'&#39;').replace(/</g,'&lt;');}
+// esc() is NOT enough inside on*="f('HERE')": the parser entity-decodes before the handler
+// body is compiled, so &#39; becomes a live quote. Backslash-escape first.
+function escq(v){return esc(String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));}
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;
   document.body.appendChild(t);setTimeout(()=>t.remove(),2600);}
 function fmtDate(s){if(!s)return '';const d=new Date(s+'T00:00:00');if(isNaN(d))return s;
@@ -126,7 +133,7 @@ function render(){
 function loginHtml(){
   return `<div class="card" style="margin-top:28px">
     <div class="lbl" style="margin-bottom:10px">用编号或邮箱登录</div>
-    <input id="lid" placeholder="编号（如 V0014）或邮箱" autocapitalize="characters" spellcheck="false" style="margin-bottom:8px">
+    <input id="lid" type="email" placeholder="你的邮箱" autocapitalize="off" spellcheck="false" style="margin-bottom:8px">
     <input id="lpw" type="password" placeholder="密码" style="margin-bottom:10px"
       onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doLogin()">${_busy?'登录中…':'登录'}</button>
@@ -188,7 +195,8 @@ function guestShareHtml(row){
             <span class="sg">${esc(r.seg||'')}</span></div>`).join('')}</div>`:''}`:''}</div>`;}).join('');
   return `<div style="margin-top:18px">
     <div class="lbl">你好，${esc(d.name||'')}</div>
-    ${jobs||'<div class="empty">还没有你参加的活动。</div>'}</div>`;
+    ${jobs||'<div class="empty">还没有你参加的活动。</div>'}
+    ${joinList(row)}</div>`;
 }
 // ONE switch, three shapes. Six roles collapse into three payload kinds on the HOST side, so
 // nothing here has to know what a 捐赠者 is.
@@ -242,6 +250,46 @@ function shareHtml(row){
 }
 // edit = delete + re-insert (0014 §3): there is deliberately no member UPDATE policy, and slot=''
 // keeps ym_submit_one to exactly one 交任务 per chip.
+/* 一条任务。工时 / 自费 / 说明 由志愿者自己填 —— 「自费」是主办不承担的那部分，属于贡献记录，
+   绝不进收支。交任务后卡片在主办的执行树上左移显示「交付」，但 chip.status 仍然只有主办确认才翻。 */
+function dutyHtml(host,j,x){
+  const cid=x.chipId||'',evId=String(j.eventId||'');
+  const rows=MINE.filter(r=>r.chip_id===cid&&r.event_id===evId);
+  const done=rows.find(r=>r.kind==='submit'||r.kind==='done'),files=rows.filter(r=>r.kind==='file');
+  const meta=[x.where,x.time,x.diff?'难度 '+x.diff:'',x.needs?'需要 '+x.needs:'',
+    x.due?'截止 '+fmtDate(x.due):''].filter(Boolean).join(' · ');
+  const F=`f_${esc(cid)}`;
+  const form=`<div class="subm">
+      <input id="${F}h" inputmode="decimal" placeholder="工时（小时）">
+      <input id="${F}c" inputmode="numeric" placeholder="自费（主办不承担，可留空）">
+      <input id="${F}n" placeholder="简短说明">
+      <div class="acts">
+        <label class="fileup">📎 传票据<input type="file" accept="image/*,application/pdf" style="display:none"
+          onchange="upFile('${esc(host)}','${esc(evId)}','${esc(cid)}',this)"></label>
+        <button class="btn sm" onclick="submitFrom('${escq(host)}','${escq(evId)}','${escq(cid)}')">交任务</button>
+      </div></div>`;
+  let act;
+  if(done&&done.status==='accepted')act=`<span class="said">✓ 主办方已确认</span>`;
+  else if(done&&done.status==='rejected')
+    act=`<span class="back">该任务未被确认，需要您跟进</span>
+      ${done.host_note?`<div class="back" style="width:100%">主办方：${esc(done.host_note)}</div>`:''}
+      ${form}`;
+  else if(done)
+    act=`<span class="said">● 已交任务 · 等主办方确认</span>
+      <span class="mine"><span class="x" onclick="withdraw('${escq(done.id)}')">撤回</span></span>`;
+  else act=form;
+  return `<div class="duty">
+    <div class="dn">${esc(x.name||x.where||'')}${x.diff?`<span class="diff">${esc(x.diff)}</span>`:''}</div>
+    ${meta?`<div class="dm">${esc(meta)}</div>`:''}
+    <div class="dm">主办方那边：<span class="st">${esc(x.status||'')}</span></div>
+    ${files.map(f=>`<div class="mine">📎 ${esc(f.file_name||'附件')}
+      ${f.status==='accepted'?'':`<span class="x" onclick="withdraw('${escq(f.id)}')">撤回</span>`}</div>`).join('')}
+    <div class="acts">${act}</div></div>`;
+}
+function submitFrom(host,evId,cid){
+  const g=i=>{const el=$('f_'+cid+i);return el?el.value.trim():'';};
+  sendSubmit(host,evId,cid,g('h'),g('c'),g('n'));
+}
 async function sendSubmit(host,evId,cid,hours,cost,note){
   const prev=MINE.find(r=>r.chip_id===cid&&r.event_id===evId
     &&(r.kind==='submit'||r.kind==='done'));
@@ -305,18 +353,15 @@ async function doRegister(){
 }
 async function doLogin(){
   if(_busy)return;
-  const id=($('lid').value||'').trim(),pw=$('lpw').value||'';
-  if(!id||!pw){toast('请输入编号/邮箱和密码');return;}
+  const id=($('lid').value||'').trim().toLowerCase(),pw=$('lpw').value||'';
+  if(!id||!pw){toast('请输入邮箱和密码');return;}
   _busy=true;render();
-  try{
-    // 编号 → 邮箱 is resolved SERVER-side and never comes back: 顺位 编号 are enumerable, so
-    // resolving them in the browser would turn the roster into a mailing list.
-    const {status,j}=await post('/api/ym_login',{id,password:pw});
-    _busy=false;
-    if(status===200&&j.ok)return install(j.session);
-    toast(status===429?'尝试太多次了，请 15 分钟后再试':'登录失败：编号/邮箱或密码不对');
-    render();
-  }catch(e){_busy=false;toast('网络不太稳，请重试');render();}
+  // Login is EMAIL + password only (PLAN-Y7 §A3). Nothing resolves a 用户编码 to an address, so
+  // there is no oracle to protect and GoTrue's own limiter covers the attempts.
+  const {error}=await sb.auth.signInWithPassword({email:id,password:pw});
+  _busy=false;
+  if(error){toast(/rate|too many/i.test(error.message||'')
+    ? '尝试太多次了，请稍后再试' : '登录失败：邮箱或密码不对');render();}
 }
 async function doBind(){
   const code=normInvite($('bc').value);
@@ -326,6 +371,22 @@ async function doBind(){
     toast(data&&data.r==='slow'?'试得太频繁了，请过一会儿再来'
         :data&&data.r==='already'?'这个账号已经绑定过了':'绑定失败：码不对或已失效');return;}
   toast('已绑定 —— 你的编号是 '+data.code);load();
+}
+/* 可报名 —— 主办已公开、但 TA 还没参加的活动。这是 ym_share_can_join() 唯一认的锚点：
+   嘉宾自己的 jobs[] 是循环的（里面只有已经参加的），而 ym_post 的公开策略是 to anon，
+   登录后的嘉宾在那里读到 0 行。 */
+function joinList(row){
+  const d=row.payload||{},op=d.open||[];
+  if(!op.length)return '';
+  return `<div class="lbl" style="margin:18px 0 2px">可以报名的活动</div>`+op.map(o=>{
+    const evId=String(o.eventId||'');
+    const asked=MINE.some(r=>r.kind==='join'&&r.event_id===evId);
+    return `<div class="card">
+      <div class="ev">${esc(o.event||'')}</div>
+      <div class="meta">${fmtDate(o.date)}${o.start?' '+esc(o.start):''}${o.venue?' · '+esc(o.venue):''}</div>
+      ${o.theme?`<div class="meta">${esc(o.theme)}</div>`:''}
+      ${asked?`<div class="acts"><span class="said">● 已报名 · 等主办方确认</span></div>`
+             :joinBtn(row.host,evId)}</div>`;}).join('');
 }
 function joinBtn(host,evId){
   const mine=MINE.find(r=>r.event_id===evId&&r.kind==='join');

@@ -830,9 +830,10 @@ function grantPaint(){
   }else{
     const rs=issuableRoles(cat);
     body=`${head}${warn}
-      <div class="sub" style="margin:0 0 8px">给 TA 发一个邀请码。<b style="color:var(--brass)">你不需要知道 TA 的邮箱</b> —— 邮箱和密码由 TA 注册时自己填。${cat==='guest'
-        ?'嘉宾只看到公开信息、当天流程、自己的号牌和你的通知 —— 看不到资料卡、评价，也看不到别的嘉宾。'
-        :'TA 只看到公开信息、流程和自己负责的事。'}</div>
+      <div class="sub" style="margin:0 0 8px">给 TA 发一个邀请码。<b style="color:var(--brass)">你不需要知道 TA 的邮箱</b> —— 邮箱和密码由 TA 注册时自己填。${
+        g.role==='P'?'嘉宾只看到公开信息、当天流程、自己的号牌和你的通知 —— 看不到资料卡、评价，也看不到别的嘉宾。'
+       :(g.role==='D'||g.role==='O')?'TA 只看到公开信息、当天流程和你的通知 —— 没有任务，也没有任何可提交的东西。'
+       :'TA 只看到公开信息、流程和自己负责的事。'}</div>
       ${rs.length>1?`<label class="dfld"><span class="l">身份</span>
         <select id="g_role" onchange="grantRole(this.value)">${rs.map(([k,l])=>
           `<option value="${k}" ${g.role===k?'selected':''}>${l}</option>`).join('')}</select></label>`:''}
