@@ -137,6 +137,17 @@
   .rowops .draghandle{color:var(--brass-dim);font-size:14px;line-height:1;padding:3px 5px;cursor:grab;
     text-align:center;touch-action:none;user-select:none}
   .rowops .draghandle:active{cursor:grabbing;color:var(--brass)}
+  /* 口述话筒 —— 每个输入框旁边一个 (owner 2026-07-27) */
+  .micbtn{flex:none;width:30px;height:30px;border:1px solid var(--brass-dim);border-radius:6px;
+    color:var(--brass);display:inline-flex;align-items:center;justify-content:center;background:none}
+  .micbtn:hover{background:rgba(201,163,86,.12)}
+  .micbtn.rec{background:var(--alarm);color:var(--stock);border-color:var(--alarm);
+    animation:micpulse 1.1s ease-in-out infinite}
+  .micbtn.busy{opacity:.5}
+  .micbtn .ico{width:15px;height:15px}
+  @keyframes micpulse{0%,100%{opacity:1}50%{opacity:.55}}
+  .fldmic{display:flex;gap:6px;align-items:center}
+  .fldmic input,.fldmic textarea{flex:1;min-width:0}
   .schedbar{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;
     font-size:11.5px;color:var(--muted);margin:12px 2px 6px}
   .schedbar .num{font-family:Oswald,sans-serif;font-size:13px;color:var(--brass)}
@@ -1556,6 +1567,9 @@ function render(){
     ${S.auth?authSheet():''}
     ${S.jobEdit?jobEditCard():''}
     ${S.rc?rcCard():''}
+    ${/* 资料卡 / 新建 是全局窗口：左侧面板也能开它们，主办不用为了加一条资源离开这一页 (owner) */''}
+    ${S.libEdit?libEditCard():''}
+    ${S.libAdd?libAddCard():''}
     ${S.showImport?importListCard():''}
     ${peopleDatalist()}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
@@ -1797,8 +1811,15 @@ function libPanel(){
       <div class="m num">${yen(m.amount)} · ${m.kind==='in'?'收入':'支出'}${u?' · 用过 '+u+' 场':''}${del('money',m.id)}</div></div>`;}).join('');
     hint='先点选一行（或活动卡），再点这里 → 收支项挂到该行（金额=计划）。';
   }
+  // 直接在这里建新的 (owner 2026-07-27)：「否则他就需要离开这个页面」。开的是同一个
+  // 完整录入小窗，所以在面板里加的和在资产库页加的是同一条数据、同一套字段。
+  const addKind=S.libTab==='idea'?'ideas':S.libTab==='people'?'volunteer'
+    :S.libTab==='goods'?'goods':S.libTab==='money'?'money':'';
   return `<div class="lbl" style="margin-bottom:10px">资产库 · 点选应用</div>
-    <div class="libtabs">${tabs}</div>${items||'<div class="empty">空</div>'}
+    <div class="libtabs">${tabs}</div>
+    ${addKind?`<button class="btn ghost sm" style="width:100%;margin-bottom:10px"
+      onclick="libAddOpen('${addKind}')">＋ ${esc(LIB_ADD_LBL[addKind]||'新建')}</button>`:''}
+    ${items||'<div class="empty">空</div>'}
     <div class="libhint">${hint}</div>
     <div class="libhint muted">整理条目 → 顶部「资产库」页。</div>`;
 }
@@ -2114,13 +2135,14 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
         <button class="btn ghost sm" onclick="S.jobEdit=null;render()">✕</button></div>
       <div class="sub" style="margin:0 0 4px">${esc(where)}</div>
       <label class="dfld"><span class="l">要做什么</span>
-        <div class="descwrap"><input id="je_name" value="${esc(d.name)}" oninput="jeKeep()" placeholder="几个关键词即可，点右边的星标补写">
+        <div class="descwrap"><input id="je_name" value="${esc(d.name)}" oninput="jeKeep()" placeholder="几个关键词即可，说或写都行">
+          ${micBtn('je_name','要做什么')}
           <button class="aibtn" title="AI 补写（先写几个关键词）"
             onclick="aiPhrase('je_name','要做的事','${escJs(where)}')">${ico('ai')}</button></div></label>
       <label class="dfld"><span class="l">谁来做（负责人）</span>
-        <input id="je_role" value="${esc(d.role||'')}" oninput="jeKeep()" placeholder="选一个人，或直接写新名字" list="peoplelist"></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
+        <span class="fldmic"><input id="je_role" value="${esc(d.role||'')}" oninput="jeKeep()" placeholder="选一个人，或直接写新名字" list="peoplelist">${micBtn('je_role','负责人')}</span></label>${pick(uniquePlanNames(e,'人'),'jeRole')}
       <label class="dfld"><span class="l">需要什么（资源）</span>
-        <input id="je_needs" value="${esc(d.needs||'')}" oninput="jeKeep()" placeholder="从下面点添加，或直接写"></label>${pick(uniquePlanNames(e,'物'),'jeNeed')}
+        <span class="fldmic"><input id="je_needs" value="${esc(d.needs||'')}" oninput="jeKeep()" placeholder="从下面点添加，或直接写">${micBtn('je_needs','需要什么')}</span></label>${pick(uniquePlanNames(e,'物'),'jeNeed')}
       <label class="dfld"><span class="l">什么时候前完成（可选）</span>
         <input id="je_due" type="date" value="${esc(d.due||'')}" oninput="jeKeep()"></label>
       <label class="dfld"><span class="l">难度（决定谁能接 · 默认 C）</span></label>
@@ -2157,9 +2179,9 @@ function ask(o){
         <button class="btn ghost sm" onclick="askClose()">✕</button></div>
       ${o.note?`<div class="sub" style="margin:0 0 8px">${esc(o.note)}</div>`:''}
       ${(o.fields||[]).map((f,i)=>`<label class="dfld"><span class="l">${esc(f.label||'')}</span>
-          <input id="ask_${i}"${f.type==='num'?' inputmode="numeric"':''}${f.type==='date'?' type="date"':''}
+          <span class="fldmic"><input id="ask_${i}"${f.type==='num'?' inputmode="numeric"':''}${f.type==='date'?' type="date"':''}
             value="${esc(f.val==null?'':f.val)}" placeholder="${esc(f.ph||'')}"
-            onkeydown="if(event.key==='Enter')askOk()"></label>
+            onkeydown="if(event.key==='Enter')askOk()">${f.type==='num'||f.type==='date'?'':micBtn('ask_'+i,f.label||'')}</span></label>
         ${f.opts?`<div class="jepick">${f.opts.map(v=>`<span onclick="askFill(${i},this.textContent)">${esc(v)}</span>`).join('')}</div>`:''}`).join('')}
       <div class="df"><button class="btn" style="flex:1" onclick="askOk()">${esc(o.ok||'确定')}</button></div>
     </div>`;
@@ -2389,9 +2411,7 @@ function viewLib(){
     <p class="note9">点任一条目 → 打开资料卡（V1.0 完整字段）。带 <span class="demotag dim">示例</span> 的是练习用的种子数据。</p>
     ${(()=>{const d=dupDemo().n;return d?`<button class="btn sm" style="margin-top:6px" onclick="mergeDupDemo()">${ico('again')}合并重复的示例（${d} 条）</button> `:'';})()}
     ${dn?`<button class="btn ghost sm" style="margin-top:6px" onclick="clearDemo()">${ico('trash')}清除所有示例数据（${dn} 项）</button>`:''}
-  </div>
-    ${S.libEdit?libEditCard():''}
-    ${S.libAdd?libAddCard():''}`;
+  </div>`;
 }
 // how many 示例 items exist across the whole store (library + demo events)
 function demoCount(){
@@ -2579,11 +2599,14 @@ function libFieldsHtml(kind,rec,pfx){
         <select id="${pfx}${k}">${os}</select></label>`;
     }
     if(type==='ta')return `<label class="fld" style="display:block;margin:9px 0"><span class="lbl">${esc(label)}</span>
-      <textarea id="${pfx}${k}" rows="2">${esc(val(k))}</textarea></label>`;
+      <span class="fldmic"><textarea id="${pfx}${k}" rows="2">${esc(val(k))}</textarea>${micBtn(pfx+k,label)}</span></label>`;
     if(type==='date')return `<label class="fld" style="display:block;margin:9px 0"><span class="lbl">${esc(label)}</span>
       <input id="${pfx}${k}" type="date" value="${esc(val(k))}"></label>`;
+    // 数字格没有话筒 —— 对着话筒念金额只会得到「一万二」这种转写，反而要回头改
+    const numeric=/^(qty|value|amount|unit|unit2|dur|age|totalAmount|totalCount|goodsCount)$/.test(k);
     return `<label class="fld" style="display:block;margin:9px 0"><span class="lbl">${esc(label)}</span>
-      <input id="${pfx}${k}" value="${esc(val(k))}"></label>`;
+      ${numeric?`<input id="${pfx}${k}" value="${esc(val(k))}">`
+        :`<span class="fldmic"><input id="${pfx}${k}" value="${esc(val(k))}">${micBtn(pfx+k,label)}</span>`}</label>`;
   }).join('');
 }
 function libReadInto(kind,pfx,rec){
@@ -3056,6 +3079,66 @@ function recSend(){
       body:JSON.stringify({audio_b64:String(fr.result).split(',')[1],media_type:type.split(';')[0],roster:ymRoster()})})
     .then(r=>r.json()).then(res=>{S.recPhase='idle';S.draft=res;render();})
     .catch(e2=>{S.recPhase='idle';toast('识别失败：'+e2.message);render();});
+  };
+  fr.readAsDataURL(blob);
+}
+/* ================= 口述：对着输入框说话 (owner 2026-07-27) =================
+   「这些窗口都应该开通语音输入，这里才是最需要的地方。」在手机上把一个个窗口的输入框
+   敲满，是这个 app 里最费劲的动作 —— 所以每个文本框旁边都给一个话筒。
+   走的是已经在用的 /api/voice（MediaRecorder → Gemini），只是 mode:'dictate'：
+   只转写、不判断意图，因此不需要活动上下文，任何窗口都能用。
+   ⚠ 和浮动话筒是两套状态：那个是「说一句话 → AI 猜你要做什么」，这个是「把我说的写进这一格」。
+   混用一个 REC 会互相打断，所以这里自己拿一份 MediaRecorder。 */
+let DIC={mr:null,chunks:[],id:null,stream:null};
+function micBtn(inputId,label){
+  const on=DIC.id===inputId;
+  return `<button class="micbtn${on?' rec':''}" title="${on?'松开 / 再点一次结束':'按住或点一下，说完再点一次'}"
+    onclick="event.preventDefault();event.stopPropagation();dicToggle('${escJs(inputId)}')"
+    aria-label="${esc(label||'语音输入')}">${ico('mic')}</button>`;
+}
+function dicToggle(id){
+  if(DIC.id===id){dicStop();return;}
+  if(DIC.id){dicStop();return;}                 // 一次只录一格
+  if(!navigator.mediaDevices||!window.MediaRecorder){toast('这个浏览器不支持录音');return;}
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+    DIC.stream=stream;DIC.chunks=[];DIC.id=id;
+    DIC.mr=new MediaRecorder(stream);
+    DIC.mr.ondataavailable=ev2=>DIC.chunks.push(ev2.data);
+    DIC.mr.onstop=()=>{stream.getTracks().forEach(t=>t.stop());dicSend(id);};
+    DIC.mr.start();
+    // 不 render()：一次重绘会把这个窗口里已经打了一半的字全部换回保存过的值
+    const b=document.querySelector('.micbtn[onclick*="'+id+'"]');if(b)b.classList.add('rec');
+    toast('说吧 —— 说完再点一次话筒');
+  }).catch(err=>toast('无法使用麦克风：'+err.message));
+}
+function dicStop(){
+  if(!DIC.mr)return;
+  const b=document.querySelector('.micbtn.rec');if(b){b.classList.remove('rec');b.classList.add('busy');}
+  try{DIC.mr.stop();}catch(e){DIC.id=null;DIC.mr=null;}
+}
+function dicSend(id){
+  const type=(DIC.mr&&DIC.mr.mimeType)||'audio/webm';
+  const blob=new Blob(DIC.chunks,{type});
+  DIC.mr=null;DIC.chunks=[];DIC.id=null;
+  if(!blob.size){toast('没录到声音');return;}
+  toast('转写中…');
+  const fr=new FileReader();
+  fr.onload=()=>{
+    fetch(API+'/api/voice',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({audio_b64:String(fr.result).split(',')[1],
+        media_type:type.split(';')[0],roster:{mode:'dictate'},
+        user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
+    .then(r=>r.json()).then(res=>{
+      const el=$(id);const b=document.querySelector('.micbtn.busy');if(b)b.classList.remove('busy');
+      const t=String((res&&res.transcript)||'').trim();
+      if(!t){toast((res&&res.say)||'没听清 —— 再说一次');return;}
+      if(!el){toast('听到：'+t);return;}
+      // 追加而不是覆盖：说两次就是两句，也不会把主办已经打好的字冲掉
+      el.value=el.value&&el.value.trim()?el.value.replace(/\s+$/,'')+' '+t:t;
+      el.dispatchEvent(new Event('change',{bubbles:true}));
+      el.focus();toast('已写入');})
+    .catch(e2=>{const b=document.querySelector('.micbtn.busy');if(b)b.classList.remove('busy');
+      toast('转写失败：'+e2.message);});
   };
   fr.readAsDataURL(blob);
 }
