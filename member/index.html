@@ -58,6 +58,12 @@
     padding:7px 12px;font-size:11.5px;cursor:pointer}
   .mine{font-size:11px;color:var(--brass);margin-top:5px}
   .mine .x{color:var(--muted);cursor:pointer;margin-left:6px}
+  /* 捐赠票据 —— .duty の外にあるので said/back/acts はここで持つ（同名クラスだが別スコープ） */
+  .give{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+  .give .acts{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .give .said{font-size:11.5px;color:var(--ok);margin-left:6px}
+  .give .back{font-size:11.5px;color:var(--alarm);margin-left:6px}
+  .give .note{margin-top:6px}
   /* 当天流程 */
   .rd{display:flex;gap:9px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
   .rd:last-child{border-bottom:0}
@@ -296,7 +302,8 @@ function infoShareHtml(row){
       ${rd.length?`<div class="fold" onclick="fold('${esc(key)}')">${open?'▾':'▸'} 当天流程（${rd.length} 个环节）</div>
         ${open?`<div>${rd.map(r=>`<div class="rd">
             <span class="tm">${esc(r.time||'--')}</span>
-            <span class="sg">${esc(r.seg||'')}</span></div>`).join('')}</div>`:''}`:''}</div>`;}).join('');
+            <span class="sg">${esc(r.seg||'')}</span></div>`).join('')}</div>`:''}`:''}
+      ${roleFor(row.host)==='D'?giveBox(row.host,key):''}</div>`;}).join('');
   return `<div style="margin-top:18px">
     <div class="lbl">你好，${esc(d.name||'')}</div>
     ${jobs||'<div class="empty">暂时没有公开的活动。</div>'}</div>`;
@@ -616,7 +623,7 @@ async function load(){
 }
 async function loadMine(){
   const {data,error}=await sb.from('ym_submit')
-    .select('id,host,event_id,chip_id,kind,status,note,host_note,hours,cost,diff,file_name,created_at');
+    .select('id,host,event_id,chip_id,kind,status,note,host_note,hours,cost,amount,diff,file_name,created_at');
   MINE=error?[]:(data||[]);
 }
 function upFile(host,evId,cid,input){
@@ -639,6 +646,52 @@ function upFile(host,evId,cid,input){
     toast('处理中…');
     shrink(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));
   }
+}
+/* 捐赠票据 (owner 2026-07-27 ①d)。捐赠者在这套系统里从来没有过写入面 —— 0015 §8 的
+   ym_share_guest_guard 就是为了让 D/O 没有任何东西可以提交而存在的。这是唯一一扇门：
+   一张票据 + 一个可留空的金额，锚在「这场公开活动」上，chip_id 永远是 ''。
+   没有任务、没有工时、没有自费，也永远看不到任何别人。金额只是申报 —— 以主办方核对后的为准。 */
+function giveBox(host,evId){
+  const mine=MINE.filter(r=>r.kind==='give'&&r.host===host&&r.event_id===evId);
+  const G='g_'+evId;
+  return `<div class="give">
+    <div class="lbl" style="margin-bottom:6px">捐赠票据</div>
+    ${mine.map(r=>`<div class="mine">${ico('clip')}${esc(r.file_name||'票据')}${
+      r.amount?' · ¥'+Number(r.amount).toLocaleString():''}
+      ${r.status==='accepted'?'<span class="said">✓ 主办方已收讫入账</span>'
+       :r.status==='rejected'?`<span class="back">主办方：${esc(r.host_note||'请重新提交')}</span>
+          <span class="x" onclick="withdraw('${escq(r.id)}')">清除</span>`
+       :`<span class="x" onclick="withdraw('${escq(r.id)}')">撤回</span>`}</div>`).join('')}
+    <div class="subm">
+      <input id="${esc(G)}a" inputmode="numeric" placeholder="金额（円 · 可留空）">
+      <input id="${esc(G)}n" placeholder="留言 / 用途（可留空）">
+      <div class="acts"><label class="fileup">${ico('clip')}上传票据
+        <input type="file" accept="image/*,application/pdf" style="display:none"
+          onchange="upGive('${escq(host)}','${escq(evId)}',this)"></label></div></div>
+    <p class="note" style="margin-top:4px">交给主办方核对入账，以主办方核对后的金额为准。</p></div>`;
+}
+function upGive(host,evId,input){
+  const f=input.files&&input.files[0];input.value='';if(!f)return;
+  const g=i=>{const el=$('g_'+evId+i);return el?el.value.trim():'';};
+  const a=parseInt(String(g('a')).replace(/[^\d]/g,''),10);
+  const note=String(g('n')||'').slice(0,2000);
+  const send=(b64,name,mime)=>{
+    if(b64.length>600000){toast('这张太大了（约 400KB 以内），请重拍或裁一下');return;}
+    sb.from('ym_submit').insert({host,member:SESSION.user.id,event_id:evId,chip_id:'',
+        kind:'give',slot:uid(),note,file_name:String(name).slice(0,200),
+        file_mime:mime,file_data:b64,
+        amount:isNaN(a)?null:Math.min(10000000,Math.max(0,a))})
+      .then(({error})=>{
+        if(error){toast(/row-level|policy/i.test(error.message)
+          ? '这场活动现在不能提交捐赠票据' : '上传失败：'+error.message);return;}
+        loadMine().then(()=>{render();toast('票据已交给主办方 —— 等确认入账');});});
+  };
+  if(f.type==='application/pdf'){
+    if(f.size>400000){toast('这个文件太大了（约 400KB 以内）');return;}
+    const rd=new FileReader();
+    rd.onload=()=>send(String(rd.result).split(',')[1]||'',f.name||'票据.pdf','application/pdf');
+    rd.readAsDataURL(f);
+  }else{toast('处理中…');shrink(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));}
 }
 async function withdraw(id){
   const {error}=await sb.from('ym_submit').delete().eq('id',id);

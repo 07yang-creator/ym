@@ -311,6 +311,37 @@
   .scbtns .alt{border:1px solid rgba(14,21,18,.25);border-radius:3px;padding:11px 16px;font-size:12px}
   .transcript9{font-size:10px;margin-top:10px;line-height:1.7;color:rgba(14,21,18,.55)}
   .draftline{font-size:13.5px;line-height:1.8}
+  /* ===== Y8 票据 → 台账 ===== */
+  .stockcard .rcwarn{background:rgba(190,90,60,.14);color:var(--alarm);border-radius:4px;
+    padding:7px 9px;font-size:11.5px;line-height:1.6;margin:0 0 9px}
+  .stockcard .rcwho{margin:10px 0;padding:8px 10px;border:1px dashed var(--brass-dim);border-radius:5px}
+  .stockcard .rcwho .fl{font-size:10px;letter-spacing:.12em;color:var(--muted);margin-bottom:2px}
+  .stockcard .rcfold{font-size:11.5px;color:var(--brass);cursor:pointer;margin:11px 0 4px}
+  .stockcard select{width:100%;padding:8px 10px;font:inherit}
+  .chip.money .rcn{font-size:10px;color:var(--brass);margin-left:5px;opacity:.85}
+  .rclines{font-size:11.5px;color:var(--muted);line-height:1.9;margin-top:8px}
+  .rclines>div{cursor:pointer}
+  .rclines .void{opacity:.45;text-decoration:line-through}
+  /* 一行两半（附件名 + 入账）—— .pendbox .pf 本身是 inline-block，flex:1 在里面不起作用 */
+  .pendbox .pf.two{display:flex;gap:10px;align-items:center;width:100%;box-sizing:border-box}
+  /* the ledger list — a CSS grid that COLLAPSES on a phone, never an 820px sideways table */
+  .ledrow{display:grid;grid-template-columns:78px 1fr 96px 46px;gap:8px;align-items:baseline;
+    padding:9px 2px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .ledrow.hd{font-size:9.5px;letter-spacing:.16em;color:var(--muted);border-bottom:1px solid var(--brass-dim)}
+  .ledrow.void{opacity:.45;text-decoration:line-through}
+  .ledrow .v{font-family:Oswald,sans-serif;font-size:10.5px;color:var(--muted)}
+  .ledrow .a{font-family:Oswald,sans-serif;font-size:14px;text-align:right;white-space:nowrap}
+  .ledrow .m{font-size:10.5px;color:var(--muted);display:block;line-height:1.7}
+  .ledrow .rz{font-size:10.5px;color:var(--brass);cursor:pointer;text-align:right}
+  @media(max-width:430px){.ledrow{grid-template-columns:1fr 92px;grid-auto-rows:min-content}
+    .ledrow .v{grid-column:1/3}.ledrow .rz{grid-column:2;text-align:right}
+    /* 4 个表头挤进 2 列会折成看不懂的三行 —— 手机上每一行本来就自带标签，表头直接收起来 */
+    .ledrow.hd{display:none}}
+  .ledtag{font-size:9.5px;border:1px solid var(--brass-dim);border-radius:3px;padding:0 4px;margin-left:5px}
+  .ledbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0}
+  .ledf{font-size:11.5px;padding:5px 10px;border:1px solid var(--line);border-radius:20px;
+    color:var(--muted);cursor:pointer}
+  .ledf.on{color:var(--brass);border-color:var(--brass-dim)}
   /* ===== 复盘 review + 保存回资产库 ===== */
   .rvsec{background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-bottom:12px}
   .rvsec .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
@@ -1131,7 +1162,7 @@ async function cloudLoad(){
       if(re.data)PROFILE=Object.assign({},re.data,{is_admin:PROFILE.is_admin});}
   }
   if(!canCloud()){startPoll();render();return;}   // pending → watch for the admin's approval
-  stopPoll();loadCodes().then(pushShares);loadPending();
+  stopPoll();loadCodes().then(pushShares);loadPending();loadLedger(1);
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
   if(error){toast('云端读取失败：'+error.message);render();return;}
   const cloudEvs=(rows||[]).filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
@@ -1336,6 +1367,10 @@ function ensureY2(){
     });});
     STORE.y8=1;
   }
+  if(!STORE.y9){                     // Y8 台账：默认免税事業者（STORE.y8 早被 示例 标记占用了）
+    if(!STORE.library.taxMode)STORE.library.taxMode='exempt';
+    STORE.y9=1;
+  }
   save();
 }
 function instantiate(tpl,lib){
@@ -1417,6 +1452,9 @@ function render(){
   else if(S.view==='day')body=viewDay();
   else if(S.view==='review'){loadAccepted();body=viewReview();}
   else if(S.view==='people')body=viewPeople();
+  // 总账 is NOT a nav tab (L42: 5 tabs already had to be tightened at 375px, and an admin owner
+  // is already at 6) —— 从工作台和复盘进去。
+  else if(S.view==='ledger'){loadLedger();body=viewLedger();}
   else if(S.view==='post')body=viewPost();
   else if(S.view==='admin')body=viewAdmin();
   else body=viewLib();
@@ -1430,6 +1468,7 @@ function render(){
     ${fabsHtml()}
     ${S.auth?authSheet():''}
     ${S.jobEdit?jobEditCard():''}
+    ${S.rc?rcCard():''}
     ${S.showImport?importListCard():''}
     ${peopleDatalist()}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
@@ -1441,6 +1480,7 @@ function render(){
 }
 function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;if(v!=='sheet')S.readonly=false;
   if(v==='people')loadAccepted();          // 本人申报的数字来自 accepted 行，不在轮询里
+  if(v==='ledger'){loadAccepted();loadLedger();}   // 自费脚注 + 行，都要有数据
   render();}
 
 /* ---------- round corner fabs: photo + hold-to-talk (jjcashflow pattern) ---------- */
@@ -1659,11 +1699,12 @@ function viewSheet(){
       </div></div>
     <div class="strip"><div class="hd"><span class="lbl">收支 · 计划 / 实际</span>
       <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}票据
-        <input type="file" accept="image/*" capture="environment" style="display:none" onchange="costPhoto(this)"></label></div>
+        <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
+          onchange="rcShoot(this,{src:'host',evId:'${escJs(e.id)}'})"></label></div>
       <div class="mline"><span>收入</span><span class="num">${yen(mt.inPlan)} / ${yen(mt.inActual)}</span></div>
       <div class="mline"><span>支出</span><span class="num">${yen(mt.outPlan)} / ${yen(mt.outActual)}</span></div>
       <div class="mline total"><span>差额</span>
-        <span class="num ${mt.planNet<0?'neg':'pos'}">${yen(mt.planNet)}</span></div>
+        <span class="num ${mt.actualNet<0?'neg':'pos'}">${yen(mt.planNet)} → ${yen(mt.actualNet)}</span></div>
     </div></div>`;
   const hd=`<div class="evhead ${S.sel==='header'?'sel':''}" data-rid="header" onclick="selRow('header',event)">
     <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
@@ -1734,7 +1775,7 @@ function viewSheet(){
       练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
       <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧的资产库点选应用。</div>
-    ${strips}${participantsStrip(e)}${S.costDraft?costDraftCard():''}${hd}${kickoff}${rows}
+    ${strips}${participantsStrip(e)}${giveStrip(e)}${hd}${kickoff}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
   </div></div>
   <button class="fab" onclick="S.drawer=true;render()">${ico('books')}资产库</button>
@@ -1757,8 +1798,9 @@ function chipsHtml(holder,loc){
   }).join('');
   const money=holder.money.map(c=>`<span class="chip money ${c.kind==='in'?'in':'out'}"
     onclick="event.stopPropagation();editMoney('${loc}','${c.id}')"
-    title="点击设金额${c.unit?' / 单价':''}">${c.kind==='in'?'⊕':'⊖'} ${esc(c.name)}
+    title="点击设金额${c.unit?' / 单价':''}">${ico(c.kind==='in'?'up':'down')}${esc(c.name)}
     <span class="amt">${c.unit?yen(c.unit)+'/人 · ':''}${yen(c.plan)}${c.actual!=null?' → '+yen(c.actual):''}</span>
+    ${c.rc?`<span class="rcn" title="${c.rc} 张凭证">${ico('clip')}${c.rc}</span>`:''}
     <span class="x" onclick="event.stopPropagation();delChip('${loc}','money','${c.id}')">✕</span></span>`).join('');
   const addJob=S.readonly?'':`<button class="chipadd" onclick="event.stopPropagation();addJob('${loc}')" title="加一件要做的事">＋事项</button>`;
   return res+money+addJob;
@@ -1882,7 +1924,11 @@ function jobEditCard(){const je=S.jobEdit;const e=ev();if(!je||!e)return '';
           :'')}
       ${c?pendBlock(c.id):''}
       ${c?`<div class="exseg" style="margin-top:12px">${TASK_ST.map((l,i)=>`<div class="sb ${b===i?'on':''}" onclick="jeStatus(${i})">${l}</div>`).join('')}</div>`:''}
+      ${c?rcChipLines(c.id):''}
       <div class="df"><button class="btn" style="flex:1" onclick="jobEditSave()">保存</button>
+        ${c?`<label class="btn ghost sm" style="cursor:pointer;text-align:center">${ico('cam')}票据
+          <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
+            onchange="rcShoot(this,{src:'host',evId:'${escJs(e.id)}',chipId:'${escJs(je.cid)}',memo:'${escJs(String(d.name||'').slice(0,60))}'})"></label>`:''}
         ${c?`<span class="lnkdel" onclick="jeDelete()">删除</span>`:''}</div>
     </div>`;
 }
@@ -1953,6 +1999,9 @@ function jobEditSave(){if(S.readonly||!S.jobEdit)return;const je=S.jobEdit;const
 function jeDelete(){if(!S.jobEdit)return;const je=S.jobEdit;const h=jobHolder(je.loc);
   if(h&&je.cid)h.resources=h.resources.filter(x=>x.id!==je.cid);S.jobEdit=null;save();render();}
 function delChip(loc,kind,cid){const h=holderOf(loc);if(!h)return;
+  // 台账不跟着牌子走：凭证是帳簿的，删掉预算牌不能连带把已记的账抹掉，也不会重算
+  if(kind==='money'){const n=(LEDGER||[]).filter(x=>x.chip_id===cid&&x.status==='posted').length;
+    if(n&&!confirm('这条收支项上挂着 '+n+' 张凭证。删掉牌子后凭证仍留在总账里（不会消失，也不会重算）。继续？'))return;}
   const k=kind==='res'?'resources':'money';h[k]=h[k].filter(x=>x.id!==cid);save();render();}
 // 计划金额 · 单价 · 实际 all live here, because 计划 is where the host sets a price — the money chip
 // is the only place a 门票 exists, and its 单价 had no editor at all before (owner: 我在哪里设置门票价格？)
@@ -1996,6 +2045,7 @@ function cloneEvent(srcId){
 function delEvent(id){const e=id?STORE.events.find(x=>x.id===id):ev();if(!e)return;
   // only 筹备中 (plan) events can be deleted — kicked-off or finished ones are protected
   if(evPhase(e)!=='plan'){toast('已启动或已结束的活动不能删除');return;}
+  if((LEDGER||[]).some(r=>r.event_id===e.id&&r.status==='posted')){toast('这场已经有记账凭证，不能删除');return;}
   if(!confirm('删除活动「'+(e.name||'未命名')+'」？此操作不可恢复'))return;
   STORE.events=STORE.events.filter(x=>x.id!==e.id);if(!id||S.evId===e.id)S.evId=STORE.events[0]?STORE.events[0].id:null;
   if(canCloud())sb.from('ym_doc').delete().match({kind:'event',doc_id:e.id}).then(()=>{});
@@ -2069,7 +2119,12 @@ function viewLib(){
       const meta=cat==='guest'
         ? `${esc(x.occupation||'')}${x.age?' · '+esc(x.age)+'岁':''} · 参加 ${hist.length} 场${hist.reduce((s,h)=>s+h.evals.length,0)?' · 评价 '+hist.reduce((s,h)=>s+h.evals.length,0)+' 条':''}`
         : cat==='donor'
-        ? `${esc(x.dtype||'个人')}${x.company?' · '+esc(x.company):''}${x.totalAmount?' · 累计 '+esc(x.totalAmount):''}`
+        // 累计 = 台账里真正入过账的（donorTally），名册那一栏是没人在维护的自由文本，
+        // 只在还没有任何入账记录时兜底显示
+        ? (()=>{const dt=donorTally((codeOf(x)||{}).code);
+            return `${esc(x.dtype||'个人')}${x.company?' · '+esc(x.company):''}`
+              +(dt.n?` · 已入账 ${dt.n} 笔 · 累计 ${yen(dt.amt)}`
+                    :(x.totalAmount?' · 累计（手记）'+esc(x.totalAmount):''));})()
         : `${esc(x.role||'')}${x.contact?' · '+esc(x.contact):''}${x.avail?' · '+esc(x.avail):''}`;
       return `<div class="libitem" style="cursor:pointer" onclick="libEditOpen('${cat}','${x.id}')">
         <div class="t">${icon}${esc(x.name)}${dtag(x)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}</div>
@@ -2385,9 +2440,32 @@ function dayBoard(e){
 }
 function toggleArr(pid){const e=ev();const p=e.participants.find(x=>x.id===pid);if(!p)return;
   p.arrived=!p.arrived;p.at=p.arrived?nowHM():null;save();render();}
-function confirmTickets(){const e=ev();
-  ticketInfo(e).forEach(c=>{c.actual=c.unit*ticketHeads(e,c);});
-  save();render();toast('门票已入账（可在收支牌上修改）');}
+function confirmTickets(){const e=ev();const ts=ticketInfo(e);if(!ts.length)return;
+  ts.forEach(c=>{c.actual=(c.unit||0)*ticketHeads(e,c);});
+  save();render();toast('门票已入账（可在收支牌上修改）');
+  if(!canCloud())return;
+  // 現金売上には外部証憑が無いので「内部証憑」を一本立てる —— 相手方・年月日・内容・対価が
+  // 帳簿に残らないと誰も再現できない。頭数は今まで捨てていた（product しか残らなかった）。
+  // 遅れて来た一人でやり直せるよう UPDATE 優先（ym_entry_one_ticket が backstop）。
+  Promise.all(ts.map(c=>{
+    const heads=ticketHeads(e,c),amt=(c.unit||0)*heads;
+    const b=Math.floor(amt/1.1);
+    const row={host:SESSION.user.id,entry_date:e.date||todayStr(),paid_date:e.date||todayStr(),
+      direction:'in',amount:amt,tax:[{r:'10',b,t:amt-b}],tax_total:amt-b,
+      account:'売上高(参加費)',payment:'現金',vendor:'当日参加者',reg_no:'',
+      memo:(c.name||'门票')+' '+yen(c.unit)+' × '+heads+'名',
+      event_id:e.id,chip_id:c.id,src:'ticket',member_code:'',confidence:'hand',
+      image_id:'',image_url:'',image_mime:null,image_name:''};
+    const old=(LEDGER||[]).find(r=>r.src==='ticket'&&r.chip_id===c.id&&r.event_id===e.id);
+    return old
+      ? sb.from('ym_entry').update({amount:row.amount,tax:row.tax,tax_total:row.tax_total,
+          memo:row.memo,status:'posted',void_reason:''}).eq('id',old.id)
+      : sb.from('ym_entry').insert(row);
+  })).then(rs=>{
+    const bad=rs.find(r=>r&&r.error);
+    if(bad)toast('门票台账未写入：'+bad.error.message);
+    loadLedger(1);});
+}
 function addP(){const e=ev();
   ask({title:'＋ 加一位参加者',fields:[
       {label:'姓名',ph:'怎么称呼'},
@@ -2718,42 +2796,556 @@ function importRoster(txt){
     added++;});
   save();render();toast('已导入 '+added+' 人（Excel 名单另存为 CSV 即可）');
 }
-/* ---- 📷 photo → parse → confirm ---- */
-function costPhoto(inp){
+/* ================= 票据 → 台账 (Y8) =================
+   四个入口（任务·主办台·复盘·捐助者）共用 ONE capture + ONE 确认卡 + ONE writer。差别只有 ctx。
+   台账（ym_entry）是钱的权威；money chip 的 actual 从此是它的显示副本（rcSettle 全量重算）。
+   图片永不进 ym_doc.payload：主办拍的经 /api/ym_file 进主办自己的 Google Drive，表里只留引用；
+   成员传的在 ym_submit.file_data，入账时同样转存一份到 Drive（0017 §2：ym_revoke_code 会删掉
+   ym_submit 行，帐簿必须自带凭证）。 */
+const RC_PAY=['現金','クレジット','電子マネー','振込','立替','その他'];
+// 立替 = a volunteer fronted the money → we owe them → 未払金 (a LIABILITY).
+// 立替金 is an ASSET (money WE fronted for someone else) and would be the wrong side.
+const RC_CTR={'現金':'現金','クレジット':'未払金','電子マネー':'未払金','振込':'普通預金',
+              '立替':'未払金','その他':'未払金'};
+const RC_ACCT=['会場費','消耗品費','会議費','接待交際費','広告宣伝費','旅費交通費','通信費',
+               '印刷製本費','支払手数料','外注費','雑費','売上高(参加費)','受取寄付金','雑収入'];
+let LEDGER=null;                    // ym_entry cache. NEVER holds image/parse — see loadLedger.
+
+// 課税/免税. 缘满沙龙 ≈ ¥6M 課税売上高 → 免税事業者、且 2割特例 covers 令和8年分 —— 仕入税額控除
+// はそもそも関係ない。だから既定は免税で、インボイス関連の表示は一切出さない。データは両方の
+// 場合とも保存する（parse.py が返すものを捨てないだけで、コストはゼロ）。
+function taxMode(){return (STORE.library||{}).taxMode==='taxed'?'taxed':'exempt';}
+function setTaxMode(v){STORE.library.taxMode=v==='taxed'?'taxed':'exempt';save();render();}
+// 少額特例：税込1万円未満の課税仕入はインボイス不要（〜2029-09-30）。これが無いと ¥300 の
+// レシート全部に「非適格」と出て、警告が読まれなくなる。免税モードでは常に false。
+function needsReg(r){return taxMode()==='taxed'&&r.direction==='out'
+  &&!/^T\d{13}$/.test(r.reg_no||'')&&(r.amount||0)>=10000;}
+// 経過措置：非適格からの課税仕入は 2026-09-30 まで 80%、2029-09-30 まで 50%、以後 0%
+function keigen(d){const s=String(d||'');return s<='2026-09-30'?80:(s<='2029-09-30'?50:0);}
+// 借方/貸方 は direction + payment の純粋関数。だから payment はサーバ側で CHECK 列挙してある
+// —— このマップが全域でないと、記帳できない行が生まれる。
+function rcJournal(r){const ctr=RC_CTR[r.payment]||'現金';
+  return r.direction==='out'
+    ? {dr:r.account||'雑費',cr:ctr}
+    : {dr:(r.payment==='現金'?'現金':r.payment==='振込'?'普通預金':'未収入金'),cr:r.account||'売上高(参加費)'};}
+function rcCheck(r){return r.confidence==='mock'||!r.account||needsReg(r);}
+function num0(v){const n=parseInt(String(v==null?'':v).replace(/[^\d]/g,''),10);return isNaN(n)?0:n;}
+// parse.py promises YYYY-MM-DD and validates NOTHING, so 2026/6/9 and 2026年6月9日 both arrive.
+function dateOf(s){const m=String(s||'').match(/(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/);
+  return m?m[1]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[3]).padStart(2,'0'):'';}
+// 税率ごとの内訳。モデルが返さない／合計と合わないときは黙って捨てず、10% 内税で組み直す。
+function rcTax(lines,total){
+  const ok=['10','8','0','非課税'];
+  const out=(lines||[]).filter(x=>x&&ok.indexOf(String(x.rate))>=0)
+    .map(x=>({r:String(x.rate),b:Math.max(0,num0(x.base)),t:Math.max(0,num0(x.tax))}));
+  const sum=out.reduce((s,x)=>s+x.b+x.t,0);
+  if(out.length&&Math.abs(sum-total)<=2)return out;     // 端数 2 円までは一致とみなす
+  if(!total)return [];
+  const b=Math.floor(total/1.1);return [{r:'10',b,t:total-b,auto:1}];}
+
+function loadLedger(force){
+  if(!canCloud())return Promise.resolve();
+  if(LEDGER&&!force)return Promise.resolve();
+  // never select parse — the list must not drag the raw OCR across the wire (the same
+  // discipline loadPending() applies to file_data). 图片本来就只是一个 Drive 链接。
+  return sb.from('ym_entry').select('id,voucher_no,entry_date,paid_date,direction,amount,'+
+      'tax_total,tax,account,payment,vendor,reg_no,memo,event_id,chip_id,src,src_submit,'+
+      'member_code,confidence,status,void_reason,image_id,image_url,image_name,created_at')
+    .order('entry_date',{ascending:false}).order('seq',{ascending:false}).limit(3000)
+    .then(({data,error})=>{
+      if(error){toast('台账读取失败：'+error.message);LEDGER=LEDGER||[];render();return;}
+      LEDGER=data||[];render();});      // ← D3 defect (a): the missing render()
+}
+
+/* ---- capture: the ONE component all four entry points call ---- */
+function rcShoot(inp,ctx){
   const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
-  toast('识别票据中…');
-  shrink(f,b64=>{
-    fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({image:b64,media_type:'image/jpeg'})})
-    .then(r=>r.json()).then(res=>{
-      if(res.is_receipt===false){toast('这张不像票据，请重拍');return;}
-      S.costDraft=res;render();})
-    .catch(e2=>toast('识别失败：'+e2.message));
-  });
+  if(!canCloud()){toast(SESSION?'等主办方账号通过审核后才能记账':'票据要登录后才能入账 —— 台账在云端');return;}
+  toast('识别票据中…');    // 相机圆钮 (fab menu) 已经不存在了 —— 这里没有菜单要关
+  if(f.type==='application/pdf'){
+    if(f.size>400000){toast('这个 PDF 太大了（约 400KB 以内）');return;}
+    const rd=new FileReader();
+    rd.onload=()=>rcParse(String(rd.result).split(',')[1]||'','application/pdf',f.name||'票据.pdf',ctx);
+    rd.readAsDataURL(f);return;}
+  shrink(f,b64=>rcParse(b64,'image/jpeg',f.name||'票据.jpg',ctx));
 }
-function costDraftCard(){
-  const d=S.costDraft;
-  const blank=d.confidence==='low';
-  return `<div class="stockcard">
-    <div class="schd"><span class="who" style="font-size:15px">${ico('cam')}票据</span>
-      <span class="sub">${d.source==='mock'?'示例解析':'AI识别 · '+esc(d.confidence||'')}</span></div>
-    <div class="sgrid2">
-      <div class="sfield ${blank?'blank':''}"><div class="fl">名目 / 店名</div><input id="cd_vendor" value="${esc(d.vendor||'')}"></div>
-      <div class="sfield ${blank?'blank':''}"><div class="fl">金额（税込）</div><input id="cd_amount" inputmode="numeric" value="${esc(d.total_incl_tax||'')}"></div>
-      <div class="sfield"><div class="fl">日期</div><input id="cd_date" value="${esc(d.issue_date||'')}"></div>
-      <div class="sfield"><div class="fl">收/支</div><input id="cd_dir" value="${d.direction==='in'?'收入':'支出'}"></div></div>
-    <div class="scbtns"><button class="ok" onclick="confirmCost()">确认入账</button>
-      <button class="alt" onclick="S.costDraft=null;render()">取消</button></div>
-    <p class="transcript9">核对后入账 — AI只提议，不入档。</p></div>`;
+function rcParse(b64,mime,name,ctx){
+  if(!b64||b64.length>600000){toast('这张太大或打不开（约 400KB 以内），请重拍');return;}
+  const open=(res,conf)=>{S.rc={d:res||{},ctx:Object.assign({},ctx||{}),img:b64,mime,name};
+    rcSeed(conf);render();};
+  fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
+    // user_token: parse.py's log_usage() verifies this JWT server-side. Without it every ym OCR
+    // call is unmetered — and none ever has been.
+    body:JSON.stringify({image:b64,media_type:mime,
+      user_token:(SESSION&&SESSION.access_token)||undefined})})
+  .then(r=>r.json()).then(res=>{
+    if(res&&res.is_receipt===false){toast('这张不像票据，请重拍');return;}
+    open(res,'');})
+  // 圏外でも取りこぼさない：画像は握ったまま手入力に落とす（会場の WiFi は必ず死ぬ）。
+  .catch(()=>{open({},'hand');toast('没连上识别服务 —— 请手工填一下，原图已经留着了');});
 }
-function confirmCost(){
-  const e=ev();const name=($('cd_vendor').value||'票据').trim();
-  const amount=parseInt(($('cd_amount').value||'').replace(/[^\d]/g,''),10)||0;
+// AI 只提议。parse 结果搬进可编辑草稿，一次；之后 render() 不再覆盖主办改过的值。
+function rcSeed(force){
+  const R=S.rc,d=R.d||{},c=R.ctx||{};
+  // EVERY failure path in parse.py returns HTTP 200 with the fabricated MOCK at confidence 'high'.
+  // source==='mock' is the ONLY safe outage signal — without this branch the book silently accrues
+  // ¥1,382 コピー代 lines from ファミリーマート 渋谷店 with a fabricated T-number.
+  const mock=d.source==='mock';
+  R.conf=force||(mock?'mock':String(d.confidence||''));
+  const total=mock?0:num0(d.total_incl_tax);
+  const e=c.evId?STORE.events.find(x=>x.id===c.evId):null;
+  R.dir=c.forceDir||(d.direction==='in'?'in':'out');       // donor: FORCED, never trusted
+  R.pay=c.selfPaid?'立替':(RC_PAY.indexOf(d.payment_method)>=0?d.payment_method:'現金');
+  R.who=c.src==='vol'?(c.selfPaid?'self':'advance'):'host';
+  R.more=false;
+  R.tax=mock?[]:rcTax(d.tax_lines,total);
+  const reg=mock?'':String(d.invoice_reg_no||'').replace(/\s/g,'').toUpperCase();
+  R.f={date:(mock?'':dateOf(d.issue_date))||(e&&e.date)||todayStr(),
+       paid:'',amt:total?String(total):'',
+       vendor:mock?'':String(d.vendor||'').slice(0,120),
+       reg:/^T\d{13}$/.test(reg)?reg:'',
+       acct:c.account||(mock?'':String(d.suggested_account||'').slice(0,40))
+            ||(R.dir==='in'?'売上高(参加費)':''),
+       memo:c.memo||'',chip:c.chipId||'',ev:c.evId||''};
+}
+function rcKeep(){const R=S.rc;if(!R)return;const g=i=>{const el=$(i);return el?el.value:undefined;};
+  ['date','paid','amt','vendor','reg','acct','memo','chip','ev'].forEach(k=>{
+    const v=g('rc_'+k);if(v!==undefined)R.f[k]=v;});
+  const p=g('rc_pay');if(p!==undefined)R.pay=p;}
+function rcSet(k,v){rcKeep();S.rc[k]=v;
+  if(k==='dir'){S.rc.f.chip='';
+    if(RC_ACCT.indexOf(S.rc.f.acct)<0)S.rc.f.acct='';}
+  render();}
+
+/* ---- THE ONE CONFIRM CARD. 四格＋更多 —— 站在会场手里拿着票，不该看见一整块合规控制台。 ---- */
+function rcCard(){
+  const R=S.rc,c=R.ctx||{},f=R.f||{};
+  const e=f.ev?STORE.events.find(x=>x.id===f.ev):null;
+  const blank=R.conf==='low'||R.conf==='mock'||R.conf==='hand';
+  const chips=e?allMoneyChips(e).filter(x=>x.c.kind===R.dir):[];
+  const j=rcJournal({direction:R.dir,payment:R.pay,account:f.acct});
+  // ONE warning line, never a stack of six.
+  const warn=R.conf==='mock'?'解析服务没响应（示例数据已清空）—— 请照票面手填'
+            :R.conf==='hand'?'没连上识别服务 —— 请手填，原图已留下'
+            :R.conf==='low'?'这张拍得不清楚，AI 自己也没把握 —— 请逐格核对':'';
+  const seg=(cur,arr,fn)=>`<div class="exseg">${arr.map(x=>
+    `<div class="sb ${cur===x[0]?'on':''}" onclick="${fn}('${x[0]}')">${esc(x[1])}</div>`).join('')}</div>`;
+  return `<div class="drawerbg" onclick="S.rc=null;render()"></div><div class="modal-g">
+    <div class="stockcard">
+      <div class="schd"><span class="who" style="font-size:15px">${ico('cam')}票据 → 台账</span>
+        <span class="sub">${c.memberCode?esc(c.memberCode)+' 交来':'AI识别'}</span></div>
+      ${warn?`<p class="rcwarn">${ico('warn')}${esc(warn)}</p>`:''}
+      ${seg(R.dir,[['out','支出'],['in','收入']],'rcDir')}
+      ${c.src==='vol'?`<div class="rcwho"><div class="fl">这笔钱谁出的 —— 决定进不进收支</div>
+        ${seg(R.who,[['host','主办已付'],['advance','主办报销'],['self','志愿者自付']],'rcWho')}
+        ${R.who==='self'?`<p class="note9" style="color:var(--brass);margin:6px 0 0">自费不进收支、不进台账 —— 只留在 TA 的贡献记录里。</p>`:''}</div>`:''}
+      <div class="sgrid2">
+        <div class="sfield ${blank?'blank':''}"><div class="fl">取引先 / 店名</div>
+          <input id="rc_vendor" value="${esc(f.vendor)}"></div>
+        <div class="sfield ${f.amt?'':'blank'}"><div class="fl">金额（税込 円）</div>
+          <input id="rc_amt" inputmode="numeric" value="${esc(f.amt)}"></div></div>
+      <div class="sfield"><div class="fl">勘定科目（不确定可以留空）</div>
+        <input id="rc_acct" list="rcacct" value="${esc(f.acct)}" placeholder="例如 会場費"></div>
+      <datalist id="rcacct">${RC_ACCT.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
+      ${chips.length?`<div class="sfield"><div class="fl">结算哪一条预算</div>
+        <select id="rc_chip"><option value="">不挂 —— 单独记一笔</option>
+          ${chips.map(x=>`<option value="${esc(x.c.id)}"${f.chip===x.c.id?' selected':''}>${esc(x.c.name)} · 预算 ${yen(x.c.plan)}${x.c.actual!=null?' · 已记 '+yen(x.c.actual):''}</option>`).join('')}
+        </select></div>`:`<input type="hidden" id="rc_chip" value="${esc(f.chip)}">`}
+      <div class="rcfold" onclick="rcMore()">${R.more?'▾':'▸'} 更多（日期 · 支付 · 摘要${taxMode()==='taxed'?' · 税':''}）</div>
+      ${R.more?`<div class="sgrid2">
+        <div class="sfield"><div class="fl">計上日（票据日期）</div>
+          <input id="rc_date" type="date" value="${esc(f.date)}"></div>
+        <div class="sfield"><div class="fl">決済日（留空＝未付/未収）</div>
+          <input id="rc_paid" type="date" value="${esc(f.paid)}"></div></div>
+        <div class="sfield"><div class="fl">支払方法（决定对方科目）</div>
+          <select id="rc_pay">${RC_PAY.map(p=>`<option value="${esc(p)}"${p===R.pay?' selected':''}>${esc(p)}</option>`).join('')}</select></div>
+        <div class="sfield"><div class="fl">摘要（给三年后的自己看的一句话）</div>
+          <input id="rc_memo" value="${esc(f.memo)}"></div>
+        ${taxMode()==='taxed'?`<div class="sfield"><div class="fl">登録番号（T+13 · 不确定就留空）</div>
+          <input id="rc_reg" value="${esc(f.reg)}" placeholder="T1234567890123"></div>
+          <p class="note9">消費税：${R.tax.length?R.tax.map(t=>esc(t.r)+(t.r==='非課税'?'':'%')+' 税抜 '+yen(t.b)+' / 税 '+yen(t.t)+(t.auto?'（自动按内税10%拆）':'')).join('　'):'未読取'}</p>`
+        :`<input type="hidden" id="rc_reg" value="${esc(f.reg)}">`}
+        ${STORE.events.filter(x=>!x.demo).length?`<div class="sfield"><div class="fl">记在哪一场（可不挂）</div>
+          <select id="rc_ev" onchange="rcEv(this.value)"><option value="">不挂活动 —— 共通</option>
+            ${STORE.events.filter(x=>!x.demo).map(x=>`<option value="${esc(x.id)}"${x.id===f.ev?' selected':''}>${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
+          </select></div>`:''}`
+      :`<input type="hidden" id="rc_date" value="${esc(f.date)}">
+        <input type="hidden" id="rc_paid" value="${esc(f.paid)}">
+        <input type="hidden" id="rc_pay"  value="${esc(R.pay)}">
+        <input type="hidden" id="rc_memo" value="${esc(f.memo)}">
+        <input type="hidden" id="rc_reg"  value="${esc(f.reg)}">
+        <input type="hidden" id="rc_ev"   value="${esc(f.ev)}">`}
+      <p class="note9">${e?'记在「'+esc(e.name)+'」':'不挂活动 —— 共通'} · 借方 <b>${esc(j.dr)}</b> / 貸方 <b>${esc(j.cr)}</b></p>
+      <div class="scbtns">
+        ${R.who==='self'?`<button class="ok" onclick="rcSelfOnly()">只确认，不入账</button>`
+                        :`<button class="ok" onclick="rcConfirm()">${ico('books')}确认入账</button>`}
+        <button class="alt" onclick="S.rc=null;render()">取消</button></div>
+      <p class="transcript9">核对后入账 — AI只提议，不入档。原图存进主办自己的网盘，识别结果留在凭证里。</p>
+    </div></div>`;
+}
+function rcMore(){rcKeep();S.rc.more=!S.rc.more;render();}
+function rcDir(v){rcSet('dir',v);}
+function rcWho(v){rcKeep();S.rc.who=v;if(v==='advance')S.rc.pay='立替';render();}
+function rcEv(v){rcKeep();S.rc.f.ev=v;S.rc.f.chip='';render();}
+
+/* ---- THE ONE WRITER ---- */
+/* 票据图片 → 主办自己的 Google Drive，按 <活动>/<类型> 分目录 (owner 2026-07-27)。
+   走 /api/ym_file：Apps Script 的 /exec 对公网开放，所以那边只有上传能力、没有删除；
+   这边先确认调用者是已批准主办或有效成员，才转发一个字节。
+   Drive 没配好时端点回 503 —— 那时账照记，只是没有图，不该因此丢掉主办刚拍的东西。 */
+async function rcUpload(b64,mime,name,ev){
+  try{
+    const group=ev?((ev.name||'活动')+' · '+(ev.date||'')).trim():'';
+    const r=await fetch(API+'/api/ym_file',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({user_token:(SESSION&&SESSION.access_token)||undefined,
+        action:'upload_media',group,kind:'票据',
+        filename:String(name||'票据.jpg').slice(0,120),mime_type:mime,content_base64:b64})});
+    if(!r.ok)return null;
+    const j=await r.json();
+    return j&&j.ok?{id:String(j.file_id||''),url:String(j.url||'')}:null;
+  }catch(e){return null;}
+}
+async function rcConfirm(){
+  const R=S.rc;if(!R||S.readonly||!canCloud())return;
+  rcKeep();const f=R.f,c=R.ctx||{};
+  const amount=num0(f.amt);
   if(!amount){toast('金额不能为空');return;}
-  const kind=($('cd_dir').value||'').indexOf('收')>=0?'in':'out';
-  e.header.money.push({id:uid(),refId:null,name,kind,plan:0,actual:amount});
-  S.costDraft=null;save();render();toast('已入账 '+yen(amount));
+  const date=dateOf(f.date);
+  if(!date){toast('計上日填一下 —— 帳簿は日付から始まる');return;}   // never blocks on 科目
+  const reg=String(f.reg||'').trim().toUpperCase();
+  if(reg&&!/^T\d{13}$/.test(reg)){toast('登録番号是 T + 13 位数字 —— 不确定就清空');return;}
+  const tax=R.tax.map(t=>({r:t.r,b:t.b,t:t.t}));
+  // 图片先进主办自己的 Drive，帳簿里只留引用 (owner 2026-07-27)。上传失败不挡主办自己拍的那张
+  // —— 一行没有图的账目仍然是有用的记录。但成员/捐赠者交来的必须带凭证（0017 §2 的 CHECK），
+  // 因为 ym_submit 那行随时会被 取消授权 删掉；那种情况下宁可不入账，也不能记一笔无据的钱。
+  let img={id:'',url:''};
+  if(R.img){
+    const evv=f.ev?STORE.events.find(x=>x.id===f.ev):null;
+    img=await rcUpload(R.img,R.mime,R.name,evv)||{id:'',url:''};
+    if(!img.id&&(c.src==='vol'||c.src==='donor')){
+      toast('图片没能存进网盘 —— 成员交来的票据必须连凭证一起入账，请稍后再试');return;}
+  }
+  const row={host:SESSION.user.id,entry_date:date,paid_date:f.paid||null,
+    direction:R.dir,amount,tax,tax_total:Math.min(amount,tax.reduce((s,t)=>s+t.t,0)),
+    account:String(f.acct||'').slice(0,40),payment:R.pay,
+    vendor:String(f.vendor||'').slice(0,120),reg_no:reg,memo:String(f.memo||'').slice(0,500),
+    event_id:f.ev||'',chip_id:f.chip||'',
+    src:c.src||'host',src_submit:c.submitId||null,member_code:c.memberCode||'',
+    confidence:R.conf||'',parse:R.d&&R.d.source?R.d:null,
+    image_id:img.id,image_url:img.url,
+    image_mime:img.id?R.mime:null,image_name:img.id?String(R.name||'票据.jpg').slice(0,200):''};
+  const {data,error}=await sb.from('ym_entry').insert(row).select('id,voucher_no').single();
+  if(error){toast(/duplicate|unique/i.test(error.message)?'这张票据已经入过账了'
+    :'入账失败：'+error.message+' —— 卡还留着，联网后再点一次');return;}   // card stays open
+  if(c.submitId){const u=await sb.from('ym_submit').update({status:'accepted'}).eq('id',c.submitId);
+    if(u.error)toast('已入账，但回执未标记：'+u.error.message);
+    loadPending();}
+  S.rc=null;
+  await loadLedger(true);
+  rcSettle(row.event_id,row.chip_id);
+  render();toast('已入账 '+data.voucher_no+' · '+yen(amount)
+    +(R.img&&!img.id?' —— 图片没能存进网盘，账目已记下':''));
 }
+// 志愿者自付：一行台账都不写。只把提交标成已确认 —— 钱留在 ym_submit.cost（贡献记录）。
+async function rcSelfOnly(){
+  const c=(S.rc||{}).ctx||{};S.rc=null;render();
+  if(c.submitId&&canCloud()){await sb.from('ym_submit').update({status:'accepted'}).eq('id',c.submitId);
+    loadPending();}
+  toast('已确认 —— 自费不进收支');
+}
+/* chip.actual 是台账的显示副本。用 Σ 全量重算（不是 +=），所以取消一张、改一张，都能诚实地重结。
+   c.rc 只有一个含义（凭证张数）；cpM 的白名单会自动把它丢掉 —— 新活动没有实际发生额，正确。
+   evId で引くので、別のイベントを開いていても正しく決まる（D3 defect (c)）。 */
+function rcSettle(evId,cid){
+  if(!evId||!cid)return;
+  const e=STORE.events.find(x=>x.id===evId);if(!e)return;
+  let c=null;[e.header].concat(e.rows).forEach(h=>(h.money||[]).forEach(m=>{if(m.id===cid)c=m;}));
+  if(!c)return;                                   // a 任务 chip has no actual — correct no-op
+  const rows=(LEDGER||[]).filter(r=>r.chip_id===cid&&r.status==='posted');
+  if(!rows.length){
+    // 取消了最后一张。actual 是台账的副本，副本必须跟着空掉 —— 否则牌子上留着一个没有任何凭证
+    // 支撑的数字，而且 复盘 的对账行会说「一致」。c.rc 是「这条曾由台账结算」的唯一标记：没有它
+    // 就说明这个实际额是主办自己手填的（execCost / editMoney），那不是我们的，不能替他抹掉。
+    if(c.rc!=null){c.actual=null;delete c.rc;save();}
+    return;
+  }
+  let s=0;rows.forEach(r=>{s+=(r.direction===c.kind)?r.amount:-r.amount;});
+  c.actual=s;c.rc=rows.length;save();
+}
+// 从成员上传的那张（ym_submit）入账：取字节 → 识别 → 同一张确认卡。
+// selfPaid は SUBMIT 行から取る —— cost は file 行ではなく submit 行にある（member L~430）。
+function rcFromSubmit(sid,src){
+  if(!canCloud())return;
+  const r=PENDING.find(x=>x.id===sid);if(!r){toast('这条已经不在了');return;}
+  const sub=PENDING.find(x=>x.kind==='submit'&&x.chip_id===r.chip_id
+    &&String(x.member_code||'')===String(r.member_code||'')&&x.event_id===r.event_id);
+  const selfPaid=src==='vol'&&!!(sub&&(parseInt(sub.cost,10)||0)>0);
+  toast('读取并识别中…');
+  sb.from('ym_submit').select('file_name,file_mime,file_data,amount,note').eq('id',sid).maybeSingle()
+    .then(({data,error})=>{
+      if(error||!data||!data.file_data){toast('读取失败');return;}
+      const b64=String(data.file_data).replace(/[^A-Za-z0-9+/=]/g,'');   // 0014's XSS lesson
+      const mime=/^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/.test(data.file_mime||'')
+        ?data.file_mime:'image/jpeg';
+      rcParse(b64,mime,data.file_name||'票据',{
+        src,submitId:sid,memberCode:r.member_code||'',
+        evId:r.event_id||'',chipId:src==='donor'?'':(r.chip_id||''),
+        selfPaid,forceDir:src==='donor'?'in':null,
+        account:src==='donor'?'受取寄付金':'',
+        memo:src==='donor'?('捐赠 · '+pendWho(r)):String(data.note||'').slice(0,120)});});
+}
+// 凭证原图 —— 只在主办点开时取一次。BUILD THE NODE, never attribute HTML (0014's XSS fix).
+function rcImage(id,boxId){
+  const box=$(boxId);if(!box||!canCloud())return;box.textContent='读取中…';
+  sb.from('ym_entry').select('image_url,image_name').eq('id',id).maybeSingle()
+    .then(({data,error})=>{
+      if(error||!data||!data.image_url){box.textContent='这一条没有留图（门票是内部凭证）';return;}
+      box.textContent='';
+      const a=document.createElement('a');a.className='pf';
+      a.href=data.image_url;a.target='_blank';a.rel='noopener';
+      a.textContent='在网盘打开 '+(data.image_name||'票据');box.appendChild(a);});
+}
+// 取消 = 削除ではない。行は残り、合計からは外れ、理由が残る。
+function rcVoid(id){
+  ask({title:'取消这一笔？',note:'台账不删行 —— 标为「取消」，不计入合计，理由留在账上。',
+    fields:[{label:'取消理由（必填）',ph:'例如：重复入账 / 拍错了'}],ok:'取消这一笔',
+    fn:async v=>{const why=(v[0]||'').trim();if(!why){toast('请写一句理由');return;}
+      const {error}=await sb.from('ym_entry')
+        .update({status:'void',void_reason:why.slice(0,500)}).eq('id',id);
+      if(error){toast('操作失败：'+error.message);return;}
+      const row=(LEDGER||[]).find(r=>r.id===id);
+      await loadLedger(true);
+      if(row)rcSettle(row.event_id,row.chip_id);
+      render();toast('已取消（仍留在账上）');}});
+}
+// 挂在某个 chip 上的凭证行（任务详情 / 任务窗口里那几行）
+function rcChipLines(cid){
+  const rows=(LEDGER||[]).filter(r=>r.chip_id===cid);
+  if(!rows.length)return '';
+  return `<div class="rclines">${rows.map(r=>`<div class="${r.status==='posted'?'':'void'}"
+    onclick="rcImage('${escJs(r.id)}','rcimg_${escJs(cid)}')">${ico('clip')}${esc(r.voucher_no)} ·
+    ${esc(r.vendor||r.account||'')} · ${r.direction==='in'?'＋':'－'}${yen(r.amount)}</div>`).join('')}
+    <div id="rcimg_${esc(cid)}"></div></div>`;}
+// 本场台账 + 对账。收支牌是「预算与手填的实际」，台账是「有凭证的实际」—— 不一致是有意义的
+// 信息（差異の説明），摊开写，不藏，也不互相覆盖。
+function rcEventBlock(e){
+  if(!canCloud())return '';
+  const rows=(LEDGER||[]).filter(r=>r.event_id===e.id&&r.status==='posted');
+  if(!rows.length)return `<p class="note9" style="margin-top:8px">这场还没有票据凭证。点上面「补一张票据」，拍了就进总账。</p>`;
+  const li=rows.filter(r=>r.direction==='in').reduce((s,r)=>s+r.amount,0);
+  const lo=rows.filter(r=>r.direction==='out').reduce((s,r)=>s+r.amount,0);
+  const mt=moneyTotals(e),gi=mt.inActual-li,go2=mt.outActual-lo;
+  return `<div style="margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)">
+    <div class="lbl" style="margin-bottom:5px">本场凭证 ${rows.length} 张</div>
+    ${rows.map(r=>ledLine(r)).join('')}
+    <div class="mline"><span>凭证合计（收 / 支）</span><span class="num">${yen(li)} / ${yen(lo)}</span></div>
+    ${(gi||go2)?`<p class="note9" style="color:var(--brass)">对账差 —— 收入 ${yen(gi)} · 支出 ${yen(go2)} 是手填的、没有票据支撑。给税理士前先补票据，或在收支牌上改掉。</p>`
+      :`<p class="note9" style="color:var(--ok)">✓ 收支牌与台账一致 —— 每一笔都有凭证。</p>`}
+    <div id="ledimg"></div>
+    <button class="btn ghost sm" style="margin-top:8px" onclick="go('ledger')">${ico('books')}去总账</button></div>`;
+}
+/* 捐赠者交来的票据 (0017 §8, kind='give')。挂在 EVENT 上，绝不挂 chip —— 捐赠者永远走不进
+   志愿者的写入面。member_code 是服务端盖的，所以「这是谁」不必信客户端。 */
+function giveFor(e){return e?PENDING.filter(r=>r.kind==='give'&&r.event_id===e.id):[];}
+function giveStrip(e){
+  const rows=giveFor(e);if(!rows.length)return '';
+  return `<div class="pendbox" style="margin:10px 0">
+    <div class="ph">${ico('gift')}${rows.length} 张捐赠票据待入账</div>
+    ${rows.map(r=>`<div class="pf two">
+      <span style="flex:1" onclick="pendOpenFile('${escJs(r.id)}')">${esc(pendWho(r))}${r.amount?' · 申报 '+yen(r.amount):''} · ${esc(r.file_name||'票据')}</span>
+      <span class="rz" onclick="rcFromSubmit('${escJs(r.id)}','donor')">${ico('coin')}入账</span>
+      <span class="rz" onclick="pendReject('','${escJs(r.member_code)}','${escJs(r.id)}')">退回</span></div>`).join('')}
+    <div id="pendview_"></div>
+    <p class="note9">捐赠是收入凭证 —— 入账后记在「受取寄付金」，进总账。</p></div>`;
+}
+// 捐赠人累计 —— 从台账投影出来，不再是名册里那个谁也没在加的自由文本 (资产库 L2108 自己说了)
+function donorTally(code){const t={n:0,amt:0};if(!code)return t;
+  (LEDGER||[]).forEach(r=>{if(r.member_code===code&&r.src==='donor'&&r.status==='posted'){t.n++;t.amt+=r.amount;}});
+  return t;}
+
+/* ================= 収入及开支総勘定元帳 ================= */
+function ledFy(){return S.ledFy===undefined?new Date().getFullYear():S.ledFy;}
+function ledYears(){const s={};(LEDGER||[]).forEach(r=>s[Number(String(r.entry_date).slice(0,4))]=1);
+  const y=Object.keys(s).map(Number).sort((a,b)=>b-a);
+  const n=new Date().getFullYear();if(y.indexOf(n)<0)y.unshift(n);return y;}
+const LED_F=[['all','全部'],['out','支出'],['in','收入'],['open','未決済'],['check','要核对']];
+function ledRows(){
+  const fy=ledFy(),f=S.ledF||'all';
+  return (LEDGER||[]).filter(r=>{
+    if(fy!=='all'&&Number(String(r.entry_date).slice(0,4))!==fy)return false;
+    if(S.ledEv==='__none'&&r.event_id)return false;
+    if(S.ledEv&&S.ledEv!=='__none'&&r.event_id!==S.ledEv)return false;
+    if(f==='in')  return r.status==='posted'&&r.direction==='in';
+    if(f==='out') return r.status==='posted'&&r.direction==='out';
+    if(f==='open')return r.status==='posted'&&!r.paid_date&&r.payment!=='現金';
+    if(f==='check')return r.status==='posted'&&rcCheck(r);
+    return true;})
+    .sort((a,b)=>(String(a.entry_date)+a.voucher_no)<(String(b.entry_date)+b.voucher_no)?1:-1);}
+// VOID ROWS ARE EXCLUDED FROM EVERY ACCUMULATOR — design 2's ledger did not foot with itself
+// because line() honoured `void` and the totals did not.
+// 消費税 is split by DIRECTION: a lumped 10% bucket cannot produce a 納付税額, and design 1
+// exported exactly that.
+function ledTotals(rows){
+  const t={in:0,out:0,taxIn:0,taxOut:0,rate:{},unqual:0,open:0,nodoc:0,check:0};
+  rows.forEach(r=>{if(r.status!=='posted')return;
+    if(r.direction==='in'){t.in+=r.amount;t.taxIn+=r.tax_total||0;}
+    else{t.out+=r.amount;t.taxOut+=r.tax_total||0;}
+    (r.tax||[]).forEach(l=>{const k=String(l.r||'');if(!k)return;
+      t.rate[k]=t.rate[k]||{b:0,t:0};t.rate[k].b+=l.b||0;t.rate[k].t+=l.t||0;});
+    if(needsReg(r))t.unqual+=r.amount;
+    if(!r.paid_date&&r.payment!=='現金')t.open+=r.amount;
+    if(!r.image_url&&r.src!=='ticket')t.nodoc++;
+    if(rcCheck(r))t.check++;});
+  t.net=t.in-t.out;return t;}
+// 税理士が最初に見るのは明細ではなく科目別の集計。総勘定元帳のロールアップ。
+function ledByAccount(rows){const m={};
+  rows.forEach(r=>{if(r.status!=='posted')return;
+    const k=(r.direction==='in'?'収入':'支出')+' · '+(r.account||'（未分類）');
+    m[k]=m[k]||{n:0,amt:0,tax:0};m[k].n++;m[k].amt+=r.amount;m[k].tax+=r.tax_total||0;});
+  return Object.keys(m).sort().map(k=>({k,v:m[k]}));}
+function evName(id){const e=STORE.events.find(x=>x.id===id);return e?e.name:'';}
+function ledLine(r){
+  const j=rcJournal(r),taxed=taxMode()==='taxed';
+  return `<div class="ledrow${r.status==='posted'?'':' void'}">
+    <span class="v">${esc(String(r.entry_date).slice(5))}<br>${esc(r.voucher_no)}</span>
+    <span>${esc(r.vendor||r.account||'—')}
+      ${taxed&&needsReg(r)?'<span class="ledtag" style="color:var(--alarm)">非適格</span>':''}
+      ${!r.paid_date&&r.payment!=='現金'?`<span class="ledtag">未${r.direction==='in'?'収':'払'}</span>`:''}
+      ${r.confidence==='mock'?'<span class="ledtag" style="color:var(--alarm)">要核对</span>':''}
+      <span class="m">${esc(j.dr)} / ${esc(j.cr)}${r.memo?' · '+esc(r.memo):''}
+        · ${esc(evName(r.event_id)||'共通')}${r.member_code?' · '+esc(r.member_code):''}
+        ${r.status==='void'?' · 取消：'+esc(r.void_reason):''}</span></span>
+    <span class="a" style="color:${r.direction==='in'?'var(--ok)':'inherit'}"
+      >${r.direction==='in'?'＋':'－'}${yen(r.amount)}</span>
+    <span class="rz">${r.image_url?`<span onclick="rcImage('${escJs(r.id)}','ledimg')">${ico('eye')}</span>`:''}
+      ${r.status==='posted'?`<span onclick="rcVoid('${escJs(r.id)}')">取消</span>`:''}</span></div>`;}
+
+function viewLedger(){
+  if(!canCloud())return `<div class="main" style="max-width:640px;margin:0 auto"><div class="empty">
+    ${SESSION?'账号还在等主办方审核 —— 通过后就能记账。':'总账在云端 —— 请先登录。'}<br>
+    <span class="muted">未登录也能照常记预算，只是票据入不了账。</span></div></div>`;
+  if(LEDGER===null){loadLedger();return `<div class="main"><div class="empty">读取中…</div></div>`;}
+  const rows=ledRows(),t=ledTotals(rows),fy=ledFy(),taxed=taxMode()==='taxed';
+  const F=(k,l)=>`<span class="ledf ${(S.ledF||'all')===k?'on':''}" onclick="S.ledF='${k}';render()">${l}</span>`;
+  return `<div class="main" style="max-width:760px;margin:0 auto">
+    <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('desk')">← 工作台</span> · 收入及开支总账</div>
+      <div class="t">每一笔都来自一张票据 —— 这是<b>实际发生</b>的钱。</div></div></div>
+    <div class="evsw" style="flex-wrap:wrap">
+      <select onchange="S.ledFy=this.value==='all'?'all':Number(this.value);render()">
+        ${ledYears().map(y=>`<option value="${y}"${y===fy?' selected':''}>${y} 年度</option>`).join('')}
+        <option value="all"${fy==='all'?' selected':''}>全部年度</option></select>
+      <select onchange="S.ledEv=this.value;render()"><option value="">全部活动</option>
+        <option value="__none"${S.ledEv==='__none'?' selected':''}>共通（不挂活动）</option>
+        ${STORE.events.filter(e=>!e.demo).map(e=>`<option value="${esc(e.id)}"${S.ledEv===e.id?' selected':''}>${esc(e.name)}</option>`).join('')}</select>
+      <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}记一张
+        <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
+          onchange="rcShoot(this,{src:'host',evId:'${escJs(S.ledEv&&S.ledEv!=='__none'?S.ledEv:'')}'})"></label>
+    </div>
+    <div class="strips"><div class="strip">
+      <div class="hd"><span class="lbl">${fy==='all'?'全部年度':fy+' 年度'} · ${rows.length} 笔</span></div>
+      <div class="mline"><span>収入</span><span class="num" style="color:var(--ok)">${yen(t.in)}</span></div>
+      <div class="mline"><span>支出</span><span class="num">${yen(t.out)}</span></div>
+      <div class="mline total"><span>差引</span><span class="num ${t.net<0?'neg':'pos'}">${yen(t.net)}</span></div>
+      ${t.open?`<div class="mline"><span class="lbl">其中未決済</span><span class="num">${yen(t.open)}</span></div>`:''}
+      <p class="note9">这是「这段时间的收支」，不是现金余额 —— 没有期首残高，就不装作有。</p></div>
+    ${taxed?`<div class="strip"><div class="hd"><span class="lbl">消費税 · 税率別</span></div>
+      ${Object.keys(t.rate).sort().map(k=>`<div class="mline"><span>${esc(k)}${k==='非課税'?'':'%'}</span>
+        <span class="num">税抜 ${yen(t.rate[k].b)} / 税 ${yen(t.rate[k].t)}</span></div>`).join('')
+        ||'<div class="mline"><span class="muted">还没有税率明细</span><span></span></div>'}
+      <div class="mline"><span>仮受消費税（売上）</span><span class="num">${yen(t.taxIn)}</span></div>
+      <div class="mline"><span>仮払消費税（仕入）</span><span class="num">${yen(t.taxOut)}</span></div>
+      ${t.unqual?`<div class="mline total"><span>非適格（1万円以上）の課税仕入</span>
+        <span class="num neg">${yen(t.unqual)}</span></div>
+        <p class="note9">経過措置で ${keigen(todayStr())}% しか控除できません（〜2026-09-30 は 80%、その後 50%）。
+          税込1万円未満は少額特例で登録番号不要 —— ここには数えていません。</p>`:''}</div>`:''}
+    </div>
+    <div class="ledbar">${LED_F.map(x=>F(x[0],x[1])).join('')}
+      ${t.check?`<span class="muted" style="font-size:10.5px">要核对 ${t.check} 笔</span>`:''}
+      ${t.nodoc?`<span class="muted" style="font-size:10.5px">· 无原图 ${t.nodoc} 笔</span>`:''}</div>
+    <div class="ledrow hd"><span>日付 / 証憑</span><span>取引先 · 借方/貸方 · 活动</span>
+      <span style="text-align:right">金額</span><span></span></div>
+    ${rows.length?rows.map(ledLine).join('')
+      :'<div class="empty">这个筛选下还没有记录 —— 点上面「记一张」拍一张票据。</div>'}
+    <div id="ledimg"></div>
+    <div class="rvsec" style="margin-top:14px"><div class="hd"><span class="lbl">科目別 集計</span></div>
+      ${ledByAccount(rows).map(x=>`<div class="mline"><span>${esc(x.k)}<span class="muted"> ×${x.v.n}</span></span>
+        <span class="num">${yen(x.v.amt)}${taxed?'<span class="muted"> / 税 '+yen(x.v.tax)+'</span>':''}</span></div>`).join('')
+        ||'<div class="empty">无</div>'}</div>
+    <div class="exports">
+      <button class="btn sm" onclick="exportLedger()">${ico('down')}総勘定元帳 CSV</button>
+      <button class="btn ghost sm" onclick="exportJournal()">${ico('down')}仕訳 CSV（给税理士）</button>
+      <button class="btn ghost sm" onclick="loadLedger(1)">${ico('again')}刷新</button></div>
+    <div class="rvsec"><div class="hd"><span class="lbl">本店的消費税身份</span></div>
+      <div class="exseg" style="max-width:340px">
+        <div class="sb ${taxed?'':'on'}" onclick="setTaxMode('exempt')">免税事業者</div>
+        <div class="sb ${taxed?'on':''}" onclick="setTaxMode('taxed')">課税事業者</div></div>
+      <p class="note9">課税売上高が 1,000万円以下なら<b>免税事業者</b>（既定）—— インボイスも仕入税額控除も
+        関係ないので、この画面はそれらを一切表示しません。登録している場合だけ「課税」に切り替えてください
+        （2割特例の期間中は仕入側の登録番号は不要です）。<b>どちらでも税率データは保存しています</b>ので、
+        あとから切り替えても過去分はそのまま使えます。<b>これは税理士に一度だけ確認してください。</b></p></div>
+    ${ledSelfNote()}
+    <p class="note9">日付＝票据上的発行日（発生日基準）。決済日を入れていない「振込/クレジット」は
+      未払/未収として別に出しています。取消した行は消さず、理由付きで残します。</p>
+  </div>`;
+}
+// 自费 —— OUTSIDE every total, on purpose (hard constraint 4). ACCEPTED ym_submit rows only.
+function ledSelfNote(){
+  const s=(ACCEPTED||[]).filter(r=>(r.kind==='submit'||r.kind==='done')&&r.cost)
+    .reduce((a,r)=>a+(parseInt(r.cost,10)||0),0);
+  return s?`<p class="note9" style="margin-top:12px">另有志愿者自费 ${yen(s)}（已确认）——
+    这是主办不承担的贡献记录，<b>不计入以上任何合计</b>，也不出现在 CSV 里。</p>`:'';}
+
+function taxKubun(r,rate){
+  if(taxMode()!=='taxed')return '免税事業者';
+  if(rate==='非課税')return '非課税'+(r.direction==='in'?'売上':'仕入');
+  if(rate==='0'||!rate)return '対象外';
+  const g=rate==='8'?'8%(軽)':'10%';
+  if(r.direction==='in')return '課税売上'+g;
+  if(needsReg(r)){const k=keigen(r.entry_date);return '課税仕入'+g+(k?'(経過'+k+'%)':'(控除不可)');}
+  return '課税仕入'+g;}
+function ledSrc(s){return s==='vol'?'志願者':s==='donor'?'寄付':s==='ticket'?'内部(門票)':'主催';}
+// ① 税理士が読む帳簿。一行 per 税率 —— 税込ひとまとめでは消費税申告に使えない。
+function exportLedger(){
+  const rows=ledRows();
+  const out=[['証憑番号','計上日','決済日','取引先','登録番号','摘要','勘定科目','借方','貸方',
+    '収支','税込金額','税率','税抜','消費税','税区分','活動(部門)','出所','原本','入力日時','状態','取消理由']];
+  rows.forEach(r=>{const j=rcJournal(r);
+    const tx=(r.tax&&r.tax.length)?r.tax:[{r:'',b:r.amount,t:0}];
+    tx.forEach((l,i)=>out.push([i?'':r.voucher_no,i?'':r.entry_date,i?'':(r.paid_date||'未決済'),
+      i?'':r.vendor,i?'':r.reg_no,i?'':r.memo,i?'':(r.account||'（未分類）'),i?'':j.dr,i?'':j.cr,
+      i?'':(r.direction==='in'?'収入':'支出'),i?'':r.amount,
+      l.r||'',l.b||0,l.t||0,taxKubun(r,l.r),
+      i?'':evName(r.event_id),i?'':ledSrc(r.src),i?'':(r.image_url?'あり':'なし'),
+      i?'':r.created_at,i?'':(r.status==='void'?'取消':''),i?'':r.void_reason]));});
+  const t=ledTotals(rows);
+  out.push([]);
+  out.push(['合計','収入',t.in,'支出',t.out,'差引',t.net]);
+  if(taxMode()==='taxed'){
+    out.push(['消費税','仮受(売上)',t.taxIn,'仮払(仕入)',t.taxOut]);
+    Object.keys(t.rate).sort().forEach(k=>out.push(['税率 '+k,'税抜',t.rate[k].b,'税額',t.rate[k].t]));
+    out.push(['','非適格(1万円以上)の課税仕入',t.unqual,'経過措置',keigen(todayStr())+'%']);
+  }else out.push(['※ 本店は免税事業者として記帳（消費税の申告対象外）']);
+  out.push(['※ 自費（志願者負担・主催が償還しない分）は本表に含まれません']);
+  dlCSV('総勘定元帳_'+ledFy()+'.csv',out);}
+// ② 会計ソフト取込用の仕訳。勘定奉行の「汎用データ受入」は受入形式を OBC 側で列ごとに定義でき
+//    るので、奉行専用レイアウトを推測して固定するより、日本の会計ソフトが共通で読める仕訳形式を
+//    出して税理士に一度マッピングしてもらうほうが確実。弥生/MF/freee も同じ列で入る。
+//    日付は 計上日 —— 帳簿と同じ発生主義で揃える（決済日で切ると自分の記帳基準と矛盾する）。
+function exportJournal(){
+  const rows=ledRows().filter(r=>r.status==='posted');
+  const out=[['伝票日付','伝票番号','借方科目','借方金額','借方税区分','貸方科目','貸方金額','貸方税区分',
+    '消費税額','摘要','取引先名','登録番号','部門','証憑番号']];
+  rows.forEach(r=>{const j=rcJournal(r);
+    const tx=(r.tax&&r.tax.length)?r.tax:[{r:'',b:r.amount,t:0}];
+    const memo=(r.memo||r.vendor||r.account||'').slice(0,60);
+    tx.forEach(l=>{const amt=(l.b||0)+(l.t||0)||r.amount;if(!amt)return;
+      const z=taxKubun(r,l.r);
+      if(r.direction==='out')out.push([r.entry_date,r.voucher_no,j.dr,amt,z,j.cr,amt,'対象外',
+        l.t||0,memo,r.vendor,r.reg_no,evName(r.event_id),r.voucher_no]);
+      else out.push([r.entry_date,r.voucher_no,j.dr,amt,'対象外',j.cr,amt,z,
+        l.t||0,memo,r.vendor,r.reg_no,evName(r.event_id),r.voucher_no]);});});
+  dlCSV('仕訳_'+ledFy()+'.csv',out);}
 function formPhoto(inp){
   const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
   toast('识别报名表中…');
@@ -3100,9 +3692,13 @@ function viewReview(){
         <span class="mrate">${am+aw?`到场 ${am+aw} 人${(Number(e.matched)||0)?` · ${Math.round((Number(e.matched)||0)*2/(am+aw)*100)}% 的人牵手`:''}`:'还没有到场记录'}</span></div>
       <p class="note9" style="margin-top:6px">记下来，下一场就有得比 — 这是判断一场活动办得好不好的第一个数字。</p></div>
     <div class="rvsec"><div class="hd"><span class="lbl">台本 · 计划 → 实际</span></div>${rows||'<div class="empty">无环节</div>'}</div>
-    <div class="rvsec"><div class="hd"><span class="lbl">收支 · 预算 → 实际</span></div>
+    <div class="rvsec"><div class="hd"><span class="lbl">收支 · 预算 → 实际</span>
+      <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}补一张票据
+        <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
+          onchange="rcShoot(this,{src:'host',evId:'${escJs(e.id)}'})"></label></div>
       ${mline('收入',mt.inPlan,mt.inActual)}${mline('支出',mt.outPlan,mt.outActual)}
-      <div class="mline total"><span>差额</span><span class="num ${mt.actualNet<0?'neg':'pos'}">${yen(mt.planNet)} → ${yen(mt.actualNet)}</span></div></div>
+      <div class="mline total"><span>差额</span><span class="num ${mt.actualNet<0?'neg':'pos'}">${yen(mt.planNet)} → ${yen(mt.actualNet)}</span></div>
+      ${rcEventBlock(e)}</div>
     <div class="rvsec"><div class="hd"><span class="lbl">到场</span>
       <span class="num" style="font-size:15px">${am+aw}/${total}</span></div>
       <div style="font-size:12.5px">男 ${am} · 女 ${aw} · 评价 ${evals} 条${noshow.length?`<br><span class="muted">未到：${noshow.map(p=>esc(p.gender+p.n+' '+p.name)).join('、')}</span>`:''}</div></div>
@@ -3116,7 +3712,7 @@ function viewReview(){
       <div class="rowfiles" style="margin-top:8px">
         ${(e.files||[]).map(f=>`<span class="filechip" onclick="openEvFile('${f.id}')">${ico('clip')}${esc(f.name)}${!S.readonly?`<span class="x" onclick="event.stopPropagation();delEvFile('${f.id}')">✕</span>`:''}</span>`).join('')}
         ${!S.readonly?`<label class="fileadd">＋附件（可多选）<input type="file" multiple style="display:none" onchange="evAttach(this)"></label>`:''}</div>
-      <p class="note9" style="margin-top:6px">照片、名单、票据都能附在这里；小文件直接存下，大文件先记文件名（接入云盘后自动升级）。</p></div>
+      <p class="note9" style="margin-top:6px">照片、名单都能附在这里；票据请用上面的「补一张票据」入账（会进总账）。</p></div>
     <div class="exports">
       <button class="btn sm" onclick="startSaveBack()">${ico('save')}保存回资产库</button>
       <button class="btn ghost sm" onclick="shareRundown()">${ico('send')}分享台本</button>
@@ -3265,10 +3861,14 @@ function dlCSV(name,rows){
   a.href=URL.createObjectURL(new Blob([txt],{type:'text/csv;charset=utf-8'}));
   a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 }
+// 每场的「预算 vs 实际」管理表 —— 意味は変えない。台账の凭证数と合計だけ足して、
+// 二つの表が黙って食い違うのではなく、並べて見えるようにする。
 function exportMoney(){
-  const e=ev();const rows=[['类型','名目','计划(円)','实际(円)','挂在']];
-  allMoneyChips(e).forEach(x=>rows.push([x.c.kind==='in'?'收入':'支出',x.c.name,
-    x.c.plan||0,x.c.actual==null?'':x.c.actual,x.where]));
+  const e=ev();const rows=[['类型','名目','计划(円)','实际(円)','挂在','凭证张数','凭证合计(円)']];
+  allMoneyChips(e).forEach(x=>{const bk=(LEDGER||[]).filter(r=>r.chip_id===x.c.id&&r.status==='posted');
+    rows.push([x.c.kind==='in'?'收入':'支出',x.c.name,
+      x.c.plan||0,x.c.actual==null?'':x.c.actual,x.where,
+      bk.length,bk.reduce((s,r)=>s+r.amount,0)]);});
   const t=moneyTotals(e);
   rows.push(['合计','收入',t.inPlan,t.inActual,'']);
   rows.push(['合计','支出',t.outPlan,t.outActual,'']);
@@ -3540,8 +4140,12 @@ function exDetailCard(){
         <input type="date" value="${esc(c.due||'')}" onchange="exDue('${c.id}',this.value)"></label>
       <label class="dfld"><span class="l">难度（决定谁能接 · 默认 C）</span></label>
       ${diffPick(c.diff,`exDiff('${escJs(c.id)}',$D)`)}
+      ${rcChipLines(c.id)}
       <div class="df">
         ${b<2?`<button class="btn ghost sm" style="flex:1" onclick="exRemind('${c.id}')">${ico('send')}催办</button>`:''}
+        <label class="btn ghost sm" style="flex:1;cursor:pointer;text-align:center">${ico('cam')}票据
+          <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
+            onchange="rcShoot(this,{src:'host',evId:'${escJs((ev()||{}).id||'')}',chipId:'${escJs(c.id)}',memo:'${escJs(String(c.name||'').slice(0,60))}'})"></label>
         ${c.type==='任务'?`<span class="lnkdel" onclick="exDelTask('${c.id}')">删除</span>`
           :`<button class="btn ghost sm" onclick="exIgnore('${c.id}')">搁置</button>`}</div>
     </div>`;
@@ -3555,7 +4159,7 @@ let PENDING=[],_pendT=null;
 function loadPending(){
   if(!canCloud())return;
   // never select file_data — the poll would drag base64 receipts across the wire every minute
-  sb.from('ym_submit').select('id,member_code,event_id,chip_id,kind,note,hours,cost,diff,file_name,file_mime,created_at')
+  sb.from('ym_submit').select('id,member_code,event_id,chip_id,kind,note,hours,cost,amount,diff,file_name,file_mime,created_at')
     .eq('status','pending').order('created_at')
     .then(({data,error})=>{if(error)return;
       const next=data||[],same=JSON.stringify(next)===JSON.stringify(PENDING);
@@ -3574,9 +4178,11 @@ function loadPending(){
 // and 抢单 means 「这件事给我」. A claim reaching pendBlock() would be rendered as 传了票据 with a
 // 确认完成 button wired to exSet(cid,2) — one tap would mark an untouched task 完成 and stamp the
 // claim 'accepted', which also (correctly) frees the arbiter. Two verbs, two boxes, two accessors.
+// 'give' も同じ理由で構造的に外す：捐赠票据 は chip に紐づかず（chip_id=''）、任务の 确认完成
+// ボタンの下に置かれるべきものでもない。それ専用の入口は giveStrip()。
 function pendFor(cid,mc){const e=ev();
-  return PENDING.filter(r=>r.chip_id===cid&&r.kind!=='claim'&&r.kind!=='join'&&(!e||r.event_id===e.id)
-    &&(!mc||String(r.member_code||'')===mc));}
+  return PENDING.filter(r=>r.chip_id===cid&&r.kind!=='claim'&&r.kind!=='join'&&r.kind!=='give'
+    &&(!e||r.event_id===e.id)&&(!mc||String(r.member_code||'')===mc));}
 // 0016 guarantees AT MOST ONE live claim per chip, so this is always one person or nobody.
 // PENDING holds only status='pending' rows (loadPending filters), so a 退回'd or already-assigned
 // claim is not here — which is exactly right: both have left the arbiter too.
@@ -3604,7 +4210,9 @@ function pendBlock(cid){
       <div class="ph">● ${esc(pendWho(mine[0]))} ${done.length?'交任务了':'传了票据'}</div>
       ${h||co?`<div class="pn">工时 ${esc(h)}h${co?' · 自费 '+yen(co)+'（不进收支）':''}</div>`:''}
       ${done.filter(r=>r.note).map(r=>`<div class="pn">「${esc(r.note)}」</div>`).join('')}
-      ${files.map(r=>`<div class="pf" onclick="pendOpenFile('${esc(r.id)}')">${ico('clip')}${esc(r.file_name||'附件')}</div>`).join('')}
+      ${files.map(r=>`<div class="pf two">
+        <span style="flex:1" onclick="pendOpenFile('${escJs(r.id)}')">${ico('clip')}${esc(r.file_name||'附件')}</span>
+        <span class="rz" onclick="rcFromSubmit('${escJs(r.id)}','vol')">${ico('coin')}入账</span></div>`).join('')}
       <div id="pendview_${esc(cid)}"></div>
       <div class="df" style="margin-top:8px">
         <button class="btn sm" style="flex:1" onclick="pendAccept('${escJs(cid)}','${escJs(mc)}')">确认完成</button>
@@ -3625,9 +4233,14 @@ async function pendAccept(cid,mc){
   if(error)toast('已翻状态，但回执未标记：'+error.message);
   loadPending();
 }
-async function pendReject(cid,mc){
+async function pendReject(cid,mc,sid){
   if(S.readonly||!canCloud())return;
-  const rows=pendFor(cid,mc);if(!rows.length)return;
+  // 捐赠票据 は chip を持たないので pendFor では引けない（構造的に除外してある）。cid='' が
+  // 「これは捐赠のほう」という合図 —— giveStrip() だけがそう呼び、行 id を名指しで渡す。
+  // 同じ人が同じ回に二枚出していても、押した一枚だけが戻る。
+  const rows=cid?pendFor(cid,mc)
+    :PENDING.filter(r=>r.kind==='give'&&r.id===sid&&String(r.member_code||'')===mc);
+  if(!rows.length)return;
   ask({title:'退回这一项？',note:'必须写清楚要 TA 改什么 —— TA 只看得到这句话。',
     fields:[{label:'退回说明（必填）',ph:'例如：票据拍糊了，请重拍一张'}],ok:'退回',
     fn:async(v)=>{
@@ -3832,7 +4445,12 @@ function viewDesk(){
   const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
     (groups[k].length?groups[k].map(evCard).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);
   return `<div class="main" style="max-width:640px;margin:0 auto">
-    <div class="evsw" style="margin-bottom:12px"><button class="btn sm" onclick="newEvent();go('sheet')">＋ 新活动</button></div>
+    <div class="evsw" style="margin-bottom:12px">
+      <button class="btn sm" onclick="newEvent();go('sheet')">＋ 新活动</button>
+      <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}记一张票据
+        <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
+          onchange="rcShoot(this,{src:'host',evId:''})"></label>
+      <button class="btn ghost sm" onclick="go('ledger')">${ico('books')}总账</button></div>
     ${sec('current','正在进行的活动会出现在这里（在计划页点「进入执行」）。')}
     ${sec('plan','筹备中的活动。')}
     ${sec('hot','刚结束、还在跟进复盘的活动（14 天内）。')}
