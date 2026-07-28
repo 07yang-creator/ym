@@ -29,6 +29,7 @@ Y8 总账拼完并**已上线**；**0018 owner 已应用**。之后按 owner 当
 |---|---|
 | 迁移 | **0017 + 0018 都已应用**（owner 2026-07-27）。下一条要动 schema 的是自助注册的 `0019`，见 `docs/STAGE_SELF_REG.md`，**owner 还没放行** |
 | SMTP | Resend，验证域 `send.jjconnect.tokyo`，发件人 `no-reply@send.jjconnect.tokyo` |
+| **Redirect URLs** | ⚠ **owner 待办**：Supabase → Authentication → URL Configuration → Redirect URLs 里必须**逐字**有 `https://ym.jjconnect.tokyo/organizer/` 和 `https://ym.jjconnect.tokyo/member/`。不在白名单里，GoTrue 会**静默**换成 Site URL —— 重设密码的信点开去了别的页面，表现就是「忘记密码没用」。成员页那条 07-14 加过；**主办页是 07-27 新加的功能，很可能从没进过白名单** |
 | Drive | `YM_DRIVE_EXEC` 已配，`/api/ym_file` 回 `{"drive":true}`，端到端传过真文件 |
 | Drive 目录 | `18L2vEdBUukj0qTY4qkNLrYz5Ty7sww3m/<活动 · 日期>/<票据｜报名表｜名单｜附件>/` |
 
@@ -155,6 +156,23 @@ owner 说「有些界面没有更新」。**代码全在线上，问题是入口
 「在 owner **现在这个数据状态**下，从打开 app 开始，几下能点到它？」** ——
 没有路径、或者没数据时整块不画，都算没做完。特别注意 `if(!rows.length)return ''`
 这种写法：数据为空正是最需要解释的时刻。
+
+## 忘记密码：一条链路上四道门（2026-07-28）
+
+owner 报「忘记密码好像不работает」。这条值得单独记，因为它是**同一个功能连续三次只修一道门**：
+
+| 门 | 症状 | 状态 |
+|---|---|---|
+| 1. `redirectTo` 不在 Supabase 的 Redirect URLs 白名单 | GoTrue **静默**换成 Site URL，信里的链接去了别的页面 | ⚠ **只有 owner 能开**，见上面「环境」表 |
+| 2. `PASSWORD_RECOVERY` 事件在 subscribe 之前就发完了 | supabase-js 一 createClient 就异步吃掉 `#token` 并清空地址栏；`authInit()` 在脚本末尾才订阅 | ✅ 改成在 createClient **之前**读 URL，不依赖事件 |
+| 3. `authSheet` 分支顺序 | `canCloud()`/`SESSION` 排在 `S.authRecovery` 前面，而重设链接回来时**一定**有 session | ✅ 07-27 修 |
+| 4. 失败全被吞掉 | `resetPasswordForEmail` 的返回值看都不看；过期链接的 `error_description` 也不读 | ✅ 都说出来了 |
+
+⚠ **教训**：`onAuthStateChange` 里挡住 `cloudLoad` 只是**其中一道**。一个功能可以有
+「配置 / 事件时序 / 渲染分支 / 错误可见性」四层，每一层都能单独让它整条失效。
+修完一层就宣布修好，是这个功能反复回来的原因。
+另外：**一封永远收不到的信和一个不存在的账号，从外面看一模一样** —— 所以传输层错误
+必须说出来（GoTrue 对未知邮箱本来就回 200，说了不泄露），否则永远查不出是哪一层坏了。
 
 ## 这个 repo 的规矩（血泪版）
 
