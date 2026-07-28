@@ -1,3 +1,57 @@
+# 🔴 只有 owner 能修的一条：Vercel 的 `SUPABASE_SERVICE_KEY` 不是服务密钥
+
+**2026-07-28 推完当场验线上发现的，比今天所有代码问题都严重，而且不是今天引入的。**
+
+```
+POST https://www.jjconnect.tokyo/api/ym_join → 503 {"at":"gate","st":401,"code":"42501"}
+POST https://www.jjconnect.tokyo/api/ym_reg  → 同样（这条是**早就在线上**的成员注册入口）
+```
+
+`42501 = permission denied for function`。对照实验说明了它是什么：
+
+| 用什么键打 `ym_auth_gate` | 回什么 |
+|---|---|
+| 公开的 anon 键 | `401 / code 42501 / permission denied for function ym_auth_gate` |
+| 一个乱写的键 | `401 / "Invalid API key"`（**没有** code 字段） |
+| Vercel 上那个 `SUPABASE_SERVICE_KEY` | **和 anon 键逐字相同** |
+
+⇒ 那个环境变量里放的是一个**有效但不是 service_role** 的键（多半是 `sb_publishable_…`
+那个公开键，或者一个已经被停用的旧 anon JWT）。0015 §9 把这些函数**只**授给 service_role，
+所以每一次服务密钥 RPC 都是 permission denied。
+
+**这一个变量坏掉，下面四条一起是死的：**
+
+| 面 | 现在的表现 | 用户看到什么 |
+|---|---|---|
+| `/api/ym_reg` 成员用邀请码注册 | 卡在 `ym_auth_gate` | 「试得太频繁了，请过一会儿再来」—— **等多久都不会好** |
+| `/api/ym_join` 自助申请 | 同上 | （已修成诚实的 503） |
+| `/api/ym_file` Drive 上传 | `caller_ok()` 用服务键查 `ym_member`/`ym_code`，anon 角色下 RLS 返回 0 行 | 一律 403 —— 票据 / 名单 / 附件**谁都传不上去** |
+| `/api/parse` · `/api/voice` · `/api/phrase` 的用量计量 | `usage_event` 只 grant 了 select，插入被吞 | 功能照用，**一条计量都没记到**（「上线后看一周 usage_event」那一周会是 0） |
+
+⚠ `GET /api/ym_file` 回 `{"ok":true,"drive":true,"auth":true}` —— 它只检查**变量存不存在**，
+不检查这把钥匙开不开门。这就是为什么没人发现。
+
+**怎么修（只有你能做，我不碰密钥）：**
+1. Supabase → Project Settings → **API Keys** → 复制 **secret** 那把（`sb_secret_…`）。
+2. Vercel → 项目 → Settings → Environment Variables → `SUPABASE_SERVICE_KEY` → 换成它 → **Redeploy**。
+3. 验（一条 GET，什么都不写）：
+
+```bash
+curl -s https://www.jjconnect.tokyo/api/ym_join
+```
+
+   → **期望 `{"ok":true,"auth":true,"svc_role":true}`**。
+   `svc_role:false` 就是还没换对；后面跟的 `st`/`code` 是数据库给的原因。
+   然后拿一个真的邀请码在 `/member/` 走一遍注册，再传一张票据试 Drive。
+
+⚠ 顺带一条给下一班的判据：**「环境变量有值」不等于「这把钥匙有权限」。**
+`GET /api/ym_file` 一直老老实实回 `{"auth":true}` —— 它只看变量存不存在，
+于是三条链路死了没人发现。新的 `GET /api/ym_join` 改成真的去打一次
+**只有 service_role 跑得动**的函数（三道闸全空、一行不写），问的是「这把钥匙开不开门」。
+今天这条能被找出来，只是因为端点终于肯说「我连不上」而不是「你手太快」。
+
+---
+
 # ym 交接 — 2026-07-28（注册归属到主办）
 
 > owner 报了五条，前四条是**同一条链**的不同症状。`node scripts/check-ym.mjs` → **488 项全绿**，
