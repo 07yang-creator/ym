@@ -840,6 +840,17 @@ function cloudPushAll(){
 function nameIndex(cat){const m={};STORE.library.resources.forEach(r=>{
   if(catOf(r)!==cat)return;const n=String(r.name||'').trim();if(!n)return;
   m[n]=m[n]?'DUP':r.id;});return m;}
+/* 重名只提醒，不阻止（owner 2026-07-28：「志愿者和嘉宾会想用自己的真名，让他们选，
+   我们只提醒。主办反正会介入。别搞复杂」）。加人/改名的当下就说一次 —— 以前只有发码
+   窗口那一处提示，而那是后来才走到的一步。 */
+function dupNote(rec,cat){
+  const n=String((rec&&rec.name)||'').trim();if(!n)return '';
+  const same=STORE.library.resources.filter(r=>r!==rec&&catOf(r)===cat&&String(r.name||'').trim()===n);
+  if(!same.length)return '';
+  const a=CODES[same[0].id];
+  return '名册里已经有一位「'+n+'」'+(a?'（'+a.code+'）':'')
+    +' —— 重名可以，编号会把两个人分开；同一场活动里同时出现时，报名情况那里会给你标上号牌。';
+}
 function volNameIndex(){return nameIndex('volunteer');}
 function chipOwnedBy(c,p,idx){
   // 抢单 winner (Y7 step 7): a HARD LINK, checked first. Name matching below reaches NOBODY when
@@ -3104,7 +3115,8 @@ function libEditSave(){
   const nameKey=kind==='ideas'?'seg':'name';
   libReadInto(kind,'le_',rec);
   if(!rec[nameKey]){toast('名称不能为空');return;}
-  S.libEdit=null;save();render();toast('资料卡已保存');
+  const dn=(kind==='volunteer'||kind==='guest'||kind==='donor')?dupNote(rec,kind):'';
+  S.libEdit=null;save();render();toast(dn||'资料卡已保存');
 }
 /* ---- 新建：和资料卡同一套字段，不再是两个输入框的演示表单 (owner 2026-07-27) ---- */
 const LIB_ADD_LBL={volunteer:'新志愿者 / 工作人员',guest:'新嘉宾',donor:'新捐赠人',
@@ -3139,7 +3151,9 @@ function libAddSave(){
   // owner: 「在增加嘉宾或志愿者时，可以直接生成邀请码」—— 加完就开发码窗口，省掉「再回名册找到这个人」
   // 那一步。物资没有账号，捐赠人/嘉宾/志愿者都有。canCloud 之外静默跳过，只是加进名册。
   if(kind!=='goods'&&kind!=='ideas'&&kind!=='money'&&canCloud()){
-    grantOpen(rec.id);toast(rec.name+' 已加入 — 顺手发个邀请码？');}
+    // 重名就在这一刻说一次 —— 不阻止，只提醒（owner 2026-07-28）
+    const dn=dupNote(rec,kind);
+    grantOpen(rec.id);toast(dn||(rec.name+' 已加入 — 顺手发个邀请码？'));}
   else toast((rec[nameKey])+' 已加入资产库');}
 
 /* ================= day mode 当天 ================= */
