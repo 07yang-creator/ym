@@ -770,6 +770,20 @@ function share(text){
 const API='https://www.jjconnect.tokyo';
 // Shared Supabase with JJcashflow (owner decision 2026-07-19; publishable key = public)
 const SB_URL='https://ugkopxmeqsbtjeimultz.supabase.co', SB_KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
+/* 重设密码的链接把 token 放在 URL 的 # 里。这两行必须在 createClient **之前** 读：
+   supabase-js 一建好就异步去处理这个 hash，处理完会把它从地址栏清掉，而 PASSWORD_RECOVERY
+   事件有可能在 authInit() subscribe 之前就发完了（authInit 在脚本最末尾才跑）——
+   那样主办点了信里的链接，只会登录进工作台，「设新密码」那一屏永远不出现，
+   看起来就是「忘记密码功能没用」。所以不能只靠事件，URL 自己也要留一份证据。 */
+/* ⚠ redirectTo 必须**逐字**在 Supabase → Authentication → URL Configuration → Redirect URLs
+   的白名单里，否则 GoTrue 会**静默**换成 Site URL，信里的链接就把人送去别的页面 —— 表现正是
+   「忘记密码没反应」。用 origin+pathname 而不是写死：本地预览和线上各自落回自己那一页，
+   也跟成员页（2026-07-14 就在跑的那套）用同一种写法。
+   白名单里需要有：https://ym.jjconnect.tokyo/organizer/ 和 https://ym.jjconnect.tokyo/member/ */
+const RESET_REDIRECT=location.origin+location.pathname;
+const _hash=(location.hash||'')+'&'+(location.search||'');
+const RECOVERY_URL=/type=recovery/.test(_hash);
+const RECOVERY_ERR=(/error_description=([^&]+)/.exec(_hash)||[])[1];
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
 let SESSION=null,PROFILE=null,_pushT=null,_authKey=null;
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
@@ -1295,8 +1309,12 @@ async function redeemInvite(code,quiet){
 }
 function authInit(){
   if(!sb)return;
+  // 链接本身就带着失败原因（过期 / 用过了）—— 不说的话主办只看到一个普通的登录页
+  if(RECOVERY_ERR)setTimeout(()=>toast('这个重设链接不能用了（'+decodeURIComponent(RECOVERY_ERR).replace(/\+/g,' ')+'）—— 请重新点一次「忘记密码了」'),300);
   sb.auth.getSession().then(({data})=>{
     SESSION=data.session;_authKey=SESSION?SESSION.user.id:null;
+    // URL 说这是重设密码回来的 → 不管 PASSWORD_RECOVERY 事件有没有赶上，都直接开那一屏
+    if(RECOVERY_URL&&SESSION){S.authRecovery=true;S.auth=true;render();return;}
     if(SESSION)cloudLoad();
   });
   sb.auth.onAuthStateChange((ev2,s2)=>{
@@ -1699,9 +1717,13 @@ async function doForgot(){
   const em=(($('au_fem')||{}).value||'').trim().toLowerCase();
   if(!em){toast('请输入邮箱');return;}
   _authBusy=true;render();
-  await sb.auth.resetPasswordForEmail(em,{redirectTo:'https://ym.jjconnect.tokyo/organizer/'});
+  const {error}=await sb.auth.resetPasswordForEmail(em,{redirectTo:RESET_REDIRECT});
   _authBusy=false;S.authEmail=em;S.authTab='';render();
-  // 不区分「这个邮箱存不存在」—— 否则这个表单就成了账号存在性探测器
+  /* 传输层的失败（限流 / SMTP 挂了 / redirect_to 不在白名单）**要说**：它跟「这个邮箱
+     有没有账号」无关，所以说了也不泄露什么；而不说的话，一封永远收不到的信和一个
+     不存在的账号长得一模一样，没人能查。账号存在与否仍然一个字都不提。 */
+  if(error){console.warn('[ym] resetPasswordForEmail failed:',error);
+    toast('发不出去：'+(error.message||'服务端错误')+' —— 这跟邮箱有没有账号无关，请截图给管理员');return;}
   toast('如果这个邮箱有账号，信已经发出了 —— 请查收（也看一下垃圾邮件）');
 }
 async function doNewPw(){

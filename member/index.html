@@ -125,6 +125,12 @@ function shrink(file,cb){ // photos → ≤1600px jpeg before upload (same as th
   img.src=URL.createObjectURL(file);
 }
 const SB_URL='https://ugkopxmeqsbtjeimultz.supabase.co', SB_KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
+/* 必须在 createClient 之前读：supabase-js 一建好就异步吃掉 URL 里的 #token 并清空地址栏，
+   PASSWORD_RECOVERY 有可能在下面 subscribe 之前就发完了 —— 那样点进来只会正常登录，
+   「设一个新密码」永远不出现。事件之外再留一份 URL 证据。 */
+const _mhash=(location.hash||'')+'&'+(location.search||'');
+const RECOVERY_URL=/type=recovery/.test(_mhash);
+const RECOVERY_ERR=(/error_description=([^&]+)/.exec(_mhash)||[])[1];
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
 const API='https://www.jjconnect.tokyo';
 let SESSION=null,MYCODES=null,SHARES=null,MINE=[],_busy=false,_bad='',OPEN={},TAB='login',RECOVERY=false;
@@ -591,7 +597,11 @@ async function doForgot(){
   if(!em){toast('请输入邮箱');return;}
   _busy=true;render();
   // redirectTo 必须在 Supabase 的 Redirect URLs 白名单里，否则 GoTrue 会静默换成 Site URL
-  await sb.auth.resetPasswordForEmail(em,{redirectTo:location.origin+location.pathname});
+  const {error}=await sb.auth.resetPasswordForEmail(em,{redirectTo:location.origin+location.pathname});
+  // 传输层失败要说（限流 / SMTP / redirect_to 不在白名单）—— 跟「有没有这个账号」无关
+  if(error){console.warn('[ym] resetPasswordForEmail failed:',error);
+    _busy=false;render();toast('发不出去：'+(error.message||'服务端错误')
+      +' —— 这跟邮箱有没有账号无关，请截图给主办方');return;}
   _busy=false;
   // 不区分「这个邮箱存不存在」—— 否则这个表单就成了账号存在性探测器
   TAB='login';render();
@@ -707,7 +717,10 @@ async function withdraw(id){
 }
 
 if(sb){
-  sb.auth.getSession().then(({data})=>{SESSION=data.session;if(SESSION)load();else render();});
+  if(RECOVERY_ERR)setTimeout(()=>toast('这个重设链接不能用了（'+decodeURIComponent(RECOVERY_ERR).replace(/\+/g,' ')+'）—— 请重新点一次「忘记密码了」'),300);
+  sb.auth.getSession().then(({data})=>{SESSION=data.session;
+    if(RECOVERY_URL&&SESSION){RECOVERY=true;render();return;}   // 事件没赶上也照样进设密码
+    if(SESSION)load();else render();});
   sb.auth.onAuthStateChange((ev2,s2)=>{
     const was=SESSION&&SESSION.user.id,now=s2&&s2.user.id;
     SESSION=s2;_bad='';
