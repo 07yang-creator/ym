@@ -134,6 +134,13 @@ const RECOVERY_ERR=(/error_description=([^&]+)/.exec(_mhash)||[])[1];
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
 const API='https://www.jjconnect.tokyo';
 let SESSION=null,MYCODES=null,SHARES=null,MINE=[],_busy=false,_bad='',OPEN={},TAB='login',RECOVERY=false;
+/* 首页的「登录 / 加入」菜单直接指到这三块，别让人先落在登录框上再自己找入口
+   （2026-07-27 可达性复查的判据：上线了但看不见 = 等于没上线）。 */
+if(/^#reg\b/.test(location.hash))TAB='reg';
+else if(/^#apply\b/.test(location.hash))TAB='apply';
+// 自助申请的表单状态。类型默认志愿者；主办方名字**只能手打** —— 全站没有任何接口
+// 返回主办名单，也没有「找不到该主办」的提示（owner: neither，见 docs/STAGE_SELF_REG.md §6）。
+let APPLY={role:'V',sent:false};
 // Role comes from ym_code (server data, read under RLS with our own token), never from the shape
 // of what was published to us, and never from user_metadata (which is user-writable).
 // An array, not maybeSingle(): one person may hold an identity with more than one host.
@@ -158,7 +165,8 @@ const $=id=>document.getElementById(id);
 function render(){
   let body;
   if(RECOVERY)          body=newPwHtml(true);          // 从重设邮件的链接回来
-  else if(!SESSION)     body=_bad?badHtml():(TAB==='reg'?regHtml():TAB==='forgot'?forgotHtml():loginHtml());
+  else if(!SESSION)     body=_bad?badHtml():(TAB==='reg'?regHtml():TAB==='apply'?applyHtml()
+                             :TAB==='forgot'?forgotHtml():loginHtml());
   else if(TAB==='pw')   body=newPwHtml(false);
   else if(MYCODES===null)body=`<div class="empty">读取中…</div>`;
   else if(!MYCODES.length)body=bindHtml();     // signed in, but no 编码 bound to this account
@@ -187,7 +195,9 @@ function loginHtml(){
     <div style="text-align:center;margin-top:12px">
       <span class="fold" onclick="TAB='forgot';render()">忘记密码了</span></div>
     <div style="text-align:center;margin-top:6px">
-      <span class="fold" onclick="TAB='reg';render()">我有邀请码，还没注册 →</span></div></div>`;
+      <span class="fold" onclick="TAB='reg';render()">我有邀请码，还没注册 →</span></div>
+    <div style="text-align:center">
+      <span class="fold" onclick="TAB='apply';render()">没有邀请码，想加入 →</span></div></div>`;
 }
 /* 忘记密码 —— 自己走，主办不介入。Supabase 发一封带链接的信，点开落回这一页并进入
    PASSWORD_RECOVERY 状态，直接设新密码。编号（V0014）自始至终不变。 */
@@ -220,10 +230,67 @@ function regHtml(){
     <input id="rp" type="password" placeholder="设一个密码（至少 8 位）" style="margin-bottom:10px"
       onkeydown="if(event.key==='Enter')doRegister()">
     <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doRegister()">${_busy?'注册中…':'注册'}</button>
-    <p class="note">邮箱和密码都由你自己决定 —— 主办方不知道，也不需要知道。邀请码一周内有效，
+    <p class="note"><b style="color:var(--brass)">你的身份（志愿者 / 嘉宾 / 捐赠者）和归属的主办方，
+      都由这串邀请码决定</b> —— 这里不需要选，也选不了：码是谁发的，你就在谁名下，
+      主办方发码时指定的是什么身份，你注册出来就是什么身份。<br>
+      邮箱和密码都由你自己决定 —— 主办方不知道，也不需要知道。邀请码一周内有效，
       只能用一次；注册成功后你会拿到一个永久编号（例如 V0014），以后用编号或邮箱登录都行。</p>
     <div style="text-align:center;margin-top:14px">
       <span class="fold" onclick="TAB='login';render()">← 我已经注册过了</span></div></div>`;
+}
+/* 自助申请 (owner 2026-07-27 裁决 → 0019)。**注册和报名是两件事**：这里申请的是一个账号，
+   不是某一场活动的名额。
+   主办方的名字只能手打：这个 app 不负责让人发现主办 —— 申请人必须本来就知道
+   （听人说的、名片上的、活动上认识的）。没有目录、没有下拉、没有搜索建议，
+   也没有「找不到该主办」。提交之后**永远只有一种回应**，因为
+   「名字打错了」和「被婉拒了」从外面看必须一模一样；任何一处让两者可区分，
+   这张表单就变成了主办名单的枚举器。 */
+function applyHtml(){
+  if(APPLY.sent)return `<div class="card" style="margin-top:28px">
+    <div class="lbl" style="margin-bottom:10px">已收到</div>
+    <div style="font-size:13px;line-height:1.9">你的申请已经送出。<br>
+      如果通过，主办方会直接联系你，把邀请码发给你 —— 拿到码之后回到这一页「注册」。</div>
+    <p class="note">这里不会显示申请进度，也不需要你再来刷新。</p>
+    <div style="text-align:center;margin-top:14px">
+      <span class="fold" onclick="TAB='login';APPLY.sent=false;render()">← 回登录</span></div></div>`;
+  const rb=(k,l)=>`<button class="btn ${APPLY.role===k?'':'ghost'} sm" style="flex:1"
+    onclick="APPLY.role='${k}';render()">${l}</button>`;
+  return `<div class="card" style="margin-top:28px">
+    <div class="lbl" style="margin-bottom:10px">申请加入</div>
+    <div class="sub" style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      你需要知道主办方对外用的名字 —— 请照着 TA 报给你的那个名字打。</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">${rb('V','我想当志愿者')}${rb('P','我想参加活动')}</div>
+    <input id="ah" placeholder="主办方的名字" autocomplete="off" autocorrect="off"
+      spellcheck="false" style="margin-bottom:8px">
+    <input id="an" placeholder="怎么称呼你" autocomplete="off" style="margin-bottom:8px">
+    <input id="ae" type="email" placeholder="你的邮箱（主办方用它联系你）" autocapitalize="off"
+      spellcheck="false" style="margin-bottom:8px">
+    <input id="am" placeholder="一句话：你是怎么知道我们的（可留空）" style="margin-bottom:10px"
+      onkeydown="if(event.key==='Enter')doApply()">
+    <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doApply()">${_busy?'提交中…':'提交申请'}</button>
+    <p class="note">现在<b style="color:var(--brass)">不需要</b>设密码，也不会给你建账号
+      —— 通过之后你用主办方给的邀请码自己注册。</p>
+    <div style="text-align:center;margin-top:8px">
+      <span class="fold" onclick="TAB='login';render()">← 回登录</span></div></div>`;
+}
+async function doApply(){
+  if(_busy)return;
+  const g=i=>{const el=$(i);return el?el.value.trim():'';};
+  const host=g('ah'),name=g('an'),email=g('ae').toLowerCase(),note=g('am');
+  // 只校验**申请人自己填的东西的形状**。主办方的名字除了「不能空」以外一个字都不判断：
+  // 任何一句「这个名字不对」都是在回答「哪些主办存在」。
+  if(!host){toast('请填主办方的名字');return;}
+  if(!name){toast('请填怎么称呼你');return;}
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast('邮箱格式不对');return;}
+  _busy=true;render();
+  try{
+    const {status}=await post('/api/ym_join',{host,role:APPLY.role,email,name,note});
+    _busy=false;
+    if(status===429){toast('试得太频繁了，请过一会儿再来');render();return;}
+    if(status!==200){toast('提交失败，请稍后再试（这跟你填的内容无关）');render();return;}
+    // 名字对上没对上、主办批不批 —— 到这里为止我们都不说，因为说了就等于泄露。
+    APPLY.sent=true;render();
+  }catch(e){_busy=false;toast('网络不太稳，请重试');render();}
 }
 // Signed in but no 编码 on this account. THE ESCAPE HATCH for somebody who already had an account
 // here (a jjcashflow 会計士 who volunteers): /api/ym_reg refuses a duplicate address WITHOUT

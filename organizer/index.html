@@ -564,6 +564,17 @@
   }
   .prow .ppend{flex:none;font-size:10.5px;color:var(--brass)}
   .prow .pst{flex:none;font-size:10.5px;color:var(--muted)}
+  .prow .pnew{flex:none;font-size:9.5px;color:var(--ink);background:var(--brass);
+    border-radius:3px;padding:1px 5px;letter-spacing:.04em}
+  /* 待批申请 / 刚注册 —— 主办侧的收件面（管理员那一屏只管主办账号） */
+  .navlinks .navdot{display:inline-block;min-width:15px;margin-left:4px;padding:0 4px;
+    background:var(--brass);color:var(--ink);border-radius:8px;font-size:9.5px;
+    font-family:Oswald,sans-serif;vertical-align:1px}
+  .jrq{border:1px solid var(--brass-dim);border-radius:5px;padding:9px 10px;margin-bottom:6px;
+    background:var(--felt-up)}
+  .jrq .jn{font-size:13px;font-weight:600}
+  .jrq .jm{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.7;word-break:break-all}
+  .jrq .ja{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
   .drow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
   .drow:last-of-type{border-bottom:0}
   .drow .de{flex:none;min-width:130px;font-size:12.5px}
@@ -959,6 +970,138 @@ function dropShare(code){
 /* ---------- 用户一览 (owner 2026-07-27) ----------
    资产库按「资产类别」组织，找一个人要先想 TA 是志愿者还是嘉宾。这里按 **人** 组织：
    一屏看到谁有账号、什么编号、什么星级、做过多少、欠你多少确认。点开看服务记录、直接改表现。 */
+/* ================= 注册申请落到**对应主办**名下 (owner 2026-07-28 ③④⑤) =================
+   两条路进来，都停在这一页 —— 管理员那一屏只管**主办账号**（ym_member），
+   一条成员的注册/申请都不该出现在那里：
+     · 邀请码：主办自己发的 16 位码。注册成功 = ym_code.member 绑上，归属（host）从铸码那一刻
+       就写死了 —— ⑤ 说的对应关系一直都在库里，这里补的是主办**看得到**：0019 给
+       ym_code_list() 加了 bound_at，于是能说「刚刚注册」而不只是「使用中」。
+     · 自助申请：申请人手打主办的公开名称 → /api/ym_join → ym_join_request（0019 §5）。
+       批准 = 在名册里建一条记录 + 铸一个码；婉拒 = 只写状态，**不发任何通知**
+       （owner: No response is perfect Japanese style）。 */
+let JOINREQ=null;
+function loadJoin(){
+  if(!canCloud()){JOINREQ=[];return Promise.resolve();}
+  return sb.rpc('ym_join_list').then(({data,error})=>{
+    // 0019 还没应用时这里是 404/42883。**说出来**，别画一块空白 —— 空白会被读成
+    // 「没人申请」，而真相是这功能根本没接上（2026-07-27 可达性复查的教训）。
+    if(error){JOINREQ=[];S.noJoin=1;render();return;}
+    S.noJoin=0;JOINREQ=data||[];render();});
+}
+const SEEN_KEY='jjym_seen_reg';
+function seenAt(){try{const o=JSON.parse(localStorage.getItem(SEEN_KEY)||'{}');
+  return (SESSION&&o[SESSION.user.id])||0;}catch(e){return 0;}}
+function markSeen(quiet){
+  try{const o=JSON.parse(localStorage.getItem(SEEN_KEY)||'{}');
+    if(SESSION)o[SESSION.user.id]=Date.now();
+    localStorage.setItem(SEEN_KEY,JSON.stringify(o));}catch(e){}
+  if(!quiet)render();
+}
+// 上次看过之后才绑上的码。第一次打开先把「现在」记下来当基线，否则历史上所有已注册的人
+// 会一起被标成「新」—— 那等于没有提醒。
+function freshRegs(){
+  const t=seenAt();
+  if(!t){markSeen(true);return [];}
+  return Object.keys(CODES).map(k=>CODES[k])
+    .filter(a=>a&&!a.revoked&&a.bound_at&&Date.parse(a.bound_at)>t);
+}
+function joinPending(){return (JOINREQ||[]).filter(r=>r.status==='pending');}
+function peopleInbox(){return joinPending().length+freshRegs().length;}
+function personByRef(ref){return STORE.library.resources.find(x=>x.id===ref)||null;}
+function pubName(){return (PROFILE&&PROFILE.public_name)||'';}
+function setPubName(){
+  ask({title:'你的公开名称',
+    note:'申请人要**一字不差**地打出这个名字，申请才会落到你名下。所以用你平时对外报的那个名字'
+      +'（写在海报、名片、群公告上的那个）。这个 app 不提供主办目录 —— 人必须本来就知道你。',
+    fields:[{label:'公开名称',val:pubName(),ph:'例如：缘满沙龙'}],ok:'保存',
+    fn:async(v)=>{
+      const n=(v[0]||'').trim().slice(0,60);
+      const {data,error}=await sb.from('ym_member').update({public_name:n})
+        .eq('user_id',SESSION.user.id).select('public_name');
+      if(error){toast('保存失败：'+error.message+(/public_name/.test(error.message)?'（0019 迁移还没应用）':''));return;}
+      if(!data||!data.length){toast('没有保存 —— 服务器没接受这次修改');return;}
+      PROFILE=Object.assign({},PROFILE,{public_name:data[0].public_name});
+      render();toast(n?'公开名称已设为「'+n+'」':'已清空公开名称 —— 现在没人能申请到你名下');}});
+}
+function joinBlock(){
+  if(!canCloud())return '';
+  if(S.noJoin)return `<div class="rvsec" style="margin-bottom:10px">
+    <div class="hd"><span class="lbl">待批申请</span></div>
+    <div class="note9">这块要先在 Supabase 里应用 <b>0019_ym_join.sql</b> 才会工作
+      —— 在那之前自助申请进不来，你只能靠自己发邀请码加人。</div></div>`;
+  if(JOINREQ===null){loadJoin();return `<div class="rvsec" style="margin-bottom:10px">
+    <div class="note9">读取待批申请…</div></div>`;}
+  const pend=joinPending();
+  const nm=pubName();
+  const rows=pend.map(r=>`<div class="jrq">
+    <div class="jn">${esc(r.name||r.email)}
+      <span class="lbl"> ${esc(r.want_role==='P'?'想参加活动（嘉宾）':'想当志愿者')}</span></div>
+    <div class="jm">${esc(r.email)}${r.note?' · '+esc(r.note):''} · ${fmtDate(String(r.created_at||'').slice(0,10))}申请</div>
+    <div class="ja"><button class="btn sm" onclick="joinApprove('${escJs(r.id)}')">批准 · 生成邀请码</button>
+      <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="joinDecline('${escJs(r.id)}')">婉拒</span></div>
+  </div>`).join('');
+  return `<div class="rvsec" style="margin-bottom:10px">
+    <div class="hd"><span class="lbl">待批申请${pend.length?' · '+pend.length:''}</span>
+      <span class="bk" style="color:var(--brass);cursor:pointer;font-size:11px" onclick="setPubName()">
+        公开名称：${nm?esc(nm):'<span style="color:var(--alarm)">还没设</span>'}</span></div>
+    ${rows||`<div class="note9">${nm
+      ?'现在没有人在等你批。<b>自助申请</b>是这样进来的：对方在成员页手打你的公开名称「'+esc(nm)+'」，'
+        +'一字不差才会落到你名下 —— 我们不提供主办目录，也不会提示「找不到该主办」（有意的）。'
+      :'<b style="color:var(--alarm)">你还没设公开名称，所以没有人申请得到你名下。</b>'
+        +'点上面那行设一个 —— 就是你平时对外报的那个名字。'}</div>`}</div>`;
+}
+function freshBlock(){
+  const fr=freshRegs();if(!fr.length)return '';
+  return `<div class="rvsec" style="margin-bottom:10px">
+    <div class="hd"><span class="lbl">${ico('person')}刚刚注册 · ${fr.length}</span>
+      <span class="bk" style="color:var(--brass);cursor:pointer;font-size:11px" onclick="markSeen()">知道了</span></div>
+    ${fr.map(a=>{const p=personByRef(a.ref_id);
+      return `<div class="jrq"><div class="jn">${esc(p?p.name:'（名册里已删除）')}
+        <span class="lbl"> ${esc(a.code)} · ${esc(ROLE_LBL[roleKey(a)]||'')}</span></div>
+        <div class="jm">用你发的邀请码注册好了 · ${esc(String(a.bound_at||'').slice(0,16).replace('T',' '))}</div>
+        ${p?`<div class="ja"><button class="btn ghost sm" onclick="markSeen();S.pOpen='${escJs(p.id)}';loadAccepted();render()">打开 TA 的资料</button></div>`:''}
+      </div>`;}).join('')}</div>`;
+}
+async function joinApprove(id){
+  const r=(JOINREQ||[]).find(x=>x.id===id);if(!r)return;
+  const cat=r.want_role==='P'?'guest':'volunteer';
+  ask({title:'批准 '+esc(r.name||r.email),
+    note:'会在你的名册里建一条'+(cat==='guest'?'嘉宾':'志愿者')+'记录，并生成一个邀请码。'
+      +'邀请码由你发给 TA（我们不发信）—— TA 拿码在成员页注册，身份和归属都由这串码决定。'
+      +(cat==='volunteer'?'自助注册的志愿者星级默认 C，之后你可以调。':''),
+    fields:[{label:'名册上写什么名字',val:r.name||'',ph:'TA 报的名字'}],ok:'批准并生成邀请码',
+    fn:async(v)=>{
+      const nm=(v[0]||'').trim()||r.name||String(r.email||'').split('@')[0];
+      // 名册记录先落地，它的 id 就是码的 ref_id —— 两边靠这个 id 认人（0015 ym_code.ref_id）
+      const rec={id:uid(),name:nm,cat,type:'人',contact:r.email,
+                 origin:'join',originAt:r.created_at};
+      STORE.library.resources.push(rec);save();
+      const {data,error}=await sb.rpc('ym_join_approve',{p_id:id,p_ref:rec.id});
+      if(error||!data||data.r!=='ok'){
+        // 铸不出码就把名册记录撤回去，别留一条永远没有账号的空记录
+        STORE.library.resources=STORE.library.resources.filter(x=>x.id!==rec.id);save();
+        toast(data&&data.r==='already'?'这条申请已经处理过了'
+             :data&&data.r==='full'?'名额已满（500）'
+             :'批准失败：'+((error&&error.message)||'请重试'));
+        loadJoin();return;}
+      await cloudPushAll();                       // 名册要先上云，TA 注册后才看得到自己
+      await loadCodes();await loadJoin();
+      // 直接把码摊开在发码窗口里 —— 这串码只显示这一次
+      _grant={pid:rec.id,role:r.want_role,invite:data.invite,busy:false,err:''};
+      render();grantPaint();
+      toast('已批准 —— 把邀请码发给 TA');}});
+}
+function joinDecline(id){
+  const r=(JOINREQ||[]).find(x=>x.id===id);if(!r)return;
+  ask({title:'婉拒 '+esc(r.name||r.email),
+    note:'对方那一侧不会有任何变化 —— 没有拒信、没有理由、没有状态页（owner 的裁决）。'
+      +'下面这句只有你自己看得到。',
+    fields:[{label:'给自己留一句（可空）',ph:'例如：见过面，暂时不合适'}],ok:'婉拒',
+    fn:async(v)=>{
+      const {data,error}=await sb.rpc('ym_join_reject',{p_id:id,p_note:(v[0]||'').slice(0,300)});
+      if(error||data!=='ok'){toast(data==='already'?'这条已经处理过了':'操作失败，请重试');loadJoin();return;}
+      loadJoin();toast('已婉拒（对方不会收到通知）');}});
+}
 function viewPeople(){
   const all=STORE.library.resources.filter(r=>catOf(r)!=='goods');
   const q=String(S.pq||'').trim();
@@ -972,6 +1115,7 @@ function viewPeople(){
       <div class="ptable">${list.map(p=>peopleRow(p,cat)).join('')}</div>`;}).join('');
   return `<div class="main" style="max-width:720px;margin:0 auto">
     <div class="hintbar">用户一览 — 按人看，不按类别看。点一行展开 TA 的服务记录和表现。</div>
+    ${joinBlock()}${freshBlock()}
     <input id="pq" value="${esc(q)}" placeholder="搜姓名或编号（如 V0014）"
       style="margin:10px 0" oninput="S.pq=this.value;renderPeopleOnly()">
     ${body||'<div class="empty">没有匹配的人。</div>'}
@@ -993,12 +1137,15 @@ function peopleRow(p,cat){
     : cat==='donor' ? esc(p.dtype||'个人')
     : `${esc(p.role||'')}${t.n?' · 完成 '+t.n+' 件 · '+(t.hours%1?t.hours.toFixed(1):t.hours)+'h':''}${t.cost?' · 自费 '+yen(t.cost):''}`;
   const pend=a?PENDING.filter(r=>String(r.member_code||'')===a.code).length:0;
+  // 上次看过之后才注册进来的人 —— 「使用中」看不出新旧，一个标记就够（0019 的 bound_at）
+  const isNew=a&&a.bound_at&&seenAt()&&Date.parse(a.bound_at)>seenAt();
   return `<div class="prow${S.pOpen===p.id?' on':''}" onclick="S.pOpen=S.pOpen===
       '${escJs(p.id)}'?null:'${escJs(p.id)}';loadAccepted();render()">
     <span class="pn">${esc(p.name)}${dtag(p,1)}</span>
     <span class="pc num">${a?esc(a.code):'<span class="muted" style="font-size:10px">未发码</span>'}</span>
     ${a&&a.role==='V'?`<span class="prank">${esc(a.rank||'C')}</span>`:'<span class="prank sp"></span>'}
     <span class="pm">${meta}</span>
+    ${isNew?'<span class="pnew">新注册</span>':''}
     ${pend?`<span class="ppend">● ${pend}</span>`:''}
     <span class="pst">${esc(st.t)}</span></div>`;
 }
@@ -1027,6 +1174,13 @@ function peopleDetail(){
         <button class="btn ghost sm" onclick="S.pOpen=null;render()">✕</button></div>
       <div class="sub" style="margin:0 0 8px">${esc(ROLE_LBL[a?roleKey(a):'']||(cat==='guest'?'嘉宾':cat==='donor'?'捐赠人':'志愿者'))}${
         a?' · '+esc(codeState(p).t):' · 未发码'}</div>
+      ${/* ⑤ 对应关系：这个人在**谁**名下、怎么进来的、什么时候注册的。
+           归属在库里一直是 ym_code.host（铸码那一刻写死，改不了），这里是把它说出来。 */''}
+      <div class="sub" style="margin:0 0 8px;font-size:11px">归属主办：${
+        pubName()?esc(pubName()):'你（还没设公开名称）'} · 来源：${
+        p.origin==='join'?'自助申请'+(p.originAt?' '+esc(String(p.originAt).slice(0,10)):''):'你发的邀请码'}${
+        a&&a.bound_at?' · <span style="color:var(--ok)">✓ 已注册 '+esc(String(a.bound_at).slice(0,16).replace('T',' '))+'</span>'
+        :a?' · 还没注册':''}</div>
       ${cat==='volunteer'?`<div class="cstat">
         <div><b class="num">${t.n}</b><span>已确认</span></div>
         <div><b class="num">${t.hours%1?t.hours.toFixed(1):t.hours}</b><span>本人申报 h</span></div>
@@ -1194,6 +1348,28 @@ function grantRevoke(){
       await loadCodes();if(!off)await pushShares();
       render();toast(off?'已取消授权':'已恢复');}});
 }
+/* ---------- 两种邀请码，两张表，两个身份 ----------
+   主办码：管理员在 管理 页生成，形如 YM-XXXX-XXXX-XXXX，存 ym_invite，兑换 = 成为主办方。
+   成员码：主办方在 用户 页生成，**16 位**（0015 的 ym_norm_invite 字母表：去掉 I/O 的
+           32 个字符），存 ym_code_secret，兑换 = 成为那个主办名下的 志愿者/嘉宾/捐赠者/记者。
+   两者形状不重叠（主办码归一后只有 14 位），所以在前端就能分流 —— 而分错的代价是
+   一个志愿者被当成主办方申请排队，所以宁可保守：像成员码就当成员码处理，绝不改道。 */
+const MEMBER_INV_RE=/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{16}$/;
+function memberInvite(s){
+  const x=String(s||'').toUpperCase().replace(/[^0-9A-Z]/g,'');
+  return MEMBER_INV_RE.test(x)?x:'';
+}
+/* 这个账号是**成员**，不是主办方 —— 不登记、不排队、不改道，直接告诉他去哪儿。
+   why: 'bound' = 已经绑到某个主办名下了；'badcode' = 手里那串是成员码但用不了。 */
+function memberOnly(why){
+  PROFILE=null;S.memberOnly=1;S.memberWhy=why||'bound';S.auth=true;stopPoll();
+  /* 以前点错门的人已经在 ym_member 里留下了一行 pending —— 那一行现在还挂在管理员的
+     「待批准」里，看上去和真主办申请一模一样。绑定成功了就顺手撤回它（0019 给了
+     「撤回自己还没被批准的申请」这一条 delete policy；已批准的行删不掉）。 */
+  if(why==='bound'&&sb&&SESSION)
+    sb.from('ym_member').delete().eq('user_id',SESSION.user.id).eq('status','pending').then(()=>{});
+  render();
+}
 async function cloudLoad(){
   if(!sb||!SESSION){PROFILE=null;stopPoll();render();return;}
   // is_admin lives on the shared profile (it spans both products); absent row = not admin.
@@ -1204,7 +1380,13 @@ async function cloudLoad(){
   // ym membership is its OWN row (0012), orthogonal to the cashflow 区分 — so one account can
   // be a 会計士 in jjcashflow AND a 主办方 here. We never write profile.role from this app.
   const cols='role,status,email';
-  let {data:mem}=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
+  /* public_name 是 0019 加的列。单独容错读：迁移还没应用时整条 select 会 42703 失败，
+     而失败的 select 和「这个账号没有 ym_member 行」在客户端长得一模一样 ——
+     那会让一个**已经批准**的主办掉进下面的自动登记分支，屏幕上显示「等待管理员批准」。 */
+  let {data:mem,error:memErr}=await sb.from('ym_member').select(cols+',public_name')
+    .eq('user_id',SESSION.user.id).maybeSingle();
+  if(memErr){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
+    mem=re.data||null;S.noJoin=1;}                 // 0019 还没跑 —— 用户页会说出来
   if(!mem&&!admin){ // first visit: register for ym (the server forces status='pending')
     /* ⚠ 两个门不能汇进同一个队列。以前这里是「任何已登录且没有 ym_member 行的 session
        一律插一行 pending 主办方」—— 而 ym 首页唯一的登录按钮指向 /organizer/，所以一个
@@ -1217,14 +1399,29 @@ async function cloudLoad(){
     const {data:myCodes}=await sb.from('ym_code').select('role,revoked').eq('member',SESSION.user.id);
     const live=(myCodes||[]).filter(c=>!c.revoked);
     if(live.length&&!live.some(c=>c.role==='H')){
-      PROFILE=null;S.memberOnly=1;S.auth=true;stopPoll();render();return;   // 不登记、不进队列
+      memberOnly('bound');return;                          // 不登记、不进队列
+    }
+    /* ⚠ 上面那道门只认**已经绑过码**的人。owner 2026-07-28 报的正是漏掉的那一半：
+       「主办分配用户时指定了志愿者，邀请码注册以后却成了主办」—— 一个**刚拿到 16 位成员码
+       的新人**，此刻 ym_code 里 0 行，于是径直落进下面的 INSERT 变成 pending 主办方；
+       接着 redeemInvite() 打的又是管理员那张 ym_invite 表（码形如 YM-xxxx-xxxx-xxxx），
+       16 位成员码在那里永远 invalid。人就卡在管理员的待批队列里，还长着「主办方」的标签。
+       **码上写着什么身份，就只能是什么身份** —— 所以成员码的形状一出现，这条路就到此为止：
+       能绑就绑到发码的那个主办名下，绑不上也**绝不**改道去申请当主办。 */
+    const pend=readPendingCode();
+    const minv=pend?memberInvite(pend.code):'';
+    if(minv){
+      const {data:b}=await sb.rpc('ym_bind_code',{p_invite:minv});
+      const r=b&&b.r;
+      if(r==='ok'||r==='already'){clearPendingCode();memberOnly('bound');return;}
+      memberOnly('badcode');return;
     }
     const ins=await sb.from('ym_member').insert({user_id:SESSION.user.id}).select(cols).maybeSingle();
     mem=ins.data||null;
     if(ins.error&&ins.error.code!=='23505')toast('注册失败：'+ins.error.message);
     if(!mem){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();mem=re.data||null;}
   }
-  S.memberOnly=0;
+  S.memberOnly=0;S.memberWhy='';
   PROFILE=mem?Object.assign({},mem,{is_admin:admin}):(admin?{status:'none',role:'',is_admin:true}:null);
   // An invite code entered at signup is redeemed on the first real session. It is bound to the
   // address that typed it and expires, so signing in as somebody else on a shared device can
@@ -1237,7 +1434,7 @@ async function cloudLoad(){
       if(re.data)PROFILE=Object.assign({},re.data,{is_admin:PROFILE.is_admin});}
   }
   if(!canCloud()){startPoll();render();return;}   // pending → watch for the admin's approval
-  stopPoll();loadCodes().then(pushShares);loadPending();loadLedger(1);
+  stopPoll();loadCodes().then(pushShares);loadPending();loadLedger(1);loadJoin();
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
   if(error){toast('云端读取失败：'+error.message);render();return;}
   const cloudEvs=(rows||[]).filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
@@ -1310,6 +1507,22 @@ function readPendingCode(){
 function clearPendingCode(){try{localStorage.removeItem(INV_KEY);}catch(e){}}
 async function redeemInvite(code,quiet){
   if(!sb||!SESSION)return 'no-session';
+  /* 先按形状分流。这一条也是**已经被错登记成 pending 主办**的人自救的唯一出路：
+     他们手里的 16 位成员码打 ym_redeem_invite 永远回 invalid，屏幕上只有一句
+     「邀请码无效或已用完」—— 码明明是好的，人却怎么试都进不去。 */
+  const minv=memberInvite(code);
+  if(minv){
+    const {data:b}=await sb.rpc('ym_bind_code',{p_invite:minv});
+    const r=b&&b.r;
+    if(r==='ok'||r==='already'){
+      clearPendingCode();
+      if(!quiet)toast('这是成员邀请码 —— 已经把你绑到发码的主办方名下了');
+      memberOnly('bound');return 'member';
+    }
+    if(!quiet)toast(r==='slow'?'试得太频繁了，请过一会儿再来'
+      :'这串是成员邀请码（志愿者 / 嘉宾 / 捐赠者），但它已经用过或过期了 —— 请找主办方重发一个');
+    return 'member-bad';
+  }
   const {data,error}=await sb.rpc('ym_redeem_invite',{p_code:code});
   if(error){if(!quiet)toast('邀请码校验失败：'+error.message);return 'error';}
   if(data==='ok'||data==='already'||data==='invalid')clearPendingCode();  // never auto-retry
@@ -1588,8 +1801,12 @@ const $=id=>document.getElementById(id);
 function render(){
   const navItems=[['desk','工作台'],['sheet','计划'],['people','用户'],['lib','资产库'],['post','发布']];
   if(PROFILE&&PROFILE.is_admin)navItems.push(['admin','管理']);
+  // 待批申请 / 刚注册的人在**任何**页面都要看得见 —— 只长在 用户 页里的提醒，等于要主办
+  // 自己想起来去点一下（2026-07-27 可达性复查：没有路径 = 没做完）。
+  const inbox=peopleInbox();
   const nav=navItems.map(([k,l])=>
-    `<button class="${S.view===k||(k==='sheet'&&S.view==='exec')?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
+    `<button class="${S.view===k||(k==='sheet'&&S.view==='exec')?'on':''}" onclick="go('${k}')">${l}${
+      k==='people'&&inbox?`<span class="navdot">${inbox>9?'9+':inbox}</span>`:''}</button>`).join('');
   let body='';
   if(S.view==='sheet')body=viewSheet();
   else if(S.view==='desk')body=viewDesk();
@@ -1662,6 +1879,18 @@ function authSheet(){
      （onAuthStateChange 里已经把它挡在 cloudLoad 之前了，但渲染分支的顺序是另一道门。） */
   else if(S.authRecovery)inner=authNewPw(true);
   // 成员点错门进来了 —— 明说，并把人送去该去的那一页。不登记、不排队。
+  else if(S.memberOnly&&S.memberWhy==='badcode')
+    inner=`<div style="font-size:13px;line-height:2">${ico('warn')}<b>${esc((SESSION&&SESSION.user.email)||'')}</b><br>
+      <span class="muted">你输入的是一串<b>成员邀请码</b>（志愿者 / 嘉宾 / 捐赠者），
+      但它已经用过、过期，或者打错了一位。</span></div>
+      <p class="note9">成员邀请码是主办方发给你的 16 位码，一周内有效、只能用一次。
+        请找发码给你的主办方重发一个，然后到「我的页面」注册 —— 你的身份和归属的主办方都由那串码决定，
+        在这里是改不了的。</p>
+      <a class="btn" style="display:block;text-align:center;margin-top:12px;text-decoration:none"
+        href="../member/#reg">${ico('go')}去成员页注册</a>
+      <button class="btn ghost sm" style="margin-top:12px" onclick="clearPendingCode();S.memberOnly=0;S.memberWhy='';cloudLoad()">
+        我其实是主办方 —— 去掉这串码</button>
+      <button class="btn ghost sm" style="margin-top:8px" onclick="doSignOut()">退出登录</button>`;
   else if(S.memberOnly)
     inner=`<div style="font-size:13px;line-height:2">${ico('person')}<b>${esc((SESSION&&SESSION.user.email)||'')}</b><br>
       <span class="muted">这是一个<b>成员</b>账号（志愿者 / 嘉宾 / 捐赠者），不是主办方账号。</span></div>
@@ -1709,8 +1938,12 @@ function authSheet(){
         value="${esc(S.authEmail||'')}" oninput="S.authEmail=this.value">
       <input id="au_pw" type="password" placeholder="密码" style="margin-bottom:8px"
         onkeydown="if(event.key==='Enter')doSignIn()">
-      <input id="au_code" placeholder="邀请码（可选 · 登录或注册都能用）" style="margin-bottom:10px"
+      <input id="au_code" placeholder="邀请码（可选 · 登录或注册都能用）" style="margin-bottom:6px"
         value="${esc(S.authCode||'')}" oninput="S.authCode=this.value">
+      ${/* 两种码长得不一样，说清楚，否则拿着成员码的人会在这一屏一直试 */''}
+      <p class="note9" style="margin:0 0 10px">这里填的是<b>主办方</b>邀请码（管理员发的，YM- 开头）。
+        主办方发给你的<b>16 位</b>码是<b>成员</b>邀请码 —— 志愿者 / 嘉宾 / 捐赠者请到
+        <a href="../member/#reg" style="color:var(--brass)">成员页</a>注册（在这里输也会自动送过去）。</p>
       <button class="btn" style="width:100%" onclick="doSignIn()">登录</button>
       <div style="text-align:center;margin-top:10px">
         <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.authTab='forgot';render()">忘记密码了</span></div>
@@ -1799,7 +2032,11 @@ function doSignUp(){
       S.authEmail=email;
       toast('这个邮箱已经注册过了 —— 请直接用它「登录」（忘了密码就点下面的「忘记密码了」）');return;}
     if(error){toast('注册失败：'+error.message);return;}
-    toast(data.session?(code?'注册成功，正在校验邀请码':'注册成功 — 等待管理员批准')
+    /* 拿着成员码在主办台注册的人**不是**在申请当主办 —— 别再对他说「等待管理员批准」。
+       账号建好后 cloudLoad() 会拿这串码去 ym_bind_code，把他绑到发码的那个主办名下。 */
+    const asMember=!!memberInvite(code);
+    toast(data.session?(asMember?'账号已建好，正在按邀请码把你绑到主办方名下'
+                        :code?'注册成功，正在校验邀请码':'注册成功 — 等待管理员批准')
                       :'确认邮件已发送，请查收后回来登录');
     S.auth=false;render();
   });
@@ -1817,7 +2054,7 @@ function recheck(){
 function doSignOut(){clearPendingCode();   // never carry a code across identities
   // …and never carry the previous host's volunteer data either: PENDING holds their members'
   // names and 确认完成 stays wired, so the next person on this device could flip a chip.
-  PENDING=[];CODES={};if(_pendT){clearInterval(_pendT);_pendT=null;}
+  PENDING=[];CODES={};JOINREQ=null;if(_pendT){clearInterval(_pendT);_pendT=null;}
   if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
 
 /* ---------- reuse prompts (read-time projections — the assets remember themselves) ---------- */
@@ -4162,29 +4399,54 @@ function adminLoad(){
   if(!canCloud()||!PROFILE||!PROFILE.is_admin){ADMIN={people:[],codes:[]};return;}
   // ym registrations only — cashflow client/accountant sign-ups stay in the 会计工作台 admin
   // screen. Which table a row is in IS the answer to "where did this registration come from".
+  /* 第三条查询是 owner ⑤ 的平台侧：ym_code 带着 host 和 member，管理员读得到全表
+     （0015:312 的 ym_code_admin policy）。有了它这一屏才答得出两个问题：
+       · 「这个编号是谁邀请的」—— 每一条成员账号后面写上归属的主办
+       · 「待批准里这个人到底是不是主办」—— 名下已经有成员码的人**不是**来申请当主办的，
+         他只是点错了门（ym 首页以前只有一个「主办登录」按钮）。批准他就等于凭空造了
+         一个主办：能铸码、能写 ym_doc、能把帖子发到公开首页。 */
   Promise.all([
     sb.from('ym_member').select('user_id,email,role,status,created_at').order('created_at',{ascending:false}),
-    sb.from('ym_invite').select('*').order('created_at',{ascending:false})
-  ]).then(([p,c])=>{
+    sb.from('ym_invite').select('*').order('created_at',{ascending:false}),
+    sb.from('ym_code').select('code,role,paid,host,member,revoked,bound_at')
+  ]).then(([p,c,k])=>{
     if(p.error)toast('读取用户失败：'+p.error.message);
     if(c.error)toast('读取邀请码失败：'+c.error.message);
-    ADMIN={people:p.data||[],codes:c.data||[]};render();
+    ADMIN={people:p.data||[],codes:c.data||[],mcodes:k.error?[]:(k.data||[])};render();
   });
+}
+// 这个 uid 名下有哪些成员编码（＝TA 是别的主办的志愿者/嘉宾/捐赠者）
+function adminCodesOf(uid){
+  return ((ADMIN&&ADMIN.mcodes)||[]).filter(x=>x.member===uid&&!x.revoked&&x.role!=='H');
+}
+// 主办用邮箱认（这一屏本来就是按邮箱列的）。故意不查 public_name：0019 没应用时
+// 多要一列会让整条 select 42703 失败，管理员那一屏会**整块变空**——比少一个名字糟得多。
+function adminHostName(uid){
+  const m=((ADMIN&&ADMIN.people)||[]).find(x=>x.user_id===uid);
+  return (m&&m.email)||String(uid||'').slice(0,8);
 }
 function viewAdmin(){
   if(!PROFILE||!PROFILE.is_admin)return `<div class="main"><div class="empty">仅管理员可见。</div></div>`;
   if(ADMIN===null){adminLoad();return `<div class="main"><div class="empty">读取中…</div></div>`;}
   const pend=ADMIN.people.filter(p=>p.status==='pending');
   const others=ADMIN.people.filter(p=>p.status!=='pending');
-  const pRow=p=>`<div class="rvrow" style="flex-wrap:wrap;gap:8px">
+  const pRow=p=>{
+    /* ⚠ 名下已经有成员编码的人**不是**来申请当主办的。这一行以前只写「来自 ym 注册 ·
+       主办方」，谁看都一样，顺手一批就凭空造出一个主办。现在说清楚 TA 是谁的成员，
+       并把「批准为主办方」换成一句需要确认的话。 */
+    const mine=adminCodesOf(p.user_id);
+    return `<div class="rvrow" style="flex-wrap:wrap;gap:8px">
     <span class="c2">${esc(p.email||p.user_id.slice(0,8))}
-      <span class="lbl"> 来自 ym 注册 · 主办方</span></span>
+      <span class="lbl"> ${mine.length
+        ? '⚠ 这是<b>成员</b>账号 · '+esc(mine.map(x=>x.code).join('、'))+' · 主办：'+esc(adminHostName(mine[0].host))
+        : '来自 ym 注册 · 主办方'}</span></span>
     <span class="st ${p.status==='approved'?'on':'off'}" style="font-size:10.5px">${
       p.status==='approved'?'● 已批准':p.status==='pending'?'○ 待批准':'✕ 已停用'}</span>
     <span style="display:flex;gap:6px;flex:none">
-      ${p.status!=='approved'?`<button class="btn sm" onclick="adminSet('${p.user_id}','approved')">批准为主办方</button>`:''}
+      ${p.status!=='approved'?`<button class="btn sm${mine.length?' ghost':''}"
+        onclick="${mine.length?`adminSetMember('${p.user_id}')`:`adminSet('${p.user_id}','approved')`}">批准为主办方</button>`:''}
       ${p.status!=='rejected'&&p.user_id!==SESSION.user.id?`<span class="lnkdel" onclick="adminSet('${p.user_id}','rejected')">停用</span>`:''}
-    </span></div>`;
+    </span></div>`;};
   const cRow=c=>`<div class="rvrow" style="flex-wrap:wrap;gap:8px">
     <span class="c2 num" style="letter-spacing:.06em">${esc(c.code)}</span>
     <span class="lbl">主办方${c.note?' · '+esc(c.note):''}</span>
@@ -4205,10 +4467,45 @@ function viewAdmin(){
         <button class="btn sm" onclick="adminNewCode()">生成邀请码</button>
         <p class="note9">邀请码只有管理员看得见；使用后次数自动递减。</p></div>
     </div>
-    <div class="sec">全部账号 ${others.length}</div>
+    <div class="sec">全部主办账号 ${others.length}</div>
     <div class="rvsec">${others.map(pRow).join('')||'<div class="note9">空</div>'}</div>
+    ${adminMembersBlock()}
     <p class="note9">管理员不能在这里被创建或撤销 — is_admin 只能在数据库里改（0012 的硬规则）。</p>
   </div>`;
+}
+/* owner ⑤ 的平台侧：「这个参加者来自谁的邀请」。按主办分组，每条只显示编号 · 身份 ·
+   注册与否 —— **不显示成员的邮箱**（0014 §7：主办按名册上的名字认人，平台不做身份汇总；
+   要查具体人走数据库）。这一屏只回答归属，不回答「他是谁」。 */
+function adminMembersBlock(){
+  const rows=((ADMIN&&ADMIN.mcodes)||[]).filter(x=>x.role!=='H');
+  if(!rows.length)return `<div class="sec">成员账号</div>
+    <div class="rvsec"><div class="note9">还没有主办给成员发过邀请码。</div></div>`;
+  const byHost={};rows.forEach(x=>{(byHost[x.host]=byHost[x.host]||[]).push(x);});
+  const groups=Object.keys(byHost).map(h=>{
+    const list=byHost[h].sort((a,b)=>String(a.code).localeCompare(String(b.code)));
+    const on=list.filter(x=>x.member).length;
+    return `<div class="rvrow" style="flex-wrap:wrap;gap:8px">
+      <span class="c2">${esc(adminHostName(h))}
+        <span class="lbl"> 名下 ${list.length} 个编号 · 已注册 ${on}</span></span>
+      <span style="flex:1 0 100%;font-size:11px;color:var(--muted);line-height:1.9">${
+        list.map(x=>`${esc(x.code)}${x.revoked?'（已停用）':x.member?'✓':'（待注册）'}`).join(' · ')}</span>
+    </div>`;}).join('');
+  return `<div class="sec">成员账号 — 谁在谁名下 ${rows.length}</div>
+    <div class="rvsec">${groups}
+      <p class="note9">成员的注册申请<b>不进这一屏</b> —— 它们直接落到对应主办的「用户」页
+        （owner 2026-07-28）。这里只回答归属。</p></div>`;
+}
+/* 把一个别人家的成员批成主办方，是这一屏能犯的最贵的错（TA 立刻能铸码、能写 ym_doc、
+   能把帖子发到公开首页）。所以这一步要多问一句 —— 并且给出真正该做的那件事。 */
+function adminSetMember(uid){
+  const mine=adminCodesOf(uid);
+  ask({title:'这是一个成员账号',
+    note:'这个人是「'+adminHostName(mine[0]&&mine[0].host)+'」名下的成员（'+mine.map(x=>x.code).join('、')+'）。'
+      +'TA 多半只是点错了门 —— ym 首页以前只有一个「主办登录」。批准为主办方等于凭空多一个'
+      +'能铸码、能发布到公开首页的人。真要让 TA 当主办，请在下面输入 确认 两个字。',
+    fields:[{label:'输入「确认」继续',ph:'确认'}],ok:'仍然批准为主办方',
+    fn:v=>{if((v[0]||'').trim()!=='确认'){toast('已取消 —— 请让 TA 去 /member/ 用自己的邀请码登录');return;}
+      adminSet(uid,'approved');}});
 }
 function adminSet(uid,status){
   if(!status)return;

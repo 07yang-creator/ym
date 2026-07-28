@@ -32,6 +32,23 @@
   .nav a.login{font-size:12.5px;letter-spacing:.1em;background:var(--brass-l);color:#16241E;
     font-weight:700;border-radius:4px;padding:8px 15px;white-space:nowrap}
   @media(max-width:640px){.nav a.lk{display:none}}
+  /* 登录按角色分开 (owner 2026-07-28)。以前这里只有一个「主办登录」，而志愿者/嘉宾/捐赠者
+     用的是另一个 app —— 点错门的人会被当成主办方申请排进管理员的待批队列。
+     <details> 而不是 JS：一个静态页不该为了一个下拉去养一段状态。 */
+  .who{position:relative}
+  .who>summary{list-style:none;cursor:pointer;font-size:12.5px;letter-spacing:.1em;
+    background:var(--brass-l);color:#16241E;font-weight:700;border-radius:4px;
+    padding:8px 15px;white-space:nowrap}
+  .who>summary::-webkit-details-marker{display:none}
+  .who[open]>summary{background:var(--stock)}
+  .who .sheet{position:absolute;right:0;top:calc(100% + 8px);z-index:30;width:236px;
+    background:var(--paper);border:1px solid var(--line);border-radius:8px;
+    box-shadow:0 10px 30px rgba(0,0,0,.28);padding:6px;color:var(--ink)}
+  .who .sheet a{display:block;padding:9px 11px;border-radius:5px;font-size:13px;line-height:1.5}
+  .who .sheet a:hover{background:#EFE8D6}
+  .who .sheet a b{display:block;font-weight:700}
+  .who .sheet a span{font-size:11px;color:var(--muted)}
+  .who .sheet hr{border:0;border-top:1px solid var(--line);margin:5px 2px}
   /* hero = 组织介绍 */
   .hero{background:var(--felt);color:var(--stock);padding:52px 0 58px}
   .hero .k{font-size:11px;letter-spacing:.3em;color:var(--brass-l)}
@@ -97,7 +114,16 @@
     <a class="lk" href="#events">活动</a>
     <a class="lk" href="#articles">文章</a>
     <a class="lk" href="#news">新闻</a>
-    <a class="login" href="organizer/">主办登录</a>
+    <details class="who">
+      <summary>登录 / 加入</summary>
+      <div class="sheet">
+        <a href="member/"><b>成员登录</b><span>志愿者 · 嘉宾 · 捐赠者 · 记者</span></a>
+        <a href="member/#reg"><b>我有邀请码，还没注册</b><span>主办方给你的 16 位码</span></a>
+        <a href="member/#apply"><b>想加入沙龙</b><span>知道主办方的名字就能申请</span></a>
+        <hr>
+        <a href="organizer/"><b>主办登录</b><span>办活动的人 · 需管理员发码</span></a>
+      </div>
+    </details>
   </nav>
 </header>
 
@@ -189,7 +215,8 @@
 <footer>
   <div class="wrap">
     <div class="brand">ym · 缘满沙龙</div>
-    <div>用心经营的相遇。 · <a href="organizer/">主办方入口</a> · <a href="member/">志愿者入口</a></div>
+    <div>用心经营的相遇。 · <a href="member/">成员入口</a>（志愿者 · 嘉宾 · 捐赠者） ·
+      <a href="member/#apply">申请加入</a> · <a href="organizer/">主办方入口</a></div>
     <div style="margin-top:6px;opacity:.7">© 2026 ym.jjconnect.tokyo</div>
   </div>
 </footer>
