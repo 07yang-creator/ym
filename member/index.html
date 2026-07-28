@@ -259,13 +259,20 @@ function applyHtml(){
     <div class="lbl" style="margin-bottom:10px">申请加入</div>
     <div class="sub" style="font-size:12px;color:var(--muted);margin-bottom:10px">
       你需要知道主办方对外用的名字 —— 请照着 TA 报给你的那个名字打。</div>
+    ${/* ⚠ 四个框都必须自己带 value 并 oninput 回写。任何一次 render（切类型、提交失败、
+          _busy 变化）都会整块重画，而主办方的名字**必须一字不差手打**、全站又不给任何提示 ——
+          清空它等于让人从头猜一遍。复查 2026-07-28。 */''}
     <div style="display:flex;gap:8px;margin-bottom:10px">${rb('V','我想当志愿者')}${rb('P','我想参加活动')}</div>
     <input id="ah" placeholder="主办方的名字" autocomplete="off" autocorrect="off"
-      spellcheck="false" style="margin-bottom:8px">
-    <input id="an" placeholder="怎么称呼你" autocomplete="off" style="margin-bottom:8px">
+      spellcheck="false" style="margin-bottom:8px"
+      value="${esc(APPLY.host||'')}" oninput="APPLY.host=this.value">
+    <input id="an" placeholder="怎么称呼你" autocomplete="off" style="margin-bottom:8px"
+      value="${esc(APPLY.name||'')}" oninput="APPLY.name=this.value">
     <input id="ae" type="email" placeholder="你的邮箱（主办方用它联系你）" autocapitalize="off"
-      spellcheck="false" style="margin-bottom:8px">
+      spellcheck="false" style="margin-bottom:8px"
+      value="${esc(APPLY.email||'')}" oninput="APPLY.email=this.value">
     <input id="am" placeholder="一句话：你是怎么知道我们的（可留空）" style="margin-bottom:10px"
+      value="${esc(APPLY.note||'')}" oninput="APPLY.note=this.value"
       onkeydown="if(event.key==='Enter')doApply()">
     <button class="btn" style="width:100%" ${_busy?'disabled':''} onclick="doApply()">${_busy?'提交中…':'提交申请'}</button>
     <p class="note">现在<b style="color:var(--brass)">不需要</b>设密码，也不会给你建账号
@@ -277,6 +284,8 @@ async function doApply(){
   if(_busy)return;
   const g=i=>{const el=$(i);return el?el.value.trim():'';};
   const host=g('ah'),name=g('an'),email=g('ae').toLowerCase(),note=g('am');
+  // 先存起来再说：下面任何一条失败路径都会 render()，不存就全清空了
+  APPLY.host=host;APPLY.name=name;APPLY.email=email;APPLY.note=note;
   // 只校验**申请人自己填的东西的形状**。主办方的名字除了「不能空」以外一个字都不判断：
   // 任何一句「这个名字不对」都是在回答「哪些主办存在」。
   if(!host){toast('请填主办方的名字');return;}
@@ -289,7 +298,7 @@ async function doApply(){
     if(status===429){toast('试得太频繁了，请过一会儿再来');render();return;}
     if(status!==200){toast('提交失败，请稍后再试（这跟你填的内容无关）');render();return;}
     // 名字对上没对上、主办批不批 —— 到这里为止我们都不说，因为说了就等于泄露。
-    APPLY.sent=true;render();
+    APPLY.sent=true;APPLY.host='';APPLY.name='';APPLY.email='';APPLY.note='';render();
   }catch(e){_busy=false;toast('网络不太稳，请重试');render();}
 }
 // Signed in but no 编码 on this account. THE ESCAPE HATCH for somebody who already had an account

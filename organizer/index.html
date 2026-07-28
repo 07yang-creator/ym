@@ -820,15 +820,18 @@ function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e)
 // client/accountant with no ym membership is not an organizer here.
 function canCloud(){return !!(sb&&SESSION&&PROFILE
   &&(PROFILE.status==='approved'||PROFILE.is_admin));}
+// ⚠ 必须**可等**。以前它既不是 async 也不 return，于是 `await cloudPushAll()` 只等了一个
+//    microtask —— joinApprove 里那句「名册要先上云」的注释是不成立的，人还没上云就往下走了。
 function cloudPushAll(){
-  if(!canCloud())return;
+  if(!canCloud())return Promise.resolve();
   // the 教学示例 tutorial event is seeded locally in every browser — never upload it as if it
   // were the salon's real data
   const rows=STORE.events.filter(e=>!e.demo)
     .map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
     .concat([{owner:SESSION.user.id,kind:'library',doc_id:'lib',payload:STORE.library}]);
-  sb.from('ym_doc').upsert(rows).then(r=>{if(r.error)toast('云同步失败：'+r.error.message);});
-  pushShares();
+  return sb.from('ym_doc').upsert(rows)
+    .then(r=>{if(r.error)toast('云同步失败：'+r.error.message);})
+    .then(()=>pushShares());
 }
 /* 任务 chips carry a FREE-TEXT 负责人 (c.role) and no refId, so until now every 要做的事 was
    invisible to the person who has to do it. Match by name — but deliberately DO NOT stamp refId
@@ -988,22 +991,38 @@ function loadJoin(){
     if(error){JOINREQ=[];S.noJoin=1;render();return;}
     S.noJoin=0;JOINREQ=data||[];render();});
 }
+/* 已读游标 = 一个时间戳 + 一份**逐个**已读的编号。
+   ⚠ 只有时间戳是不够的（复查 2026-07-28）：同一天注册的两个人，点开第一个就把基线推到
+     「现在」，第二个立刻从 freshBlock、行上的「新注册」标、导航角标三处同时消失，
+     而且基线单调递增、没有撤销入口 —— 那个「刚注册」的信号永远回不来了，
+     而它正是 owner 需求④ 的全部提示面。 */
 const SEEN_KEY='jjym_seen_reg';
-function seenAt(){try{const o=JSON.parse(localStorage.getItem(SEEN_KEY)||'{}');
-  return (SESSION&&o[SESSION.user.id])||0;}catch(e){return 0;}}
-function markSeen(quiet){
-  try{const o=JSON.parse(localStorage.getItem(SEEN_KEY)||'{}');
-    if(SESSION)o[SESSION.user.id]=Date.now();
-    localStorage.setItem(SEEN_KEY,JSON.stringify(o));}catch(e){}
+function seenRaw(){try{return JSON.parse(localStorage.getItem(SEEN_KEY)||'{}')||{};}catch(e){return {};}}
+function seenMine(){const o=seenRaw();const k=SESSION&&SESSION.user.id;
+  const v=k?o[k]:null;
+  // 旧格式是一个裸数字，平滑迁移
+  return (typeof v==='number')?{at:v,codes:{}}:(v&&typeof v==='object'?{at:v.at||0,codes:v.codes||{}}:null);}
+function seenAt(){const m=seenMine();return m?m.at:0;}
+function seenWrite(m){try{const o=seenRaw();if(SESSION)o[SESSION.user.id]=m;
+  localStorage.setItem(SEEN_KEY,JSON.stringify(o));}catch(e){}}
+function markSeen(quiet){                       // 「知道了」= 整批
+  const m=seenMine()||{at:0,codes:{}};
+  seenWrite({at:Date.now(),codes:{}});
   if(!quiet)render();
+}
+function markSeenOne(code){                     // 点开某一个人 = 只标这一个
+  const m=seenMine()||{at:Date.now(),codes:{}};
+  m.codes[String(code||'')]=1;seenWrite(m);
 }
 // 上次看过之后才绑上的码。第一次打开先把「现在」记下来当基线，否则历史上所有已注册的人
 // 会一起被标成「新」—— 那等于没有提醒。
+function isFresh(a){
+  const m=seenMine();if(!m||!m.at)return false;
+  return !!(a&&!a.revoked&&a.bound_at&&Date.parse(a.bound_at)>m.at&&!m.codes[a.code]);
+}
 function freshRegs(){
-  const t=seenAt();
-  if(!t){markSeen(true);return [];}
-  return Object.keys(CODES).map(k=>CODES[k])
-    .filter(a=>a&&!a.revoked&&a.bound_at&&Date.parse(a.bound_at)>t);
+  if(!seenMine()){seenWrite({at:Date.now(),codes:{}});return [];}
+  return Object.keys(CODES).map(k=>CODES[k]).filter(isFresh);
 }
 function joinPending(){return (JOINREQ||[]).filter(r=>r.status==='pending');}
 function peopleInbox(){return joinPending().length+freshRegs().length;}
@@ -1016,11 +1035,18 @@ function setPubName(){
     fields:[{label:'公开名称',val:pubName(),ph:'例如：缘满沙龙'}],ok:'保存',
     fn:async(v)=>{
       const n=(v[0]||'').trim().slice(0,60);
-      const {data,error}=await sb.from('ym_member').update({public_name:n})
-        .eq('user_id',SESSION.user.id).select('public_name');
-      if(error){toast('保存失败：'+error.message+(/public_name/.test(error.message)?'（0019 迁移还没应用）':''));return;}
-      if(!data||!data.length){toast('没有保存 —— 服务器没接受这次修改');return;}
-      PROFILE=Object.assign({},PROFILE,{public_name:data[0].public_name});
+      /* ⚠ 不能再走裸 update。这一列是**路由键**：ym_member_upd_self 不限列、
+         0012 的触发器只钉 status/role/email，于是任何一个已批准的主办都能把别人对外报的
+         名字占过来 —— 对方名下的自助申请要么整份落进占名者的待批列表（连邮箱带留言），
+         要么因为「同名都不路由」两边一起静默归零。0020 把这一列钉进触发器，
+         只留这一个入口，撞名就拒绝**这次写**（不说是谁占的）。 */
+      const {data,error}=await sb.rpc('ym_set_public_name',{p_name:n});
+      if(error){toast('保存失败：'+error.message
+        +(/function|schema cache/i.test(error.message||'')?'（0020 迁移还没应用）':''));return;}
+      if(data==='taken'){toast('这个名字在这边不能用 —— 请换一个（比如加上地区或全称）');return;}
+      if(data!=='ok'){toast(data==='invalid'?'这个名字不能用（太长，或者去掉空白后是空的）'
+        :'没有保存 —— 服务器没接受这次修改');return;}
+      PROFILE=Object.assign({},PROFILE,{public_name:n});
       render();toast(n?'公开名称已设为「'+n+'」':'已清空公开名称 —— 现在没人能申请到你名下');}});
 }
 function joinBlock(){
@@ -1033,12 +1059,28 @@ function joinBlock(){
     <div class="note9">读取待批申请…</div></div>`;}
   const pend=joinPending();
   const nm=pubName();
-  const rows=pend.map(r=>`<div class="jrq">
+  /* 已经处理过的也要看得到。ym_join_list() 一直返回 status/code/host_note/decided_at，
+     以前一个字段都没画 —— 而婉拒那个对话框对主办承诺过「下面这句只有你自己看得到」，
+     写进库了却没有任何界面读它，等于没做（规矩 8）。
+     还有一层：ym_join_one_pending 是 `where status='pending'` 的**部分**唯一索引，
+     被婉拒的人第二天可以再投一条干干净净的申请 —— 主办得看得到自己上次写了什么。 */
+  const done=(JOINREQ||[]).filter(r=>r.status!=='pending');
+  const noteFor=em=>{const h=done.find(r=>String(r.email||'').toLowerCase()===String(em||'').toLowerCase()
+    &&r.status==='rejected'&&r.host_note);return h?h.host_note:'';};
+  const rows=pend.map(r=>{const before=noteFor(r.email);
+    return `<div class="jrq">
     <div class="jn">${esc(r.name||r.email)}
       <span class="lbl"> ${esc(r.want_role==='P'?'想参加活动（嘉宾）':'想当志愿者')}</span></div>
     <div class="jm">${esc(r.email)}${r.note?' · '+esc(r.note):''} · ${fmtDate(String(r.created_at||'').slice(0,10))}申请</div>
+    ${before?`<div class="jm" style="color:var(--alarm)">⚠ 你以前婉拒过这个邮箱，当时写的是：${esc(before)}</div>`:''}
     <div class="ja"><button class="btn sm" onclick="joinApprove('${escJs(r.id)}')">批准 · 生成邀请码</button>
       <span class="bk" style="color:var(--muted);cursor:pointer;font-size:11px" onclick="joinDecline('${escJs(r.id)}')">婉拒</span></div>
+  </div>`;}).join('');
+  const doneRows=done.map(r=>`<div class="rvrow" style="flex-wrap:wrap;gap:6px">
+    <span class="c2">${esc(r.name||r.email)}
+      <span class="lbl"> ${r.status==='approved'?'✓ 已批准'+(r.code?' · '+esc(r.code):''):'✕ 已婉拒'}
+        ${r.decided_at?' · '+esc(String(r.decided_at).slice(0,10)):''}</span></span>
+    ${r.host_note?`<span style="flex:1 0 100%;font-size:11px;color:var(--muted)">你的备注：${esc(r.host_note)}</span>`:''}
   </div>`).join('');
   return `<div class="rvsec" style="margin-bottom:10px">
     <div class="hd"><span class="lbl">待批申请${pend.length?' · '+pend.length:''}</span>
@@ -1048,7 +1090,11 @@ function joinBlock(){
       ?'现在没有人在等你批。<b>自助申请</b>是这样进来的：对方在成员页手打你的公开名称「'+esc(nm)+'」，'
         +'一字不差才会落到你名下 —— 我们不提供主办目录，也不会提示「找不到该主办」（有意的）。'
       :'<b style="color:var(--alarm)">你还没设公开名称，所以没有人申请得到你名下。</b>'
-        +'点上面那行设一个 —— 就是你平时对外报的那个名字。'}</div>`}</div>`;
+        +'点上面那行设一个 —— 就是你平时对外报的那个名字。'}</div>`}
+    ${done.length?`<div class="lbl" style="margin:10px 0 4px;padding-top:8px;border-top:1px solid var(--line)">
+        已处理 · ${done.length}<span class="bk" style="color:var(--brass);cursor:pointer;margin-left:8px"
+          onclick="S.joinDone=!S.joinDone;render()">${S.joinDone?'收起':'展开'}</span></div>
+      ${S.joinDone?doneRows:''}`:''}</div>`;
 }
 function freshBlock(){
   const fr=freshRegs();if(!fr.length)return '';
@@ -1059,7 +1105,7 @@ function freshBlock(){
       return `<div class="jrq"><div class="jn">${esc(p?p.name:'（名册里已删除）')}
         <span class="lbl"> ${esc(a.code)} · ${esc(ROLE_LBL[roleKey(a)]||'')}</span></div>
         <div class="jm">用你发的邀请码注册好了 · ${esc(String(a.bound_at||'').slice(0,16).replace('T',' '))}</div>
-        ${p?`<div class="ja"><button class="btn ghost sm" onclick="markSeen();S.pOpen='${escJs(p.id)}';loadAccepted();render()">打开 TA 的资料</button></div>`:''}
+        ${p?`<div class="ja"><button class="btn ghost sm" onclick="markSeenOne('${escJs(a.code)}');S.pOpen='${escJs(p.id)}';loadAccepted();render()">打开 TA 的资料</button></div>`:''}
       </div>`;}).join('')}</div>`;
 }
 async function joinApprove(id){
@@ -1077,15 +1123,34 @@ async function joinApprove(id){
                  origin:'join',originAt:r.created_at};
       STORE.library.resources.push(rec);save();
       const {data,error}=await sb.rpc('ym_join_approve',{p_id:id,p_ref:rec.id});
-      if(error||!data||data.r!=='ok'){
-        // 铸不出码就把名册记录撤回去，别留一条永远没有账号的空记录
+      /* ⚠ 「服务端拒绝了」和「服务端做了但我没收到」不是一件事。
+         supabase-js 在断网 / 502 / 切网时回 {data:null,error}，而那个事务**可能已经提交**
+         （码已经铸出来、申请已经置 approved）。以前这里无条件把名册记录撤回 ——
+         而 CODES 是按 ref_id 建索引的，记录一没，codeOf() 就查不到，
+         「重发邀请码」那个唯一的入口也就进不去了：一串只显示一次的明文码，
+         从此没有任何界面能到达它。 */
+      const said=data&&data.r;                    // 服务端明确答复过
+      if(said&&said!=='ok'){
         STORE.library.resources=STORE.library.resources.filter(x=>x.id!==rec.id);save();
-        toast(data&&data.r==='already'?'这条申请已经处理过了'
-             :data&&data.r==='full'?'名额已满（500）'
-             :'批准失败：'+((error&&error.message)||'请重试'));
+        toast(said==='already'?'这条申请已经处理过了'
+             :said==='full'?'名额已满（500）'
+             :said==='exists'?'这个人已经有编号了'
+             :'批准失败，请重试');
         loadJoin();return;}
-      await cloudPushAll();                       // 名册要先上云，TA 注册后才看得到自己
-      await loadCodes();await loadJoin();
+      if(!said){
+        // 传输层失败：**留着**名册记录，去问一次真相，让主办看得到实际状态
+        await loadCodes();await loadJoin();
+        if(codeOf(rec)){
+          toast('网络断了一下，但编号已经生成 —— 用「重发邀请码」拿一串新的给 TA');
+          _grant={pid:rec.id,role:r.want_role,invite:'',busy:false,err:''};render();grantPaint();return;}
+        STORE.library.resources=STORE.library.resources.filter(x=>x.id!==rec.id);save();
+        toast('没收到服务器回应，这次批准没有生效 —— 请重试');render();return;}
+      /* 次序要和 codeIssue() 一致：**先** loadCodes()（把新码读进 CODES），**再**推。
+         pushShares() 是按 CODES[p.id] 组装的，反过来的话新人整个被跳过，ym_share 一行都不写 ——
+         对方注册成功后看到的是「主办方还没有发布内容给你，或者已经收回了这个页面的权限」。 */
+      await loadCodes();
+      await cloudPushAll();                       // 名册上云 + pushShares（现在是真的可等）
+      await loadJoin();
       // 直接把码摊开在发码窗口里 —— 这串码只显示这一次
       _grant={pid:rec.id,role:r.want_role,invite:data.invite,busy:false,err:''};
       render();grantPaint();
@@ -1138,7 +1203,7 @@ function peopleRow(p,cat){
     : `${esc(p.role||'')}${t.n?' · 完成 '+t.n+' 件 · '+(t.hours%1?t.hours.toFixed(1):t.hours)+'h':''}${t.cost?' · 自费 '+yen(t.cost):''}`;
   const pend=a?PENDING.filter(r=>String(r.member_code||'')===a.code).length:0;
   // 上次看过之后才注册进来的人 —— 「使用中」看不出新旧，一个标记就够（0019 的 bound_at）
-  const isNew=a&&a.bound_at&&seenAt()&&Date.parse(a.bound_at)>seenAt();
+  const isNew=isFresh(a);
   return `<div class="prow${S.pOpen===p.id?' on':''}" onclick="S.pOpen=S.pOpen===
       '${escJs(p.id)}'?null:'${escJs(p.id)}';loadAccepted();render()">
     <span class="pn">${esc(p.name)}${dtag(p,1)}</span>
@@ -1360,13 +1425,16 @@ function memberInvite(s){
   return MEMBER_INV_RE.test(x)?x:'';
 }
 /* 这个账号是**成员**，不是主办方 —— 不登记、不排队、不改道，直接告诉他去哪儿。
-   why: 'bound' = 已经绑到某个主办名下了；'badcode' = 手里那串是成员码但用不了。 */
-function memberOnly(why){
+   why: 'bound' = 已经绑到某个主办名下了；'badcode' = 手里那串像成员码但用不了；
+        'down'  = 一时连不上，别下结论。
+   ⚠ withdraw 必须由调用点决定，不能看 why。复查 2026-07-28：这句 delete 曾经是无条件的，
+     于是「已经正经排队申请当主办的人，在等待屏那个码框里粘了别人发的成员码」也会被删掉
+     **那份真的主办申请** —— 而且她再也建不回来（重载时上面那道门看到她名下有 live 码就
+     直接 return，ym_redeem_invite 没有 ym_member 行会回 'no-profile'，那个码框也再看不到）。
+     只有 cloudLoad 那个**自动**入口能确定「这一行必是点错门留下的」（那时 mem 本来就是 null）。 */
+function memberOnly(why,withdraw){
   PROFILE=null;S.memberOnly=1;S.memberWhy=why||'bound';S.auth=true;stopPoll();
-  /* 以前点错门的人已经在 ym_member 里留下了一行 pending —— 那一行现在还挂在管理员的
-     「待批准」里，看上去和真主办申请一模一样。绑定成功了就顺手撤回它（0019 给了
-     「撤回自己还没被批准的申请」这一条 delete policy；已批准的行删不掉）。 */
-  if(why==='bound'&&sb&&SESSION)
+  if(withdraw&&sb&&SESSION)
     sb.from('ym_member').delete().eq('user_id',SESSION.user.id).eq('status','pending').then(()=>{});
   render();
 }
@@ -1409,12 +1477,31 @@ async function cloudLoad(){
        **码上写着什么身份，就只能是什么身份** —— 所以成员码的形状一出现，这条路就到此为止：
        能绑就绑到发码的那个主办名下，绑不上也**绝不**改道去申请当主办。 */
     const pend=readPendingCode();
-    const minv=pend?memberInvite(pend.code):'';
-    if(minv){
-      const {data:b}=await sb.rpc('ym_bind_code',{p_invite:minv});
-      const r=b&&b.r;
-      if(r==='ok'||r==='already'){clearPendingCode();memberOnly('bound');return;}
+    /* ⚠ 码是**绑在打字的那个地址上**的，这道门下面 1443 那句本来就有，新分支一开始漏了。
+       共用设备上的后果是实的：A 在登录框里粘了成员码但登录失败（doSignIn 在
+       signInWithPassword **之前**就写了 INV_KEY），同一浏览器 B 登进来 → 用 **B 的 session**
+       把 A 的码烧掉（ym_redeem_core 只认 auth.uid()，凭证上根本没有地址列）。
+       A 的编号永久归 B，明文也随 ym_code_secret 一起删了。 */
+    const mine=pend&&(pend.email||'').toLowerCase()===String(SESSION.user.email||'').toLowerCase();
+    if(pend&&!mine)clearPendingCode();
+    const minv=mine?memberInvite(pend.code):'';
+    /* 形状对不上也不能改道。少一位、多一位、把 O 打成 0（这两个字符恰恰不在字母表里）——
+       全都会让 memberInvite() 回空串，然后径直落到下面那句 INSERT，又是一行 pending
+       「主办方」，正是 owner 报的那个症状；而管理员那道 ⚠ 提示按「名下已有 ym_code」筛，
+       新人名下 0 行，恰好盖不住这一半。所以：**像一串邀请码**就到此为止，让人自己确认
+       「我其实是主办方」才允许排队。 */
+    const rawPend=mine?String(pend.code||'').toUpperCase().replace(/[^0-9A-Z]/g,''):'';
+    if(!minv&&rawPend&&rawPend.length>=12&&rawPend.length<=20&&rawPend.slice(0,2)!=='YM'){
       memberOnly('badcode');return;
+    }
+    if(minv){
+      const {data:b,error:be}=await sb.rpc('ym_bind_code',{p_invite:minv});
+      const r=b&&b.r;
+      if(r==='ok'||r==='already'){clearPendingCode();memberOnly('bound',true);return;}
+      /* 传输失败 ≠ 你的码坏了。说成后者会害死人：那一屏写着「请找主办方重发一个」，
+         主办一按重发，ym_reissue_code 覆盖 ym_code_secret —— 手上**本来好好的**那串码
+         当场作废。所以只有服务端明确说 invalid 才下结论，其余一律「稍后再试」并留着码。 */
+      memberOnly(be||r==='slow'?'down':'badcode');return;
     }
     const ins=await sb.from('ym_member').insert({user_id:SESSION.user.id}).select(cols).maybeSingle();
     mem=ins.data||null;
@@ -1512,15 +1599,21 @@ async function redeemInvite(code,quiet){
      「邀请码无效或已用完」—— 码明明是好的，人却怎么试都进不去。 */
   const minv=memberInvite(code);
   if(minv){
-    const {data:b}=await sb.rpc('ym_bind_code',{p_invite:minv});
+    const {data:b,error:be}=await sb.rpc('ym_bind_code',{p_invite:minv});
     const r=b&&b.r;
     if(r==='ok'||r==='already'){
       clearPendingCode();
       if(!quiet)toast('这是成员邀请码 —— 已经把你绑到发码的主办方名下了');
-      memberOnly('bound');return 'member';
+      /* ⚠ 这里**不撤回** ym_member 那一行。从这条路进来的人可能是一个正经排队的主办申请人，
+         只是顺手粘了别人给的成员码 —— 替他删掉那份真申请，他再也建不回来。
+         只有 cloudLoad 那个自动入口能确定「那一行必是点错门留下的」。 */
+      memberOnly('bound',false);return 'member';
     }
-    if(!quiet)toast(r==='slow'?'试得太频繁了，请过一会儿再来'
-      :'这串是成员邀请码（志愿者 / 嘉宾 / 捐赠者），但它已经用过或过期了 —— 请找主办方重发一个');
+    if(be||r==='slow'){
+      if(!quiet)toast(be?'暂时连不上，请稍后再试（这跟你的码没关系）':'试得太频繁了，请过一会儿再来');
+      return 'member-down';                    // 码留着，别让人以为它坏了
+    }
+    if(!quiet)toast('这串是成员邀请码（志愿者 / 嘉宾 / 捐赠者），但它已经用过或过期了 —— 请找主办方重发一个');
     return 'member-bad';
   }
   const {data,error}=await sb.rpc('ym_redeem_invite',{p_code:code});
@@ -1878,6 +1971,16 @@ function authSheet(){
      排在后面就永远轮不到，那封信点进来只会看到「云同步已开启」，密码根本改不成。
      （onAuthStateChange 里已经把它挡在 cloudLoad 之前了，但渲染分支的顺序是另一道门。） */
   else if(S.authRecovery)inner=authNewPw(true);
+  // 连不上就说连不上 —— 千万别说成「你的码坏了」：那句话会让人去找主办重发，
+  // 而重发会把手上**本来好好的**那串码当场作废（ym_reissue_code 覆盖 ym_code_secret）。
+  else if(S.memberOnly&&S.memberWhy==='down')
+    inner=`<div style="font-size:13px;line-height:2">${ico('wait')}<b>${esc((SESSION&&SESSION.user.email)||'')}</b><br>
+      <span class="muted">一时连不上服务器，<b>没能</b>校验你的邀请码。</span></div>
+      <p class="note9">你的码<b style="color:var(--brass)">没有</b>被用掉，也没有过期 ——
+        <b>先别</b>去找主办方重发（重发会让你手上这串立刻作废）。过一会儿再点下面这个按钮。</p>
+      <button class="btn" style="width:100%;margin-top:12px" onclick="S.memberOnly=0;S.memberWhy='';cloudLoad()">
+        ${ico('again')}再试一次</button>
+      <button class="btn ghost sm" style="margin-top:8px" onclick="doSignOut()">退出登录</button>`;
   // 成员点错门进来了 —— 明说，并把人送去该去的那一页。不登记、不排队。
   else if(S.memberOnly&&S.memberWhy==='badcode')
     inner=`<div style="font-size:13px;line-height:2">${ico('warn')}<b>${esc((SESSION&&SESSION.user.email)||'')}</b><br>
@@ -2000,7 +2103,10 @@ function doSignIn(){
   const code=(($('au_code')||{}).value||'').trim();
   if(!email||!pw){toast('请输入邮箱和密码');_authBusy=false;return;}
   // a code typed on the LOGIN form must count too — the host logs in, they don't register
-  try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+7*86400000}));}catch(e){}
+  // ⚠ 没填码就要**清掉**上一个人留下的（doSignUp 一直是这么做的，这里以前漏了）：
+  //   共用设备上，A 粘过码但登录失败，B 登进来就会捡到 A 的码。
+  try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+7*86400000}));
+      else clearPendingCode();}catch(e){}
   toast('登录中…');
   sb.auth.signInWithPassword({email,password:pw}).then(({error})=>{
     _authBusy=false;
