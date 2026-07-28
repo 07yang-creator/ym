@@ -1206,11 +1206,25 @@ async function cloudLoad(){
   const cols='role,status,email';
   let {data:mem}=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
   if(!mem&&!admin){ // first visit: register for ym (the server forces status='pending')
+    /* ⚠ 两个门不能汇进同一个队列。以前这里是「任何已登录且没有 ym_member 行的 session
+       一律插一行 pending 主办方」—— 而 ym 首页唯一的登录按钮指向 /organizer/，所以一个
+       志愿者/嘉宾点错一次，就出现在 owner 的「待批准」里，**和真主办申请长得一模一样**
+       （那一行只有 email/角色/状态）。顺手一批，他就 ym_ok() 为真：能铸码、能写 ym_doc、
+       能把帖子发到公开首页。
+       成员读得到自己的 ym_code 行（0015：`for select using (member = auth.uid())`），
+       拿它把「别人家的成员」和「来申请当主办的人」分开。持 H 码的是主办，不受影响；
+       真正的新主办拿的是 ym_invite（另一张表），这里查不到码，照旧自动登记。 */
+    const {data:myCodes}=await sb.from('ym_code').select('role,revoked').eq('member',SESSION.user.id);
+    const live=(myCodes||[]).filter(c=>!c.revoked);
+    if(live.length&&!live.some(c=>c.role==='H')){
+      PROFILE=null;S.memberOnly=1;S.auth=true;stopPoll();render();return;   // 不登记、不进队列
+    }
     const ins=await sb.from('ym_member').insert({user_id:SESSION.user.id}).select(cols).maybeSingle();
     mem=ins.data||null;
     if(ins.error&&ins.error.code!=='23505')toast('注册失败：'+ins.error.message);
     if(!mem){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();mem=re.data||null;}
   }
+  S.memberOnly=0;
   PROFILE=mem?Object.assign({},mem,{is_admin:admin}):(admin?{status:'none',role:'',is_admin:true}:null);
   // An invite code entered at signup is redeemed on the first real session. It is bound to the
   // address that typed it and expires, so signing in as somebody else on a shared device can
@@ -1647,6 +1661,15 @@ function authSheet(){
      排在后面就永远轮不到，那封信点进来只会看到「云同步已开启」，密码根本改不成。
      （onAuthStateChange 里已经把它挡在 cloudLoad 之前了，但渲染分支的顺序是另一道门。） */
   else if(S.authRecovery)inner=authNewPw(true);
+  // 成员点错门进来了 —— 明说，并把人送去该去的那一页。不登记、不排队。
+  else if(S.memberOnly)
+    inner=`<div style="font-size:13px;line-height:2">${ico('person')}<b>${esc((SESSION&&SESSION.user.email)||'')}</b><br>
+      <span class="muted">这是一个<b>成员</b>账号（志愿者 / 嘉宾 / 捐赠者），不是主办方账号。</span></div>
+      <a class="btn" style="display:block;text-align:center;margin-top:12px;text-decoration:none"
+        href="../member/">${ico('go')}打开我的页面</a>
+      <p class="note9">主办台是给办活动的人用的。你要看的（你负责的事 · 当天流程 · 你的号牌）都在「我的页面」。<br>
+        真要申请当主办方，请找管理员要一个邀请码。</p>
+      <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
   else if(canCloud())
     inner=`<div style="font-size:13px;line-height:2">${ico('cloud')}<b>${esc(SESSION.user.email||'')}</b><br>
       <span class="muted">云同步已开启 — 活动与资产库自动备份，多设备可用。</span></div>
@@ -1764,13 +1787,18 @@ function doSignUp(){
   // how long an invite lives.
   try{if(code)localStorage.setItem(INV_KEY,JSON.stringify({code,email,exp:Date.now()+7*86400000}));
       else clearPendingCode();}catch(e){}
-  sb.auth.signUp({email,password:pw,options:{emailRedirectTo:'https://ym.jjconnect.tokyo/organizer/'}}).then(({data,error})=>{
+  sb.auth.signUp({email,password:pw,options:{emailRedirectTo:RESET_REDIRECT}}).then(({data,error})=>{
     _authBusy=false;
+    /* 重复邮箱有**两种**返回形态，两种都要接住：
+         确认邮件 ON  → 没有 error，但 user.identities 是空数组（混淆过的假用户）
+         确认邮件 OFF → 422 "already registered"（现在就是这个 —— 确认邮件已关）
+       以前只接了第一种，于是第二种落进下面的通用 error 分支，主办看到的是一句英文原文。 */
+    const dupErr=error&&/already registered|already been registered/i.test(error.message||'');
+    const dupShadow=!error&&data&&data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0;
+    if(dupErr||dupShadow){
+      S.authEmail=email;
+      toast('这个邮箱已经注册过了 —— 请直接用它「登录」（忘了密码就点下面的「忘记密码了」）');return;}
     if(error){toast('注册失败：'+error.message);return;}
-    // Supabase returns an obfuscated user with NO identities when the address already exists —
-    // without this the host would wait forever for a confirmation mail that never comes.
-    const dup=data&&data.user&&Array.isArray(data.user.identities)&&data.user.identities.length===0;
-    if(dup){toast('这个邮箱已经注册过了 — 请直接用它「登录」');return;}
     toast(data.session?(code?'注册成功，正在校验邀请码':'注册成功 — 等待管理员批准')
                       :'确认邮件已发送，请查收后回来登录');
     S.auth=false;render();
