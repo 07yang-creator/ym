@@ -721,6 +721,7 @@
    保留不动的是真正的线条字形：→ ← ✕ ✓ ● ♂ ♀ ⊕ ⊖ —— 它们本来就是线，换成 SVG 只会更重。 */
 const ICON={
   cam:'<circle cx="12" cy="13" r="3.4"/><path d="M3 8.5h3.2l1.6-2.2h8.4l1.6 2.2H21v10H3z"/>',
+  qr:'<rect x="3.5" y="3.5" width="6" height="6" rx="1"/><rect x="14.5" y="3.5" width="6" height="6" rx="1"/><rect x="3.5" y="14.5" width="6" height="6" rx="1"/><path d="M14.5 14.5h3v3h-3zM20.5 14.5v3M20.5 20.5h-3"/>',
   mic:'<rect x="9" y="3" width="6" height="10" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
   key:'<circle cx="8" cy="12" r="3.6"/><path d="M11.6 12H21M18 12v3M15 12v2.2"/>',
   clip:'<path d="M20 11.5 12 19.4a4.6 4.6 0 0 1-6.5-6.5l8.4-8.3a3 3 0 0 1 4.3 4.3l-8.3 8.3a1.5 1.5 0 0 1-2.1-2.1l7.6-7.6"/>',
@@ -3821,6 +3822,152 @@ function loadLedger(force){
 }
 
 /* ---- capture: the ONE component all four entry points call ---- */
+/* ================= 手机拍 —— 桌面 ↔ 手机的扫码通道 (owner 2026-07-28) =================
+   「电脑上那个按钮只是选一张照片，很难用。」—— 票在手里，相机在手机上。
+   **直接复用 0005_capture.sql 已经建好的那条通道**（jjcashflow 客户端在用的同一条），
+   一行 SQL 都不用加，因为它跟 cashflow 没有任何耦合：
+     · capture_session.owner = auth.uid()（ym 主办和会计用的是同一个 auth）
+     · p_draft 是**不透明 jsonb** → ym 直接把 /api/parse 的原始结果丢进去，
+       电脑这边再喂给已有的 rcSeed/rcCard，那张逐格确认卡一个字都不用改
+     · cap_submit 匿名可调、凭 token、10 分钟过期、**一次只允许一张未认领的**
+       （所以不会覆盖掉你还没确认的那张）
+     · cap_claim 只有 owner 能调，原子消费，并**在服务端**记一次 OCR 用量
+   ⚠ 手机那一侧是**匿名**的，所以它打 /api/parse 时没有 user_token —— 计量由 cap_claim
+     在电脑认领时记，一张一次，客户端伪造不了。套件里那条「每个调用点都带 user_token」
+     的断言相应放宽为「带 token **或** 走 cap_submit」。 */
+let CAP={token:null,url:null,timer:null,busy:false};
+function capQrLib(){return new Promise(res=>{
+  if(window.qrcode)return res();
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+  s.onload=()=>res();s.onerror=()=>res();document.head.appendChild(s);});}
+async function capOpen(){
+  if(!canCloud()){toast('登录并通过批准后才能用「手机拍」');return;}
+  try{await sb.from('capture_session').delete().eq('owner',SESSION.user.id).eq('status','open');}catch(e){}
+  const {data,error}=await sb.from('capture_session').insert({owner:SESSION.user.id}).select('id').single();
+  if(error){toast('开不了会话：'+error.message);return;}
+  CAP={token:data.id,url:location.origin+location.pathname+'?cap='+data.id,timer:null,busy:false};
+  capDraw('二维码生成中…');await capQrLib();capDraw();capPoll();
+}
+function capDraw(msg){
+  let img='';
+  if(window.qrcode&&CAP.url){try{const q=qrcode(0,'M');q.addData(CAP.url);q.make();img=q.createImgTag(5,12);}catch(e){}}
+  let host=$('capwrap');
+  if(!host){host=document.createElement('div');host.id='capwrap';document.body.appendChild(host);}
+  host.innerHTML=`<div class="drawerbg" onclick="capClose()"></div>
+    <div class="exdlg jobdlg askdlg" style="text-align:center">
+      <div class="hd"><span class="tp">${ico('qr')}用手机拍这张票</span>
+        <button class="btn ghost sm" onclick="capClose()">✕</button></div>
+      <div class="sub" style="margin:0 0 10px">手机相机 / 微信「扫一扫」扫下面这个码 → 在手机上拍票据 →
+        自动解析并传回这一页确认。手机那边<b>不用登录</b>。</div>
+      <div style="min-height:150px;display:grid;place-items:center;background:#fff;border-radius:6px;padding:8px">
+        ${img||'<span class="note9" style="color:#333">二维码生成中…（也可以把下面这个链接发到手机上打开）</span>'}</div>
+      <div class="note9" style="word-break:break-all;margin-top:8px">${esc(CAP.url||'')}</div>
+      <div class="sub" style="margin-top:10px">${esc(msg||'等手机拍照中…（可以连着拍，一张一张确认）')}</div>
+      <p class="note9">二维码 10 分钟内有效。上一张确认完，才能再传下一张 —— 免得没确认的被覆盖掉。</p>
+    </div>`;
+}
+function capClose(){
+  if(CAP.timer){clearInterval(CAP.timer);CAP.timer=null;}
+  const h=$('capwrap');if(h)h.remove();
+  if(CAP.token&&sb&&SESSION){try{sb.from('capture_session').delete().eq('id',CAP.token).then(()=>{});}catch(e){}}
+  CAP={token:null,url:null,timer:null,busy:false};
+}
+/* 草稿是**匿名手机**传来的，一个字都不能信 —— 逐格夹到 rcSeed 认得的形状和上限。
+   （rcSeed 里已经有 num0/dateOf/T 号正则那几道，这里补的是长度、条数和枚举。） */
+function capClean(raw){
+  raw=raw||{};
+  const s=(v,n)=>String(v==null?'':v).slice(0,n||120);
+  const tax=Array.isArray(raw.tax_lines)?raw.tax_lines.slice(0,12).map(t=>({
+    rate:s((t||{}).rate,6),base:+((t||{}).base)||0,tax:+((t||{}).tax)||0})):[];
+  return {source:raw.source==='mock'?'mock':'ai',
+    confidence:['high','medium','low'].indexOf(raw.confidence)>=0?raw.confidence:'medium',
+    is_receipt:raw.is_receipt!==false,
+    direction:raw.direction==='in'?'in':'out',
+    issue_date:s(raw.issue_date,10),
+    vendor:s(raw.vendor,120),
+    total_incl_tax:Math.max(0,Math.min(100000000,+raw.total_incl_tax||0)),
+    invoice_reg_no:s(raw.invoice_reg_no,20),
+    suggested_account:s(raw.suggested_account,40),
+    payment_method:s(raw.payment_method,10),
+    tax_lines:tax};
+}
+function capPoll(){
+  if(CAP.timer)clearInterval(CAP.timer);
+  CAP.timer=setInterval(async()=>{
+    if(!CAP.token||CAP.busy||S.rc)return;        // 已经有一张在确认了，别覆盖
+    if(!$('capwrap')){capClose();return;}
+    CAP.busy=true;
+    try{
+      const {data}=await sb.rpc('cap_claim',{p_token:CAP.token});
+      if(data&&data.draft){
+        // 图片进的是 rcUpload / <img src>，所以只认真正的 data:image
+        const m=/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(data.image||''));
+        S.rc={d:capClean(data.draft),ctx:{src:'host',evId:''},
+              img:m?m[2]:'',mime:m?m[1]:'image/jpeg',name:'手机拍.jpg'};
+        rcSeed('');capClose();render();toast('手机传回来一张 —— 请核对');
+      }
+    }catch(e){}
+    finally{CAP.busy=false;}
+  },1600);
+}
+/* ---- 手机那一侧：?cap=<token> 打开，免登录（token 就是凭据） ---- */
+function capPhone(token){
+  // 写进 #app（它就是 .app 那个居中容器）—— 不要动 document.body：那会把 .app 一起换掉，
+  // 主办台的 CSS 全是挂在它下面的，页面会散成一堆窄条（2026-07-28 在浏览器里看见过一次）
+  $('app').innerHTML=`<div style="max-width:460px;margin:0 auto;padding:14px 16px 40px">
+    <div style="display:flex;align-items:center;gap:10px;height:50px;border-bottom:1px solid var(--line)">
+      <span style="font-family:Oswald,sans-serif;font-size:17px;color:var(--brass)">ym</span>
+      <span class="lbl">拍一张票据</span></div>
+    <p class="note9" style="line-height:1.9">拍下发票 / 收据 → 自动解析 → 传回你电脑上那一页确认。<br>
+      这一页<b>不用登录</b>，也看不到任何其他内容。</p>
+    <div id="cap_stat" class="sub" style="min-height:22px;margin:12px 0"></div>
+    <label class="btn" style="display:block;text-align:center;cursor:pointer">${ico('cam')}拍照 / 选一张图片
+      <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
+        onchange="capShoot(this,'${escJs(token)}')"></label>
+    <div id="cap_done" style="margin-top:16px"></div>
+    <p class="note9" style="margin-top:24px">二维码 10 分钟内有效。上一张在电脑上确认完，才能再传下一张。</p>
+  </div>`;
+}
+function capStat(t){const e=$('cap_stat');if(e)textInto(e,t);}
+function textInto(el,t){el.textContent=String(t==null?'':t);}
+function capShoot(inp,token){
+  const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+  capStat('处理图片中…');
+  const go=(b64,mime)=>{
+    if(!b64||b64.length>600000){capStat('这张太大或打不开（约 400KB 以内），请重拍');return;}
+    capStat('识别中…');
+    // ⚠ 匿名，没有 user_token —— 用量由 cap_claim 在电脑认领时在**服务端**记一次
+    fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({image:b64,media_type:mime})})
+    .then(r=>r.json()).catch(()=>({}))
+    .then(res=>{
+      if(res&&res.is_receipt===false){capStat('这张不像票据，请重拍');return;}
+      capStat('传给电脑…');
+      return sb.rpc('cap_submit',{p_token:token,p_draft:res||{},
+        p_image:'data:'+mime+';base64,'+b64})
+        .then(({error})=>{
+          if(error){capStat('传不过去：'+(error.message||error));return;}
+          capStat('');
+          const d=$('cap_done');if(!d)return;
+          d.innerHTML='';
+          const box=document.createElement('div');box.className='rvsec';
+          const h=document.createElement('div');h.style.cssText='font-size:15px;font-weight:700;color:var(--ok)';
+          h.textContent='✓ 已传回电脑';
+          const p=document.createElement('div');p.className='note9';
+          // 店名来自识别结果 —— 用 textContent，不拼 HTML
+          p.textContent=((res&&res.vendor)||'(没读到店名)')+' · 请在电脑上核对并入账。可以接着拍下一张。';
+          box.appendChild(h);box.appendChild(p);d.appendChild(box);
+        });
+    });
+  };
+  if(f.type==='application/pdf'){
+    if(f.size>400000){capStat('这个 PDF 太大了（约 400KB 以内）');return;}
+    const rd=new FileReader();
+    rd.onload=()=>go(String(rd.result).split(',')[1]||'','application/pdf');
+    rd.readAsDataURL(f);return;}
+  shrink(f,b64=>go(b64,'image/jpeg'));
+}
 function rcShoot(inp,ctx){
   const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
   if(!canCloud()){toast(SESSION?'等主办方账号通过审核后才能记账':'票据要登录后才能入账 —— 台账在云端');return;}
@@ -5533,6 +5680,9 @@ function viewDesk(){
       <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}记一张票据
         <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
           onchange="rcShoot(this,{src:'host',evId:''})"></label>
+      ${/* 电脑上「选一张文件」很难用 —— 票在手里，相机在手机上（owner 2026-07-28）。
+           手机上这个按钮也留着：扫自己没意义，但换一台手机拍、或者让同伴拍，都用得上。 */''}
+      <button class="btn ghost sm" onclick="capOpen()">${ico('qr')}手机拍</button>
       <button class="btn ghost sm" onclick="go('ledger')">${ico('books')}总账</button></div>
     ${sec('current','正在进行的活动会出现在这里（在计划页点「进入执行」）。')}
     ${sec('plan','筹备中的活动。')}
@@ -5566,12 +5716,21 @@ function peekCard(){
 function openArchived(id){S.evId=id;S.readonly=true;go('sheet');}
 
 /* ================= boot ================= */
-STORE=load();
-if(!STORE||!STORE.library){STORE=seed();save();}
-ensureY2();
-S.evId=STORE.events[0]?STORE.events[0].id:null;
-render();
-authInit();
+/* 手机侧的拍照页：?cap=<token> 就是全部凭据（0005 的设计 —— 手机对表零权限，
+   只能通过 cap_submit 这一个匿名函数把结果塞回那个 token 对应的会话）。
+   必须**在这里**分流：不 seed、不 render、不 authInit —— 那一页不该有登录、
+   不该有主办台的任何内容，也不该在别人的手机上写下这台设备的 STORE。 */
+const CAP_TOKEN=new URLSearchParams(location.search).get('cap');
+if(CAP_TOKEN&&sb){
+  capPhone(CAP_TOKEN);
+}else{
+  STORE=load();
+  if(!STORE||!STORE.library){STORE=seed();save();}
+  ensureY2();
+  S.evId=STORE.events[0]?STORE.events[0].id:null;
+  render();
+  authInit();
+}
 </script>
 </body>
 </html>
