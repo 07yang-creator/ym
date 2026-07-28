@@ -3194,11 +3194,63 @@ function ticketInfo(e){
 }
 // A 门票 chip splits by gender only if its NAME says so. 「门票」/「早鸟门票」 bills EVERYONE who
 // showed up — the old two-way ternary fell through to 女, silently halving the take.
+/* ---------- 逐笔收款 (owner 2026-07-28) ----------
+   「现在登记收入要先建一个收支项；但主办更想要 —— **收到一笔报名费就记一条**。」
+   现实就是这样：报名费多半是提前一个一个转过来的，不是活动当天一次性收齐。
+   🔴 唯一真正的风险是**重复计账**：门票那条汇总（confirmTickets）算的是
+      単価 × **到场人数**，它不知道谁已经单独交过了。所以逐笔记过的人要从头数里扣掉 ——
+      两边自动互斥，主办不用记住自己在用哪一种。0022 的唯一索引是数据库那一侧的兜底。 */
+function feeRows(e){return e?(LEDGER||[]).filter(r=>r.src==='fee'&&r.event_id===e.id&&r.status!=='void'):[];}
+function feeOf(e,p){return p?feeRows(e).find(r=>r.payer_ref===p.id)||null:null;}
+function feePaidIds(e){const s={};feeRows(e).forEach(r=>{if(r.payer_ref)s[r.payer_ref]=1;});return s;}
+// 到场、且**没有**单独记过款的人 —— 门票汇总只该算这些人
+function arrUnpaid(e,g){const paid=feePaidIds(e);
+  return e.participants.filter(p=>p.gender===g&&p.arrived&&!paid[p.id]).length;}
 function ticketHeads(e,c){const n=String(c.name||'');
   const m=n.indexOf('男')>=0,w=n.indexOf('女')>=0;
-  if(m&&!w)return arrCount(e,'男');
-  if(w&&!m)return arrCount(e,'女');
-  return arrCount(e,'男')+arrCount(e,'女');
+  if(m&&!w)return arrUnpaid(e,'男');
+  if(w&&!m)return arrUnpaid(e,'女');
+  return arrUnpaid(e,'男')+arrUnpaid(e,'女');
+}
+// 这一场里某个性别的门票单价 —— 逐笔收款的默认金额从这里来，省得每次手打
+function feeUnit(e,g){
+  const t=ticketInfo(e).find(c=>String(c.name||'').indexOf(g)>=0)||ticketInfo(e)[0];
+  return (t&&t.unit)||0;
+}
+function feeSum(e){return feeRows(e).reduce((s,r)=>s+(r.amount||0),0);}
+function feeAsk(pid){
+  const e=ev();if(!e)return;
+  const p=(e.participants||[]).find(x=>x.id===pid);if(!p)return;
+  if(!canCloud()){toast('登录并通过批准后才能记账 —— 台账在云端');return;}
+  if(feeOf(e,p)){toast(p.name+' 已经记过一笔了 —— 要改就去总账里「取消」那一条重记');return;}
+  ask({title:'收到 '+esc(p.name)+' 的报名费',
+    note:'记一条真账（'+(e.name||'本场')+'）。记过的人「不会」再被「门票确认入账」重复算一次。',
+    fields:[{label:'金额（円）',val:feeUnit(e,p.gender)||'',type:'num'},
+            {label:'收款方式',val:'現金',opts:RC_PAY.slice()},
+            {label:'收到日期',val:todayStr(),type:'date'}],
+    ok:'记一笔',fn:v=>feeAdd(p,v)});
+}
+async function feeAdd(p,v){
+  const e=ev();if(!e)return;
+  const amt=Math.max(0,parseInt(String(v[0]||'').replace(/[^\d]/g,''),10)||0);
+  if(!amt){toast('金额填一下');return;}
+  const pay=RC_PAY.indexOf(v[1])>=0?v[1]:'現金';
+  const day=/^\d{4}-\d{2}-\d{2}$/.test(v[2]||'')?v[2]:todayStr();
+  const b=Math.floor(amt/1.1);
+  // 裸 insert，然后读错误码 —— 0011 §3：部分唯一索引不许被 on conflict 点名
+  const {error}=await sb.from('ym_entry').insert({
+    host:SESSION.user.id,entry_date:day,paid_date:day,direction:'in',amount:amt,
+    tax:[{r:'10',b,t:amt-b}],tax_total:amt-b,
+    account:'売上高(参加費)',payment:pay,vendor:p.name||'参加者',reg_no:'',
+    memo:'参加費 '+(p.name||'')+(p.n?'（'+p.gender+p.n+'）':''),
+    event_id:e.id,chip_id:'',payer_ref:p.id,src:'fee',member_code:'',confidence:'hand',
+    image_id:'',image_url:'',image_mime:null,image_name:''});
+  if(error){
+    if(error.code==='23505'){toast(p.name+' 已经记过一笔了');loadLedger(1);return;}
+    toast(ledgerNotReady(error)?'没记进总账 —— 数据库迁移 0022 还没应用'
+      :'没记进总账：'+error.message);return;}
+  await loadLedger(1);render();
+  toast('已记一笔 '+yen(amt)+' —— 门票汇总会自动跳过 '+(p.name||'这个人'));
 }
 function dayBoard(e){
   const tickets=ticketInfo(e);
@@ -3210,7 +3262,9 @@ function dayBoard(e){
     const posted=c2=>(LEDGER||[]).some(r=>r.src==='ticket'&&r.chip_id===c2.id&&r.event_id===e.id&&r.status==='posted');
     const done=tickets.every(c=>c.actual!=null)&&tickets.reduce((s,c)=>s+(c.actual||0),0)===due
       &&(!canCloud()||tickets.every(posted));
-    bar=`<div class="ticketbar"><span>门票实收（按到场）</span>
+    // 逐笔记过的人已经从头数里扣掉了 —— 不说一句，主办会以为这个数算少了
+    const fn=feeRows(e).length;
+    bar=`<div class="ticketbar"><span>门票实收（按到场${fn?' · 已扣掉单独记账的 '+fn+' 人':''}）</span>
       <span class="num" style="font-size:14px">${yen(due)}</span>
       ${done?'<span class="lbl" style="color:var(--ok)">✓ 已入账</span>'
         :`<button class="btn sm" onclick="confirmTickets()">确认入账</button>`}</div>`;
@@ -3232,6 +3286,12 @@ function dayBoard(e){
 function toggleArr(pid){const e=ev();const p=e.participants.find(x=>x.id===pid);if(!p)return;
   p.arrived=!p.arrived;p.at=p.arrived?nowHM():null;save();render();}
 function confirmTickets(){const e=ev();const ts=ticketInfo(e);if(!ts.length)return;
+  /* ⚠ 「没有单独记账的人」和「总账还没读到」必须分开。LEDGER 还是 null 时 feeRows() 返回空，
+     门票汇总就**不会**扣掉那些人 —— 同一笔钱进两次账。宁可让主办多点一下刷新。
+     （同一条教训：LEDGER=LEDGER||[] 曾经让总账整场显示 ¥0 而屏幕上写着「还没有记录」。） */
+  if(canCloud()&&LEDGER===null){
+    toast('还没读到总账 —— 先等一下或刷新，免得和「单独记的报名费」重复入账');
+    loadLedger(1);return;}
   ts.forEach(c=>{c.actual=(c.unit||0)*ticketHeads(e,c);});
   save();render();toast('门票已入账（可在收支牌上修改）');
   if(!canCloud())return;
@@ -3244,7 +3304,9 @@ function confirmTickets(){const e=ev();const ts=ticketInfo(e);if(!ts.length)retu
     const row={host:SESSION.user.id,entry_date:e.date||todayStr(),paid_date:e.date||todayStr(),
       direction:'in',amount:amt,tax:[{r:'10',b,t:amt-b}],tax_total:amt-b,
       account:'売上高(参加費)',payment:'現金',vendor:'当日参加者',reg_no:'',
-      memo:(c.name||'门票')+' '+yen(c.unit)+' × '+heads+'名',
+      // 証憑は再現できなければ意味がない：頭数から**外した**人数もここに書く
+      memo:(c.name||'门票')+' '+yen(c.unit)+' × '+heads+'名'
+        +(feeRows(e).length?'（另有 '+feeRows(e).length+' 人已单独记账，未计入）':''),
       event_id:e.id,chip_id:c.id,src:'ticket',member_code:'',confidence:'hand',
       image_id:'',image_url:'',image_mime:null,image_name:''};
     const old=(LEDGER||[]).find(r=>r.src==='ticket'&&r.chip_id===c.id&&r.event_id===e.id);
@@ -3391,9 +3453,18 @@ function signupBlock(e){
       这一场里有同名的人（${dupNames.map(x=>esc(x)+' ×'+dup[x]).join('、')}）——
       下面已经给他们标上<b>号牌 / 编号</b>。叫名字点人、派事、签到之前先看一眼这个。</div>`:''}
     <div class="lbl" style="margin:6px 0 5px">已报名 · ${e.participants.length} 人（男 ${men} · 女 ${women}）${full?' —— 已满员':''}</div>
-    <div class="plist">${e.participants.length?e.participants.map(p=>`<span class="chip s1">${p.gender==='男'?'♂':'♀'} ${esc(p.name)}${
+    ${/* 收到一笔就记一笔（owner 2026-07-28）。记过的人会从门票汇总的头数里扣掉 —— 见 ticketHeads */''}
+    ${canCloud()&&e.participants.length?`<div class="sub" style="margin:0 0 6px">
+      ${ico('coin')}已收 ${feeRows(e).length} 人 · ${yen(feeSum(e))}
+      <span class="muted"> · 剩 ${Math.max(0,e.participants.length-feeRows(e).length)} 人没记</span>
+      <span class="muted" style="font-size:10.5px">（点名字后面的「收款」记一笔；记过的不会被门票汇总重复算）</span></div>`:''}
+    <div class="plist">${e.participants.length?e.participants.map(p=>{const fe=feeOf(e,p);
+      return `<span class="chip s1">${p.gender==='男'?'♂':'♀'} ${esc(p.name)}${
       dup[String(p.name||'').trim()]?` <span class="lbl" style="color:var(--brass)">${esc(p.gender+p.n)}</span>`:''}${p.libId?'':' <span class="lbl" style="color:var(--alarm)">新</span>'}
-      <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`).join('')
+      ${canCloud()?(fe?`<span class="lbl" style="color:var(--ok)">✓ ${esc(yen(fe.amount))}</span>`
+        :`<span class="rz" style="color:var(--brass);cursor:pointer;font-size:10.5px;margin-left:6px"
+            onclick="event.stopPropagation();feeAsk('${escJs(p.id)}')">收款</span>`):''}
+      <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`;}).join('')
       :'<span class="note9">还没有人报名 —— 公开到官网后，报名会出现在这里。</span>'}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
       <button class="btn ghost sm" onclick="S.showImport=true;S.importRows=null;render()">${ico('up')}导入名单</button>
