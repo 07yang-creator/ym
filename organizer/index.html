@@ -985,11 +985,13 @@ function dropShare(code){
 let JOINREQ=null;
 function loadJoin(){
   if(!canCloud()){JOINREQ=[];return Promise.resolve();}
-  return sb.rpc('ym_join_list').then(({data,error})=>{
+  // 撞名那一比特和申请列表一起读：先来的那个主办也必须知道自己正撞着，
+  // 否则他会在毫不知情的情况下失去整个申请入口（0019 §5 是两边都不路由）。
+  return Promise.all([sb.rpc('ym_join_list'),sb.rpc('ym_name_shared')]).then(([j,d])=>{
     // 0019 还没应用时这里是 404/42883。**说出来**，别画一块空白 —— 空白会被读成
     // 「没人申请」，而真相是这功能根本没接上（2026-07-27 可达性复查的教训）。
-    if(error){JOINREQ=[];S.noJoin=1;render();return;}
-    S.noJoin=0;JOINREQ=data||[];render();});
+    if(j.error){JOINREQ=[];S.noJoin=1;render();return;}
+    S.noJoin=0;JOINREQ=j.data||[];S.nameDup=!d.error&&d.data===true;render();});
 }
 /* 已读游标 = 一个时间戳 + 一份**逐个**已读的编号。
    ⚠ 只有时间戳是不够的（复查 2026-07-28）：同一天注册的两个人，点开第一个就把基线推到
@@ -1040,14 +1042,34 @@ function setPubName(){
          名字占过来 —— 对方名下的自助申请要么整份落进占名者的待批列表（连邮箱带留言），
          要么因为「同名都不路由」两边一起静默归零。0020 把这一列钉进触发器，
          只留这一个入口，撞名就拒绝**这次写**（不说是谁占的）。 */
-      const {data,error}=await sb.rpc('ym_set_public_name',{p_name:n});
-      if(error){toast('保存失败：'+error.message
-        +(/function|schema cache/i.test(error.message||'')?'（0020 迁移还没应用）':''));return;}
-      if(data==='taken'){toast('这个名字在这边不能用 —— 请换一个（比如加上地区或全称）');return;}
-      if(data!=='ok'){toast(data==='invalid'?'这个名字不能用（太长，或者去掉空白后是空的）'
-        :'没有保存 —— 服务器没接受这次修改');return;}
-      PROFILE=Object.assign({},PROFILE,{public_name:n});
-      render();toast(n?'公开名称已设为「'+n+'」':'已清空公开名称 —— 现在没人能申请到你名下');}});
+      savePubName(n,false);}});
+}
+/* owner 2026-07-28：「duplicate names … we just inform them while they complete their profile.
+   If they choose to ignore it, that's their choices.」—— 所以撞名是**提示一次**，不是拦住。
+   ⚠ 但要把代价说全：编号能分开两个「小林」，可申请人手打的是**名字**，他手上没有编号。
+   两个主办同名时 0019 §5 是**两边都不路由** —— 所以下面那句话必须写明「两边都收不到」，
+   否则「他自己的选择」这句话对**先来的那个**不成立（他什么都没选）。 */
+async function savePubName(n,force){
+  const {data,error}=await sb.rpc('ym_set_public_name',{p_name:n,p_force:!!force});
+  if(error){toast('保存失败：'+error.message
+    +(/function|schema cache|ambiguous/i.test(error.message||'')?'（0021 迁移还没应用）':''));return;}
+  if(data==='dup'){
+    // ⚠ ask() 的 note 是当纯文本 esc() 出去的 —— 这里别写 markdown 星号，会原样显示
+    ask({title:'已经有另一个主办在用这个名字',
+      note:'两个主办同名的时候，自助申请「两边都收不到」—— 申请人手打的是名字，'
+        +'他手上没有编号可以打，所以系统宁可不送，也不会送错人（你定的规矩）。'
+        +'另一位并不知道你要用这个名字。要用的话，建议加上地区或全称。',
+      fields:[],ok:'我知道，仍然用这个名字',fn:()=>savePubName(n,true)});
+    return;}
+  if(data!=='ok'&&data!=='ok-dup'){
+    toast(data==='invalid'?'这个名字不能用（太长，或者去掉空白后是空的）'
+      :'没有保存 —— 服务器没接受这次修改');return;}
+  PROFILE=Object.assign({},PROFILE,{public_name:n});
+  await loadJoin();                       // 顺手把「撞名了没有」重新读一遍
+  render();
+  toast(!n?'已清空公开名称 —— 现在没人能申请到你名下'
+    :data==='ok-dup'?'已设为「'+n+'」—— 撞名期间两边都收不到自助申请'
+    :'公开名称已设为「'+n+'」');
 }
 function joinBlock(){
   if(!canCloud())return '';
@@ -1086,6 +1108,11 @@ function joinBlock(){
     <div class="hd"><span class="lbl">待批申请${pend.length?' · '+pend.length:''}</span>
       <span class="bk" style="color:var(--brass);cursor:pointer;font-size:11px" onclick="setPubName()">
         公开名称：${nm?esc(nm):'<span style="color:var(--alarm)">还没设</span>'}</span></div>
+    ${S.nameDup?`<div class="sub" style="color:var(--alarm);margin:0 0 8px">${ico('warn')}
+      <b>还有另一个主办也在用「${esc(nm)}」</b> —— 撞名期间自助申请<b>两边都收不到</b>
+      （申请人手打的是名字，他手上没有编号可打，所以系统宁可不送，也不会送错人）。
+      <span class="bk" style="color:var(--brass);cursor:pointer" onclick="setPubName()">改一个名字</span>
+      就恢复了；你发的邀请码不受影响。</div>`:''}
     ${rows||`<div class="note9">${nm
       ?'现在没有人在等你批。<b>自助申请</b>是这样进来的：对方在成员页手打你的公开名称「'+esc(nm)+'」，'
         +'一字不差才会落到你名下 —— 我们不提供主办目录，也不会提示「找不到该主办」（有意的）。'
