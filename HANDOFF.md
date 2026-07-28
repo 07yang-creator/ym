@@ -1,3 +1,38 @@
+# 🔴 邮件根本没发出去：Resend 回 403（忘记密码那条链上的**第五道门**）
+
+**2026-07-28，owner 从 resend.com/logs 看到 `POST /emails` 三条 403（11–12 小时前）。**
+403 = Resend **拒收**，信压根没寄出。这和刚加好的 Redirect URLs 是**两回事**：
+白名单管的是「信里的链接去哪」，403 是「信有没有寄出去」。
+
+**原因（DNS 查出来的，不是猜的）：发件人用了一个没被验证的域。**
+已发布的三条记录是 Resend 给**根域 `jjconnect.tokyo`** 的标准套装：
+
+| 记录 | 值 | 是什么 |
+|---|---|---|
+| `send.jjconnect.tokyo` MX | `feedback-smtp.ap-northeast-1.amazonses.com` | Resend 的**回执路径**子域 |
+| `send.jjconnect.tokyo` TXT | `v=spf1 include:amazonses.com ~all` | 同上的 SPF |
+| `resend._domainkey.`**`jjconnect.tokyo`** TXT | `p=MIGf…` | **根域**的 DKIM |
+
+而如果被验证的是 `send.jjconnect.tokyo`，该有的 `send.send.jjconnect.tokyo` MX 和
+`resend._domainkey.send.jjconnect.tokyo` —— **两条都不存在**（dig 过）。
+⇒ 验证的是**根域**；`send.` 只是回执子域，**它本身不是一个能发信的域**。
+而 Supabase 的发件人一直写着 `no-reply@send.jjconnect.tokyo` → Resend 403。
+
+**修法（owner，一个字段）：** Supabase → Project Settings → Authentication →
+**SMTP Settings** → Sender email → `no-reply@jjconnect.tokyo`（去掉 `send.`）→ Save。
+然后走一次忘记密码，Resend 的 log 应当变成 200。
+
+⚠ **顺带纠正本文件下面记着的一条**：「一个域只能有一条 SPF，所以验证根域会顶掉沙龙现有
+邮箱」—— 在 Resend 的设计里不成立。根域的 SPF 现在仍然是 onamae 的
+（`v=spf1 include:_spf.onamae.ne.jp ~all`，一个字没动），因为 Resend 把自己的 SPF 放在
+`send.` 子域上；DKIM 用根域的 `resend._domainkey` 签名，与 From 域对齐，DMARC 走 DKIM 通过。
+**从根域发信对现有邮箱没有影响。**
+
+影响面：**只有忘记密码**（两个 app）。注册不受影响 —— `/api/ym_reg` 是用 admin API
+`email_confirm:true` 建号的，本来就不发信（这正是它存在的理由），确认邮件 07-22 也已关。
+
+---
+
 # ✅ 已解决（2026-07-28 当天）：Vercel 的 `SUPABASE_SERVICE_KEY` 曾经不是服务密钥
 
 **owner 已经换成 secret key 并 Redeploy，四条链路当场活过来了。** 验收留档：

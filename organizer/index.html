@@ -1032,7 +1032,7 @@ function personByRef(ref){return STORE.library.resources.find(x=>x.id===ref)||nu
 function pubName(){return (PROFILE&&PROFILE.public_name)||'';}
 function setPubName(){
   ask({title:'你的公开名称',
-    note:'申请人要**一字不差**地打出这个名字，申请才会落到你名下。所以用你平时对外报的那个名字'
+    note:'申请人要「一字不差」地打出这个名字，申请才会落到你名下。所以用你平时对外报的那个名字'
       +'（写在海报、名片、群公告上的那个）。这个 app 不提供主办目录 —— 人必须本来就知道你。',
     fields:[{label:'公开名称',val:pubName(),ph:'例如：缘满沙龙'}],ok:'保存',
     fn:async(v)=>{
@@ -3351,15 +3351,33 @@ function viewSignup(){
     <p class="note9">公开到官网之后，报名会自己进来；「拟邀请」是你点名叫的人，
       要 TA 自己在页面上按「我想参加」才算报名。</p></div>`;
 }
+/* 同名 —— owner 2026-07-28 的裁决和它的边界，一起写在这里：
+   「志愿者和嘉宾会想用自己的真名，那就让他们重名，我们只在他们完善资料时**告知**，
+     他们坚持是他们的选择。**只有同名的两个人出现在同一场活动里时**才真的会出问题。」
+   所以：名册层面不拦（本来就不拦，发码窗口那句提示就是「告知」那一步），
+   而**这一场里**的同名，要把分得开的东西摆出来 —— 已报名给号牌，拟邀请给编号。
+   叫名字点人、发号牌、签到、按姓名派事，指错的都是同一个坑。 */
+function dupNamesInEvent(e){
+  const n={},k=s=>String(s||'').trim();
+  (e.participants||[]).forEach(p=>{const x=k(p.name);if(x)n[x]=(n[x]||0)+1;});
+  (e.invitees||[]).forEach(v=>{const x=k(v.name);if(x)n[x]=(n[x]||0)+1;});
+  const out={};Object.keys(n).forEach(x=>{if(n[x]>1)out[x]=n[x];});
+  return out;
+}
 function signupBlock(e){
   const men=e.participants.filter(p=>p.gender==='男').length,women=e.participants.filter(p=>p.gender==='女').length;
   const inv=invList(e),cap=capOf(e);
   const full=cap&&e.participants.length>=cap;
+  const dup=dupNamesInEvent(e),dupNames=Object.keys(dup);
   return `<div class="rvsec" style="margin-top:14px"><div class="hd">
       <span class="lbl">报名情况</span>
       <span class="num" style="font-size:15px;color:${full?'var(--ok)':'var(--brass)'}">${signupText(e)}</span></div>
+    ${dupNames.length?`<div class="sub" style="color:var(--alarm);margin:6px 0 0">${ico('warn')}
+      这一场里有同名的人（${dupNames.map(x=>esc(x)+' ×'+dup[x]).join('、')}）——
+      下面已经给他们标上<b>号牌 / 编号</b>。叫名字点人、派事、签到之前先看一眼这个。</div>`:''}
     <div class="lbl" style="margin:6px 0 5px">已报名 · ${e.participants.length} 人（男 ${men} · 女 ${women}）${full?' —— 已满员':''}</div>
-    <div class="plist">${e.participants.length?e.participants.map(p=>`<span class="chip s1">${p.gender==='男'?'♂':'♀'} ${esc(p.name)}${p.libId?'':' <span class="lbl" style="color:var(--alarm)">新</span>'}
+    <div class="plist">${e.participants.length?e.participants.map(p=>`<span class="chip s1">${p.gender==='男'?'♂':'♀'} ${esc(p.name)}${
+      dup[String(p.name||'').trim()]?` <span class="lbl" style="color:var(--brass)">${esc(p.gender+p.n)}</span>`:''}${p.libId?'':' <span class="lbl" style="color:var(--alarm)">新</span>'}
       <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`).join('')
       :'<span class="note9">还没有人报名 —— 公开到官网后，报名会出现在这里。</span>'}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
@@ -3368,12 +3386,15 @@ function signupBlock(e){
         style="display:none" onchange="rosterShot(this)"></label></div>
     ${joinStrip(e)}
     <div class="lbl" style="margin:14px 0 5px;padding-top:10px;border-top:1px solid var(--line)">拟邀请 · ${inv.length} 人 —— 已经叫了，还没答应</div>
-    <div class="plist">${inv.length?inv.map(x=>`<span class="chip s0">${x.gender==='男'?'♂':'♀'} ${esc(x.name)}
+    <div class="plist">${inv.length?inv.map(x=>`<span class="chip s0">${x.gender==='男'?'♂':'♀'} ${esc(x.name)}${
+      dup[String(x.name||'').trim()]?(()=>{const a=x.libId&&CODES[x.libId];
+        return ` <span class="lbl" style="color:var(--brass)">${a?esc(a.code):'同名 ⚠'}</span>`;})():''}
       <span class="rz" style="color:var(--brass);cursor:pointer;font-size:10.5px;margin-left:6px"
         title="TA 在别处（电话/微信）答应了，你替 TA 记上" onclick="invToSignup('${escJs(x.id)}')">代为确认</span>
       <span class="x" onclick="delInvitee('${escJs(x.id)}')">✕</span></span>`).join('')
       :'<span class="note9">从嘉宾名册点选你想邀请的人。</span>'}</div>
-    <p class="note9">有账号的嘉宾会在自己页面上看到「主办方邀请你参加」，**TA 按了「我想参加」才算报名**
+    ${/* ⚠ 这里是 HTML，不是 markdown —— 星号会原样显示（旧 bug，2026-07-28 在浏览器里看见才发现） */''}
+    <p class="note9">有账号的嘉宾会在自己页面上看到「主办方邀请你参加」，<b>TA 按了「我想参加」才算报名</b>
       —— 那条会出现在上面的待确认里。没有账号的（还没发邀请码），口头答应了就用「代为确认」。</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
       <button class="btn ghost sm" onclick="S.pickInvite=!S.pickInvite;render()">＋ 从名册选</button></div>
