@@ -1,4 +1,12 @@
-# 🔴 邮件根本没发出去：Resend 回 403（忘记密码那条链上的**第五道门**）
+# 🟡 邮件根本没发出去：Resend 回 403（忘记密码那条链上的**第五道门**）
+
+> **状态 2026-07-28：owner 已按下面的诊断改了 Supabase 的 Sender email。**
+> 还差**一次真实验收**（只有 owner 能做）：主办台 → 忘记密码 → 看 resend.com/logs
+> 那条应当是 **200** 而不是 403 → 再点信里的链接，看是不是落回
+> `ym.jjconnect.tokyo/organizer/` 并出现「设一个新密码」。
+> 这一步同时也就验了刚加的 Redirect URLs 白名单 —— 那一条从外面探不出来
+> （GoTrue 对不在白名单的 `redirect_to` **不报错**，静默换成 Site URL，三个地址实测都回 200）。
+> 走通之前，**别把忘记密码当成好了**：这条链上已经数出五道门，每一道都能单独让它整条失效。
 
 **2026-07-28，owner 从 resend.com/logs 看到 `POST /emails` 三条 403（11–12 小时前）。**
 403 = Resend **拒收**，信压根没寄出。这和刚加好的 Redirect URLs 是**两回事**：
@@ -189,7 +197,7 @@ Y8 总账拼完并**已上线**；**0018 owner 已应用**。之后按 owner 当
 
 | | 状态 |
 |---|---|
-| 迁移 | **0017 + 0018 都已应用**（owner 2026-07-27）。下一条要动 schema 的是自助注册的 `0019`，见 `docs/STAGE_SELF_REG.md`，**owner 还没放行** |
+| 迁移 | **0017–0021 全部已应用**（0019/0020/0021 是 owner 2026-07-28 当天应用的）。0019 = 自助申请 + `public_name` + `bound_at`，0020 = public_name 归属仲裁，0021 = 撞名改成「提醒不拦」+ `ym_name_shared()` |
 | SMTP | Resend，验证域 `send.jjconnect.tokyo`，发件人 `no-reply@send.jjconnect.tokyo` |
 | **Redirect URLs** | ⚠ **owner 待办**：Supabase → Authentication → URL Configuration → Redirect URLs 里必须**逐字**有 `https://ym.jjconnect.tokyo/organizer/` 和 `https://ym.jjconnect.tokyo/member/`。不在白名单里，GoTrue 会**静默**换成 Site URL —— 重设密码的信点开去了别的页面，表现就是「忘记密码没用」。成员页那条 07-14 加过；**主办页是 07-27 新加的功能，很可能从没进过白名单** |
 | Drive | `YM_DRIVE_EXEC` 已配，`/api/ym_file` 回 `{"drive":true}`，端到端传过真文件 |
