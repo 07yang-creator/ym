@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>缘满沙龙 · 主办方使用手册</title>
+<meta name="description" content="缘满沙龙活动管理系统（ym）主办方使用手册 — 计划、执行、志愿者、捐助、收支、嘉宾、发布。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* same front-of-house palette as the public landing (ym/index.html) */
+  :root{
+    --felt:#16241E;--stock:#F4EFE2;--paper:#FBF8F0;--ink:#22302A;--muted:#7C8A82;
+    --brass:#A9853E;--brass-l:#C9A356;--line:#E3DCC9;--alarm:#D2604A;--ok:#3F7A5C;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  html,body{margin:0}
+  body{background:var(--stock);color:var(--ink);
+    font:15px/1.85 "Noto Sans JP",-apple-system,"PingFang SC","Hiragino Sans",sans-serif;
+    -webkit-text-size-adjust:100%}
+  a{color:var(--brass);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .num{font-family:Oswald,sans-serif;font-variant-numeric:tabular-nums}
+  .wrap{max-width:860px;margin:0 auto;padding:0 18px}
+
+  header{position:sticky;top:0;z-index:20;background:var(--felt);color:var(--stock)}
+  .nav{max-width:860px;margin:0 auto;padding:0 18px;height:54px;display:flex;align-items:center;gap:12px}
+  .nav .logo{font-family:Oswald,sans-serif;font-size:18px;color:var(--brass-l);letter-spacing:.06em}
+  .nav .name{font-size:12.5px;letter-spacing:.18em;color:var(--stock);opacity:.9}
+  .nav .sp{flex:1}
+  .nav a{font-size:12.5px;letter-spacing:.08em;color:var(--stock);opacity:.8;padding:6px 8px}
+  .nav a:hover{opacity:1;color:var(--brass-l);text-decoration:none}
+  @media(max-width:560px){.nav .name{display:none}}
+
+  .hero{background:var(--felt);color:var(--stock);padding:44px 0 46px}
+  .hero .k{font-size:11px;letter-spacing:.3em;color:var(--brass-l)}
+  .hero h1{font-size:27px;margin:12px 0 12px;font-weight:700;letter-spacing:.04em;line-height:1.4}
+  .hero p{max-width:600px;color:#B8C4BC;font-size:14.5px;margin:0}
+  .hero .ver{margin-top:20px;font-size:11.5px;letter-spacing:.1em;color:#8E9A90}
+
+  /* table of contents */
+  .toc{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin:26px 0 6px}
+  .toc .t{font-size:11px;letter-spacing:.28em;color:var(--brass);margin-bottom:10px}
+  .toc ul{margin:0;padding-left:0;list-style:none;columns:2;column-gap:26px}
+  .toc li{font-size:13.5px;line-height:2;break-inside:avoid;display:flex;gap:9px}
+  .toc li .n{font-family:Oswald,sans-serif;color:var(--brass);flex:none;min-width:16px;text-align:right}
+  @media(max-width:560px){.toc ul{columns:1}}
+
+  section{padding:34px 0 4px;scroll-margin-top:62px}
+  .sec-k{font-size:11px;letter-spacing:.3em;color:var(--brass)}
+  h2{font-size:21px;margin:8px 0 16px;letter-spacing:.03em;line-height:1.45}
+  h3{font-size:16px;margin:26px 0 8px;letter-spacing:.02em}
+  h4{font-size:14px;margin:18px 0 6px;color:var(--brass);letter-spacing:.04em}
+  p{margin:11px 0}
+  ul,ol{padding-left:22px;margin:11px 0}
+  li{margin:5px 0}
+  hr{border:0;border-top:1px solid var(--line);margin:36px 0 0}
+  strong,b{font-weight:700}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;
+    background:#EDE6D4;border-radius:3px;padding:1px 5px}
+
+  /* callouts */
+  .note{border-left:3px solid var(--brass-l);background:var(--paper);border-radius:0 6px 6px 0;
+    padding:12px 16px;margin:16px 0;font-size:13.5px;line-height:1.85}
+  .note.warn{border-left-color:var(--alarm);background:#FBF0EC}
+  .note.rule{border-left-color:var(--ok);background:#F0F5F1}
+  .note .h{display:block;font-weight:700;margin-bottom:3px}
+
+  /* tables */
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;line-height:1.7}
+  th{background:var(--paper);font-weight:700;white-space:nowrap}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+  /* figures */
+  figure{margin:20px 0}
+  figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;
+    background:var(--felt);box-shadow:0 2px 8px rgba(40,40,20,.08)}
+  figcaption{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.7}
+  figcaption b{color:var(--ink)}
+  .phone{max-width:300px}
+  .phone img{border-radius:12px}
+  .shots{display:flex;flex-wrap:wrap;gap:18px;margin:20px 0}
+  .shots figure{margin:0;flex:1 1 240px;max-width:300px}
+  .shots figure img{border-radius:12px}
+
+  /* step list */
+  ol.steps{list-style:none;padding-left:0;counter-reset:s}
+  ol.steps>li{counter-increment:s;position:relative;padding-left:34px;margin:12px 0}
+  ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:23px;height:23px;
+    border-radius:50%;background:var(--brass-l);color:#16241E;font:600 12px/23px Oswald,sans-serif;
+    text-align:center}
+  ol.steps>li b{display:block}
+
+  /* phase strip */
+  .phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:18px 0}
+  .phase{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--brass-l);
+    border-radius:6px;padding:13px 15px}
+  .phase .n{font-size:10.5px;letter-spacing:.22em;color:var(--brass)}
+  .phase .t{font-size:15px;font-weight:700;margin:4px 0 5px}
+  .phase p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.75}
+
+  .pill{display:inline-block;font-size:11.5px;letter-spacing:.06em;border:1px solid var(--line);
+    border-radius:3px;padding:1px 8px;color:var(--brass);background:var(--paper);white-space:nowrap}
+  .soon{display:inline-block;font-size:10.5px;letter-spacing:.14em;background:#EDE6D4;color:#8A7743;
+    border-radius:3px;padding:2px 8px;vertical-align:middle;margin-left:6px}
+
+  footer{margin-top:52px;background:var(--felt);color:#8E9A90;font-size:12.5px;padding:26px 0 36px}
+  footer .brand{color:var(--brass-l);font-family:Oswald,sans-serif;font-size:15px;margin-bottom:8px}
+  footer a{color:#B8C4BC}
+  .top{display:inline-block;margin-top:14px;font-size:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="nav">
+    <span class="logo">ym</span><span class="name">缘满沙龙 · 使用手册</span>
+    <span class="sp"></span>
+    <a href="../">官网</a>
+    <a href="../organizer/">主办台</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="k">YUANMAN SALON · 主办方使用手册</div>
+    <h1>办一场活动，从构思到复盘<br>都在同一个页面上</h1>
+    <p>这套系统把项目管理的做法拆开，藏进你本来就要做的动作里 —— 你只管排事、派人、点状态，
+       台本、资源、账目和下一场的模板，会自己长出来。</p>
+    <div class="ver">版本 2026-07 · 手机 / 电脑通用 · 全部截图为示例数据</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<nav class="toc">
+  <div class="t">目录</div>
+  <ul>
+    <li><span class="n">0</span><a href="#s0">开始之前（3 分钟）</a></li>
+    <li><span class="n">1</span><a href="#s1">设计思路</a></li>
+    <li><span class="n">2</span><a href="#s2">核心界面：计划 → 执行</a></li>
+    <li><span class="n">3</span><a href="#s3">主办工作流程（四个阶段）</a></li>
+    <li><span class="n">4</span><a href="#s4">模板与资源库 · 人员注册</a></li>
+    <li><span class="n">5</span><a href="#s5">志愿者系统</a></li>
+    <li><span class="n">6</span><a href="#s6">捐助管理</a></li>
+    <li><span class="n">7</span><a href="#s7">收入 / 开支管理</a></li>
+    <li><span class="n">8</span><a href="#s8">嘉宾管理</a></li>
+    <li><span class="n">9</span><a href="#s9">公共网页 · 新闻 · 内容发布</a></li>
+    <li><span class="n">10</span><a href="#s10">扩展功能（规划中）</a></li>
+    <li><span class="n">11</span><a href="#s11">常见问题</a></li>
+  </ul>
+</nav>
+
+<!-- ─────────────────────────────── 0 ─────────────────────────────── -->
+<section id="s0">
+  <div class="sec-k">START</div>
+  <h2>0 · 开始之前（3 分钟）</h2>
+
+  <h3>三个地址，三种人</h3>
+  <div class="tw"><table>
+    <tr><th>谁</th><th>去哪</th><th>看得到什么</th></tr>
+    <tr><td>任何人</td><td><code>ym.jjconnect.tokyo</code></td><td>官网：组织介绍 · 活动 · 文章 · 新闻</td></tr>
+    <tr><td><b>主办方（你）</b></td><td><code>/organizer/</code></td><td>主办台 —— 本手册讲的全部内容</td></tr>
+    <tr><td>志愿者 · 嘉宾 · 捐赠者 · 记者</td><td><code>/member/</code></td><td>成员页：只看得到你发布给 TA 本人的东西</td></tr>
+  </table></div>
+  <p>三个入口在官网右上角的「登录 / 加入」里也都能点到。<b>成员之间互相看不见</b> —— 所有信息都只在
+     「你 ↔ 某一个人」之间流动。</p>
+
+  <h3>登录状态决定你能做什么</h3>
+  <div class="tw"><table>
+    <tr><th>状态</th><th>能做</th><th>不能做</th></tr>
+    <tr><td>未登录（演示模式）</td><td>排台本、加资源、记预算 —— 全部功能都能试</td><td>数据只留在这台设备，换个手机就没有</td></tr>
+    <tr><td>已登录 · 等批准</td><td>同上</td><td>还不能云同步</td></tr>
+    <tr><td><b>已登录 · 已批准</b></td><td>云同步、记账、发邀请码、发布到官网</td><td>—</td></tr>
+  </table></div>
+  <div class="note"><span class="h">带「示例」两个字的都是练习数据</span>
+    第一次打开时系统会铺一套示例活动、示例名册、示例模板，方便你练手。练熟之后到
+    <b>资产库</b> 页面最底下点「清除所有示例数据」，一次清干净。示例数据不会被上传到云端。</div>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 1 ─────────────────────────────── -->
+<section id="s1">
+  <div class="sec-k">CONCEPT</div>
+  <h2>1 · 设计思路</h2>
+
+  <h3>把项目管理藏进日常动作</h3>
+  <p>没有甘特图，没有依赖关系，没有 WBS。一场活动 = <b>一页台本</b>，台本的每一行挂着这一环节要用的
+     <b>人 / 物 / 钱</b>。你排台本的时候，任务清单就已经建好了 —— 不用再单独维护一份。</p>
+
+  <h3>计划随时改，任务自动跟上</h3>
+  <p>活动是活的：场地临时换、有人退出、临时加一个环节、日期往后挪。
+     这套系统的任务清单<b>不是另存的一份</b> —— <b>台本上那张牌本身就是任务</b>。
+     所以你在计划页上改什么，执行看板下一秒就是改完的样子：</p>
+  <div class="tw"><table>
+    <tr><th>你在计划页做的事</th><th>执行看板上自动发生的</th></tr>
+    <tr><td>加一个环节 / 挂一个人 / 加一件要做的事</td><td>看板上多出一件<b>待办</b></td></tr>
+    <tr><td>删掉一行 / 拿掉一张牌</td><td>对应的任务跟着消失，也不再催你</td></tr>
+    <tr><td>换负责人 · 改日期 · 调时长 · 设截止</td><td>它在时间轴上的位置和提醒自己跟着走</td></tr>
+    <tr><td>点一下牌翻状态</td><td>任务当场在树上换边（进行中 → 完成）</td></tr>
+  </table></div>
+  <div class="note rule"><span class="h">永远只有一份清单</span>
+    不存在「计划改了、任务表忘了改」这种事，也不会出现两份对不上的进度。
+    按下「开始跟踪执行」之后<b>计划照样随便改，跟踪不会重来</b> ——
+    所以你可以一边办一边调整，而看板上显示的进展始终是<b>真实的那一份</b>。</div>
+
+  <h3>全程 AI 辅助，但 AI 只提议</h3>
+  <div class="tw"><table>
+    <tr><th>在哪</th><th>AI 做什么</th></tr>
+    <tr><td>票据 <span class="pill">📷</span></td><td>拍一张領収書，自动读出金额、店名、日期、勘定科目、登録番号（T+13 位）</td></tr>
+    <tr><td>名单 <span class="pill">📷</span></td><td>群聊截图直接读出报名者姓名（只读名字，不抄聊天内容，不猜性别）</td></tr>
+    <tr><td>报名表 <span class="pill">📷</span></td><td>纸质报名表拍照 → 自动填进嘉宾资料卡</td></tr>
+    <tr><td>语音 <span class="pill">🎤</span></td><td>每个输入框旁边都有话筒，说话代替打字</td></tr>
+    <tr><td>补写 <span class="pill">✨</span></td><td>环节说明、复盘小结写不出来时，点一下让 AI 起个头</td></tr>
+  </table></div>
+  <div class="note rule"><span class="h">铁律：AI 提议，人确认</span>
+    识别结果一律先变成一张<b>可以逐格改的确认卡</b>，你点「确认」它才落账。任何情况下系统都不会自动记账。</div>
+
+  <h3>自学习：越用越聪明</h3>
+  <p>每办完一场，复盘页点一次 <b>「保存回资产库」</b>：这场的台本变成模板、新加的环节变成灵感、
+     帮过忙的人进人员库、实际价格更新收支项。<b>下一场就是从这些东西开始，而不是从空白开始。</b>
+     办得越多，铺一场新活动越快。</p>
+
+  <h3>对内对外，一条记录追到底</h3>
+  <p>志愿者的工时和贡献、嘉宾的报名和到场、捐赠者交来的票据、每一笔收支的原始凭证 ——
+     都挂在同一棵树上，从计划一直连到复盘和总账。</p>
+
+  <h3>手机端优先</h3>
+  <p>所有界面都是先按手机排的。活动当天你拿着手机就能签到、记时间、拍票据；
+     只有<b>执行看板（时间树）</b>和<b>总账</b>在电脑上信息更密一些。</p>
+
+  <figure class="phone">
+    <img src="img/01-desk.png" alt="工作台：按阶段分组的活动列表" loading="lazy">
+    <figcaption><b>工作台</b> —— 打开 app 的第一屏。活动按「当前 / 筹备中 / 已结束·仍热 / 已归档」自动分组，
+      顶部四个常用动作：新活动 · 记一张票据 · 手机拍 · 总账。</figcaption>
+  </figure>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 2 ─────────────────────────────── -->
+<section id="s2">
+  <div class="sec-k">CORE</div>
+  <h2>2 · 核心界面：计划 → 执行</h2>
+  <p>整套系统只有两个真正的核心页面：<b>计划页</b>（把人、物、钱部署到台本上）和
+     <b>执行看板</b>（一览所有事情的状态，点一下翻转）。其余页面都是围着这两个转。</p>
+
+  <h3>2.1 计划页 —— 任务与资源部署</h3>
+  <figure class="phone">
+    <img src="img/02-plan-top.png" alt="计划页顶部：资源汇总条、收支条、活动信息" loading="lazy">
+    <figcaption>计划页顶部三块：<b>资源汇总条</b>（未联系 / 已联系 / 已确认 / 到位 四个数字）、
+      <b>收支条</b>（收入 · 支出 · 差额，计划 → 实际）、<b>活动信息</b>（名称 / 日期 / 场地 / 名额 / 是否公开到官网）。</figcaption>
+  </figure>
+
+  <figure class="phone">
+    <img src="img/03-plan-rows.png" alt="台本环节行，每行挂着资源和收支胶囊" loading="lazy">
+    <figcaption><b>台本</b> —— 一行 = 一个环节：时间 · 环节名 · 负责人 · 说明。
+      下面挂着这一环节要用的<b>资源胶囊</b>（人 / 物）、<b>收支胶囊</b>（钱）、<b>事项</b>（要做的事）和附件。</figcaption>
+  </figure>
+
+  <p>往台本上加东西的三种方式：</p>
+  <ol class="steps">
+    <li><b>从资产库点</b> — 左侧「资产库」按钮打开面板，点一个模板铺满整份台本，点一个灵感插一行环节，点一个人 / 物 / 收支项挂成胶囊。</li>
+    <li><b>直接写</b> — 在行上直接输入新名字，系统自动建记录。</li>
+    <li><b>说</b> — 点输入框旁边的 🎤，说话转文字。</li>
+  </ol>
+
+  <h3>2.2 执行看板 —— 一览与状态翻转</h3>
+  <p>计划页点 <b>「计划好了 · 开始跟踪执行」</b>，这场活动就进入执行阶段，进入<b>时间树</b>：</p>
+
+  <figure>
+    <img src="img/04-exec-tree.png" alt="执行看板：时间树" loading="lazy">
+    <figcaption><b>执行看板（电脑）</b>。树干是一条竖着的时间轴：顶端＝计划开始日，树根＝活动日，
+      「今天」每过一天下移一格。<b>左边是完成，右边是进行中</b>，每件事停在它自己的那一天；
+      <b>顶上的冠层是待办</b>（还没开始 / 还没人接）。中间空白的日子会收成「空 N 天」，不占地方。</figcaption>
+  </figure>
+
+  <div class="shots">
+    <figure>
+      <img src="img/05-exec-phone.png" alt="执行看板 手机版" loading="lazy">
+      <figcaption><b>手机上</b>同一棵树竖着排开，一屏能看完全部进度。</figcaption>
+    </figure>
+    <figure>
+      <img src="img/06-exec-flip.png" alt="任务详情浮层：状态翻转" loading="lazy">
+      <figcaption><b>点任何一件事</b>都会弹出这张卡：三态翻转、负责人、截止、难度、催办、票据、搁置。</figcaption>
+    </figure>
+  </div>
+
+  <h4>状态怎么翻</h4>
+  <p>资源（人 / 物）有四个状态，事项有三个状态，在看板上统一成三段显示：</p>
+  <div class="tw"><table>
+    <tr><th>资源胶囊（人 / 物）</th><th>看板上的位置</th><th>意思</th></tr>
+    <tr><td>未联系</td><td><b>待办</b>（顶上）</td><td>还没开口问</td></tr>
+    <tr><td>已联系 · 已确认</td><td><b>进行中</b>（右侧）</td><td>问了 / 对方答应了，东西还没到位</td></tr>
+    <tr><td>到位</td><td><b>完成</b>（左侧）</td><td>人来了 / 东西拿到了 —— 这一件不用再管</td></tr>
+  </table></div>
+  <p>翻转有两种点法：<b>在计划页直接点胶囊</b>循环切换，或者<b>在看板上点开这张卡</b>选一段。
+     一件事做完，它会在<b>它完成的那一天</b>从右边滑到左边 —— 树的左半边就是「什么时候做完了什么」的记录。</p>
+
+  <h4>随时回去改计划</h4>
+  <p>开始跟踪之后，计划页<b>不会</b>被锁上。两个入口随时来回走：</p>
+  <ul>
+    <li>计划页顶上变成 <b>● 执行跟踪中</b>，旁边一个 <b>▶ 执行看板</b> 按钮 —— 台本照样可以增删改。</li>
+    <li>执行看板底部有 <b>✎ 调整计划</b>，一点就回到计划页。</li>
+    <li><b>活动当天也一样</b> —— 「当天」页左上角的 <b>← 计划</b> 一步就回得去，
+      顺序、时长现场随便调（见 <a href="#s3">§3 阶段三</a>）。</li>
+  </ul>
+  <figure class="phone">
+    <img src="img/30-plan-run.png" alt="计划页在执行跟踪中的状态，台本仍可编辑" loading="lazy">
+    <figcaption>已经在跟踪的活动，计划页长这样 —— <b>● 执行跟踪中</b> 只是一个状态标记，
+      下面的台本、资源、收支<b>全部照常可改</b>。改完不用做任何同步，看板自己就对了。</figcaption>
+  </figure>
+  <p>看板底部另外两个按钮是 <b>✓ 完成活动</b> 和 <b>取消活动</b> —— 只有这两个才会改变活动的阶段，
+     改计划不会。</p>
+
+  <div class="note"><span class="h">截止日期只提醒，不排期</span>
+    给一件事设截止后，它会被钉在树干上那一天，临近变黄、过期变红并浮到最上面，还能一键 📤 催办。
+    但系统<b>永远不会</b>因为一个截止去改活动日期或挡住别的事 —— 排期是你的判断，不是软件的。</div>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 3 ─────────────────────────────── -->
+<section id="s3">
+  <div class="sec-k">WORKFLOW</div>
+  <h2>3 · 主办工作流程（四个阶段）</h2>
+  <p>你完整的一圈是：<b>构思 → 策划 → 任务 → 资源 → 发布 → 领任务 → 追踪 → 完成 → 更新 → 复盘</b>。
+     在界面上，这一圈落在四个阶段里：</p>
+
+  <div class="phases">
+    <div class="phase"><div class="n">PHASE 1</div><div class="t">策划</div>
+      <p>构思 → 铺台本 → 挂人物钱。在<b>计划页</b>完成。</p></div>
+    <div class="phase"><div class="n">PHASE 2</div><div class="t">筹备</div>
+      <p>派活 → 发布 → 领任务 → 追踪催办 → 收报名。在<b>执行看板</b>完成。</p></div>
+    <div class="phase"><div class="n">PHASE 3</div><div class="t">当日</div>
+      <p>签到 → 跑台本 → 记实际时间 → 现场记账，<b>顺序和时长随时改</b>。在<b>当天</b>页完成。</p></div>
+    <div class="phase"><div class="n">PHASE 4</div><div class="t">复盘</div>
+      <p>对账 → 记工时评价 → 写小结 → 保存回资产库 → 再办一场。</p></div>
+  </div>
+
+  <p>工作台上每张活动卡下面的四个胶囊 <span class="pill">计划</span>
+     <span class="pill">报名</span> <span class="pill">当天</span> <span class="pill">复盘</span>
+     就是这四个阶段的入口，随时可以来回跳。</p>
+
+  <h3>阶段一 · 策划</h3>
+  <ol class="steps">
+    <li><b>新建活动</b> — 工作台点「＋ 新活动」，或者在资产库点一个<b>模板</b>直接铺满整份台本。</li>
+    <li><b>填活动信息</b> — 名称、副题、日期、时间、场地、名额。</li>
+    <li><b>排环节</b> — 每行填时间、环节名、负责人；说明写不出来点 ✨ 让 AI 起个头。环节可以拖动排序，时刻会自动往下顺延。</li>
+    <li><b>挂资源和钱</b> — 从资产库点人、点物资、点收支项，挂到对应的环节上；全场性的东西（场地、门票、保险）挂在最上面的活动信息卡上。</li>
+    <li><b>加要做的事</b> — 点「＋事项」加上打电话确认场地、印名牌这类杂事，它们也会进执行看板。</li>
+  </ol>
+
+  <h3>阶段二 · 筹备</h3>
+  <ol class="steps">
+    <li><b>开始跟踪执行</b> — 计划页点「计划好了 · 开始跟踪执行」，计划就变成会自己提醒你的执行看板。
+      之后<b>计划照样随便改，跟踪不会重来</b>（见 <a href="#s2">§2.2</a>）。</li>
+    <li><b>派活</b> — 在执行看板点开一件事，写上负责人（从名册选或直接写名字）、设难度、设截止。</li>
+    <li><b>发布没人认领的</b> — 看板顶部有「一键发布 N 项没人认领的」，发出去让志愿者自己抢。</li>
+    <li><b>追踪与催办</b> — 每天打开看板看「今天」这一横线：上面是已经过去的，下面是还剩的天数。过期的事会自己浮到最上面变红，点 📤 催办一键发提醒。</li>
+    <li><b>收报名</b> — 活动卡上的「报名」胶囊进报名页（详见 <a href="#s8">§8 嘉宾管理</a>）。</li>
+  </ol>
+  <figure class="phone">
+    <img src="img/07-exec-open.png" alt="一键发布没人认领的任务" loading="lazy">
+    <figcaption>「一键发布 N 项没人认领的」—— 发布之后这些任务会出现在志愿者<b>各自的</b>页面上，先点先得。</figcaption>
+  </figure>
+
+  <h3>阶段三 · 当日</h3>
+  <p>活动卡上点「当天」，三个标签页：<b>看板 · 台本 · 记录</b>。</p>
+  <div class="shots">
+    <figure>
+      <img src="img/08-day-board.png" alt="当天签到板" loading="lazy">
+      <figcaption><b>看板</b> —— 男女两栏号牌，点一下签到、再点撤销，不弹确认框。
+        右上角实时显示男女比例，差距大了会报红。下面「门票实收（按到场）」按实际到场人数算，点「确认入账」进总账。</figcaption>
+    </figure>
+    <figure>
+      <img src="img/09-day-run.png" alt="当天台本模式" loading="lazy">
+      <figcaption><b>台本</b> —— 高亮当前和下一个环节，点一行就把实际时间记下来（再点撤销）。
+        每行右边那个 <b>「分」</b> 就是时长，当场改、后面的时刻自动顺延；
+        左上角 <b>← 计划</b> 一步回计划页调顺序。</figcaption>
+    </figure>
+  </div>
+  <h4>当天照样能改顺序和时长 —— 这条对现场最要紧</h4>
+  <p>现场永远不按计划走：上一个环节拖了、嘉宾还没到齐、临时想把茶歇提前。
+     台本<b>不是活动当天就冻结的东西</b>：</p>
+  <div class="tw"><table>
+    <tr><th>要改什么</th><th>在哪改</th><th>改完发生什么</th></tr>
+    <tr><td><b>时长</b></td><td>就在「当天 → 台本」这一页，直接改那一行的<b>「分」</b></td>
+        <td>后面每一行的时刻和顶上的「预计结束」<b>立刻自动顺延</b></td></tr>
+    <tr><td><b>顺序</b></td><td>点左上角 <b>← 计划</b> 回计划页，按住 <b>⠿</b> 拖，或点 <b>▲ ▼</b></td>
+        <td>回到「当天」，台本<b>已经是新顺序</b> —— 两边本来就是同一份，不用保存、不用同步</td></tr>
+    <tr><td><b>加 / 删环节</b></td><td>同上，在计划页加行删行</td>
+        <td>当天台本和执行看板同时跟着变</td></tr>
+  </table></div>
+  <div class="note rule"><span class="h">想让时刻自己重算，就把时刻留空、只填「分」</span>
+    每一行的<b>时刻是「锚点」</b>：手填了时刻的行，换顺序时那个时刻会<b>跟着这个环节一起搬走</b>，
+    结果就是台本上的时间串位（例如变成 …14:10 → 15:10 → 14:40…）。<br>
+    做法很简单：<b>只有第一行填开始时刻，其余的行时刻留空、只填「分」</b>。
+    这样顺序怎么调，后面的时刻都自己顺着算下来，永远是对的。</div>
+  <p>已经点过的<b>实际开始时间不受影响</b>；<b>计划时刻也不会被改掉</b> ——
+     复盘页那份「计划 → 实际」的对照，看的就是这两者的差距。</p>
+
+  <p>当天要记账，用页面上的 📷 拍票据，或者顶部「记一张票据」。<b>记录</b>标签页放的是当天临时的记录和附件。</p>
+
+  <h3>阶段四 · 复盘</h3>
+  <figure class="phone">
+    <img src="img/10-review.png" alt="复盘页" loading="lazy">
+    <figcaption><b>复盘</b> —— 最上面是这场最重要的成果（牵手成功几对）；往下是台本
+      <b>计划 → 实际</b> 的时间对照、收支 <b>预算 → 实际</b> 的对账、到场人数。</figcaption>
+  </figure>
+  <div class="shots">
+    <figure>
+      <img src="img/11-review-vol.png" alt="复盘：志愿者工时与评价" loading="lazy">
+      <figcaption><b>志愿者</b> —— 左边是 TA 自己交任务时报的工时，右边是<b>你</b>登记的工时和工作评价。
+        两栏分开、不相加，TA 在自己页面上两个都看得到。</figcaption>
+    </figure>
+    <figure>
+      <img src="img/12-review-save.png" alt="保存回资产库 / 再办一场" loading="lazy">
+      <figcaption><b>保存回资产库</b>＝这场变成下一场的起点。<b>再办一场</b>＝整份台本、资源、事项、
+        收支项全搬过去，只留日期给你填。</figcaption>
+    </figure>
+  </div>
+  <p>复盘页还能导出：台本打印 / 分享、收支 CSV、名单·评价 CSV。忘了记的票据用「补一张票据」补录。</p>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 4 ─────────────────────────────── -->
+<section id="s4">
+  <div class="sec-k">LIBRARY</div>
+  <h2>4 · 模板与资源库 · 人员注册</h2>
+  <p>资产库有五个标签，<b>每办一场就长一点</b>。这是整套系统「自学习」的地方 ——
+     它不是设置页，是你的积累。</p>
+
+  <div class="shots">
+    <figure>
+      <img src="img/17-lib-tpl.png" alt="资产库：模板" loading="lazy">
+      <figcaption><b>模板</b> —— 整场活动的台本（十对十、八对八…）。点一下铺满一份新台本。</figcaption>
+    </figure>
+    <figure>
+      <img src="img/18-lib-idea.png" alt="资产库：灵感" loading="lazy">
+      <figcaption><b>灵感</b> —— 单个环节（自我介绍轮、快问快答、交换联系…），带典型时长和常用资源，分四类。</figcaption>
+    </figure>
+    <figure>
+      <img src="img/19-lib-people.png" alt="资产库：人员" loading="lazy">
+      <figcaption><b>人员</b> —— 三个子类：志愿者 · 嘉宾 · 捐赠人。点一条打开完整资料卡。</figcaption>
+    </figure>
+    <figure>
+      <img src="img/20-lib-goods.png" alt="资产库：物资" loading="lazy">
+      <figcaption><b>物资</b> —— 场地、物料、消耗品。右边那颗胶囊是库存状态，点一下循环切换。</figcaption>
+    </figure>
+    <figure>
+      <img src="img/21-lib-money.png" alt="资产库：收支项" loading="lazy">
+      <figcaption><b>收支项</b> —— 常用的费用和收入项（场地费、饮料、门票…），带典型价格和单价。</figcaption>
+    </figure>
+  </div>
+
+  <div class="note"><span class="h">任务模板怎么来的</span>
+    你不用单独维护任务模板。台本里每个环节挂的「事项」会跟着台本一起被保存回模板 ——
+    <b>下次用同一个环节，同样的事项自动重新出现</b>（已搁置的不会跟来，状态会重置）。</div>
+
+  <h3>人员注册：发一串邀请码就行</h3>
+  <p>你不需要知道对方的邮箱。<b>你发码，TA 自己注册</b>，邮箱和密码由 TA 自己填。</p>
+  <div class="shots">
+    <figure>
+      <img src="img/25-code-new.png" alt="生成邀请码" loading="lazy">
+      <figcaption>在名册里点一个人 → 🔑 → 选身份 → 「生成邀请码」。</figcaption>
+    </figure>
+    <figure>
+      <img src="img/26-code-made.png" alt="邀请码已生成" loading="lazy">
+      <figcaption>生成后同时给出<b>用户编码</b>（永久）和<b>邀请码</b>（一周有效、只能用一次）。
+        点「发送」用微信 / LINE 发给 TA 本人。</figcaption>
+    </figure>
+  </div>
+  <ol class="steps">
+    <li><b>你</b> — 资产库 → 人员 → 点一个人 → 🔑 → 生成邀请码 → 发送给 TA。</li>
+    <li><b>TA</b> — 打开 <code>ym.jjconnect.tokyo/member/</code>，点「我有邀请码，还没注册」，
+      输入邀请码 + 自己的邮箱 + 自设密码。</li>
+    <li><b>完成</b> — 邀请码当场作废，用户编码永久留在 TA 的记录上，并<b>自动归到你名下</b>。
+      以后 TA 用<b>邮箱 + 密码</b>登录。</li>
+  </ol>
+  <figure class="phone">
+    <img src="img/29-member.png" alt="成员页登录 / 注册入口" loading="lazy">
+    <figcaption>成员页 <code>/member/</code> —— TA 看到的入口。忘记密码可以自己重设，不用找你。</figcaption>
+  </figure>
+
+  <h4>用户编码：位数就是身份</h4>
+  <div class="tw"><table>
+    <tr><th>编码</th><th>身份</th><th>谁能发</th></tr>
+    <tr><td><code>H001</code></td><td>主办者</td><td><b>只有平台管理员</b></td></tr>
+    <tr><td><code>V0014</code></td><td>志愿者</td><td>你</td></tr>
+    <tr><td><code>V0014N</code></td><td>有偿服务者（拿报酬的）</td><td>你</td></tr>
+    <tr><td><code>P482719</code></td><td>嘉宾（<b>6 位随机</b>）</td><td>你</td></tr>
+    <tr><td><code>D0007</code></td><td>捐赠者</td><td>你</td></tr>
+    <tr><td><code>O003</code></td><td>记者 / 旁观</td><td>你</td></tr>
+  </table></div>
+  <div class="note"><span class="h">嘉宾编码为什么是随机的</span>
+    其他身份按顺序编号，嘉宾故意用 6 位<b>随机</b>数 —— 顺序号会泄露「这家一共来过多少嘉宾」
+    和「这个人大概什么时候来的」，对相亲活动的参加者是真实的隐私。</div>
+  <div class="note warn"><span class="h">邀请码只发给 TA 本人</span>
+    拿到这串码的人就能用它注册成对应身份。<b>不要发到群里。</b>码只显示这一次；
+    发漏了用「重发邀请码」拿新的（旧的立刻作废，编号不变）。</div>
+
+  <h3>物资和账务登记</h3>
+  <p>物资在资产库 → <b>物资</b>；账务（收支项）在资产库 → <b>收支项</b>。
+     物资分<b>消耗品</b>和<b>可存续品</b>两类，消耗品才有类别 / 保存期限 / 价值 / 已使用这些字段。
+     库存状态见 <a href="#s6">§6 捐助管理</a>。</p>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 5 ─────────────────────────────── -->
+<section id="s5">
+  <div class="sec-k">VOLUNTEER</div>
+  <h2>5 · 志愿者系统</h2>
+
+  <h3>两种派活方式</h3>
+  <div class="tw"><table>
+    <tr><th></th><th>怎么做</th><th>什么时候用</th></tr>
+    <tr><td><b>直接指定</b></td><td>在执行看板点开一件事，填负责人</td><td>大部分情况</td></tr>
+    <tr><td><b>发布抢单</b></td><td>看板上点「一键发布 N 项没人认领的」</td><td>你也不知道该派给谁的时候</td></tr>
+  </table></div>
+  <p>发布出去的任务会出现在志愿者<b>各自的</b>页面上（没有公共看板），<b>先点先得</b> ——
+     第一个点「接任务」的人拿到，后点的人看到「该任务已经被领取」，而且<b>看不到是谁领走的</b>。
+     赢的人还要等你点一次「确认指派」才真正归 TA。</p>
+
+  <h3>难度与星级</h3>
+  <p>每件事可以点选难度 <b>C · B · A · S · SS</b>（默认 C）；每个志愿者有一个你授予的星级。
+     <b>难度高于本人星级的任务接不了</b> —— 界面上照样显示，但锁着（🔒 需 S 级）。
+     藏起来只会让人以为没任务，锁住才有升级的动力。</p>
+
+  <h3>交任务 → 确认 / 退回</h3>
+  <ol class="steps">
+    <li><b>TA 交</b> — 志愿者在自己那条任务上填<b>工时 / 自费 / 简短说明</b>，可以传票据和附件，然后点「交任务」。</li>
+    <li><b>卡片左移显示「交付」</b> — 虚线，区别于实线的「完成」。<b>这只是投影</b>：真正的状态还没变。</li>
+    <li><b>你确认</b> — 打开看到工时、自费、说明、票据 → 点<b>「确认完成」</b>，状态才翻到完成。</li>
+    <li><b>或者退回</b> — 点「退回」并<b>必须写清楚原因</b>。TA 那边显示「该任务未被确认，需要您跟进」，点开看你的反馈，改好再交一次。</li>
+  </ol>
+
+  <h3>贡献与等级</h3>
+  <p>志愿者在自己页面底部能看到：完成件数 · 累计工时 · 累计自费 · 主办的感谢 · 服务经历。
+     数据来自你已确认的交付，加上你在复盘里登记的工时。</p>
+  <div class="note rule"><span class="h">工时不重复计算</span>
+    <b>本人申报</b>（TA 自己交任务时填的、你确认过的数字）和<b>主办登记</b>（你在复盘里填的）
+    分开显示、不相加。TA 在自己页面上两个都看得到。</div>
+  <div class="note warn"><span class="h">自费不进收支，也不进总账</span>
+    志愿者自己掏钱买的东西，是<b>贡献记录</b>，不是你的账目 —— 它不参与活动差额，不进总账，也不出现在任何导出的 CSV 里。
+    需要你报销的，在票据确认卡上选「主办报销」。</div>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 6 ─────────────────────────────── -->
+<section id="s6">
+  <div class="sec-k">DONATION</div>
+  <h2>6 · 捐助管理</h2>
+
+  <h3>登记捐赠人</h3>
+  <figure class="phone">
+    <img src="img/22-lib-donor.png" alt="资产库：捐赠人" loading="lazy">
+    <figcaption>资产库 → 人员 → <b>捐赠人</b>。点 🔑 给 TA 发邀请码（身份 <code>D</code>），
+      TA 就能自己把票据交到你这里。</figcaption>
+  </figure>
+
+  <h3>捐赠票据入账</h3>
+  <figure class="phone">
+    <img src="img/23-give-pend.png" alt="计划页上的捐赠票据待入账" loading="lazy">
+    <figcaption>捐赠人交来的票据会出现在<b>计划页</b>上的这一块。点「入账」→ 确认卡 → 进总账，
+      科目记<b>受取寄付金</b>。捐赠人自己那一行会变成「✓ 主办方已收讫入账」。</figcaption>
+  </figure>
+  <div class="note"><span class="h">捐赠人的写入面是最小的</span>
+    捐赠者<b>只能</b>交票据，看不到任务、看不到名册、看不到别人。这一块空着的时候也会露一行，
+    告诉你差哪一步（比如「捐赠人还没有账号」）。</div>
+
+  <h3>物资入库 · 库存 · 消耗</h3>
+  <p>物资的库存就是<b>一颗胶囊、四个状态</b>，点一下循环切换 —— 不是一套进销存：</p>
+  <p style="margin:14px 0">
+    <span class="pill">待入库</span> →
+    <span class="pill">已入库</span> →
+    <span class="pill">已发放</span> →
+    <span class="pill">已用完</span>
+  </p>
+  <p>状态在<b>资产库 → 物资</b>的列表上直接点（见上面 §4 的物资截图），也在物资资料卡里。
+     捐赠来的物资就是登记成一条物资记录，关联到捐赠人。</p>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 7 ─────────────────────────────── -->
+<section id="s7">
+  <div class="sec-k">MONEY</div>
+  <h2>7 · 收入 / 开支管理</h2>
+  <div class="note warn"><span class="h">目前只记账，不收款</span>
+    系统<b>不代收门票、不处理支付</b>。门票金额、报名费都只是<b>记录</b>，钱怎么收由你线下决定。
+    在线收费属于<a href="#s10">规划中的功能</a>。</div>
+
+  <h3>记一张票据：拍照 → 识别 → 确认</h3>
+  <figure class="phone">
+    <img src="img/14-rc-card.png" alt="票据识别确认卡" loading="lazy">
+    <figcaption>拍完票据弹出的<b>确认卡</b>：支出 / 收入、这笔算在哪场活动、取引先、金额（税込）、勘定科目。
+      展开「更多」还有日期 · 支付方式 · 摘要 · 登録番号。核对完点<b>「确认入账」</b>才落账。</figcaption>
+  </figure>
+  <p>能拍票据的地方：</p>
+  <ul>
+    <li><b>工作台</b>顶部「记一张票据」—— 随时录入，会当面问你「这笔算在哪」</li>
+    <li><b>计划页</b>的收支胶囊 —— 已经知道算在哪场、哪一项</li>
+    <li><b>执行看板</b>点开任务 → 票据 —— 凭证挂在这件事下面</li>
+    <li><b>复盘页</b>「补一张票据」—— 事后补录</li>
+    <li><b>志愿者 / 捐赠者</b>交来的 —— 你点「入账」转成正式账目</li>
+  </ul>
+  <div class="note"><span class="h">在电脑上也能「手机拍」</span>
+    票在手里、相机在手机上。工作台点<b>「手机拍」</b> → 出现二维码 → 手机扫（<b>不用登录</b>）→ 拍 →
+    自动传回电脑弹出确认卡。可以连着拍，一张一张确认；二维码 10 分钟过期。</div>
+
+  <h3>总账</h3>
+  <figure class="phone">
+    <img src="img/15-ledger.png" alt="收入及开支总账 手机版" loading="lazy">
+    <figcaption><b>总账</b> —— 每一笔都来自一张票据。可按年度和活动筛选，
+      标签切换 全部 / 支出 / 收入 / 未決済 / 要核对。</figcaption>
+  </figure>
+  <figure>
+    <img src="img/16-ledger-desk.png" alt="总账 电脑版" loading="lazy">
+    <figcaption>电脑上一屏能看到更多行，下面还有<b>科目別集計</b>。
+      导出两份 CSV：<b>総勘定元帳</b>（自己看的帳簿）和<b>仕訳 CSV</b>（给税理士的）。</figcaption>
+  </figure>
+
+  <h3>几条要记住的规矩</h3>
+  <div class="tw"><table>
+    <tr><th>规矩</th><th>为什么</th></tr>
+    <tr><td><b>金额一律按税込记</b></td><td>税务判断交给税理士。系统<b>不猜</b>税率 —— 票面上读不到的就空着，绝不推算。</td></tr>
+    <tr><td><b>取消不删行</b></td><td>记错了在总账里点「取消」并写理由，行会留着划掉。删掉的账是查不回来的。</td></tr>
+    <tr><td><b>「要核对」标记</b></td><td>识别服务没响应、或者没写勘定科目的行会打上这个标记。<b>清完再导出。</b></td></tr>
+    <tr><td><b>未決済单列</b></td><td>振込 / クレジット 没填决済日的，作为未払 / 未収另外列出来。</td></tr>
+    <tr><td><b>门票只记一次</b></td><td>已经单独交过报名费的人，不会再被门票汇总算一遍。</td></tr>
+  </table></div>
+  <div class="note"><span class="h">原件存在你自己的网盘</span>
+    票据原图上传到<b>沙龙自己的 Google Drive</b>（按「活动 · 日期 / 票据·报名表·名单·附件」分文件夹），
+    系统只存链接。拍错的票据请到 Drive 里手动删 —— 系统<b>没有删除权限</b>，这是有意的。</div>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 8 ─────────────────────────────── -->
+<section id="s8">
+  <div class="sec-k">GUEST</div>
+  <h2>8 · 嘉宾管理</h2>
+
+  <h3>邀请码与嘉宾一一对应</h3>
+  <p>做法和 <a href="#s4">§4 人员注册</a> 完全一样：你在名册里建一条嘉宾记录 → 发一串邀请码 → TA 自己注册。
+     注册成功后这个账号就<b>和名册里那条记录绑定</b>，编码 <code>P</code> + 6 位随机数。</p>
+  <figure class="phone">
+    <img src="img/24-people.png" alt="用户一览" loading="lazy">
+    <figcaption><b>用户</b>页 —— 按人看，不按类别看。可以搜姓名或编号，点一行展开 TA 的服务记录和表现，
+      看得到「归属主办 · 来源（邀请码 / 自助申请）· 已注册时间」。</figcaption>
+  </figure>
+
+  <h3>嘉宾能看到什么、能做什么</h3>
+  <div class="tw"><table>
+    <tr><th>看得到</th><th>看不到</th></tr>
+    <tr><td>公开活动信息</td><td>自己的资料卡（职业 / 年龄 / 联系方式 / 评价 / 择偶条件）</td></tr>
+    <tr><td>当天流程（<b>只有时间和环节名</b>）</td><td>环节说明（那是给志愿者的操作指示）</td></tr>
+    <tr><td>自己的号牌</td><td>其他任何嘉宾、任何志愿者</td></tr>
+    <tr><td>主办方通知</td><td>钱、名册、评价</td></tr>
+  </table></div>
+  <div class="note rule"><span class="h">嘉宾不需要提交隐私资料</span>
+    嘉宾账号<b>不是</b>一个「查看我自己的档案」的窗口 —— TA 注册只需要邮箱和密码。
+    资料是<b>你</b>填、<b>只有你</b>看得到的。系统不替你管理嘉宾隐私，这份责任在沙龙这边。</div>
+
+  <h3>浏览与报名</h3>
+  <ol class="steps">
+    <li><b>公开到官网</b> — 计划页勾上「公开到官网」，这场活动才会出现在官网上、才收得到报名。</li>
+    <li><b>TA 报名</b> — 有账号的嘉宾在自己页面上看到这场活动，点<b>「我想参加」</b>。</li>
+    <li><b>你确认</b> — 报名页的「待确认」里点同意 → 系统自动建记录、发号牌。</li>
+  </ol>
+  <figure class="phone">
+    <img src="img/13-signup.png" alt="报名情况页" loading="lazy">
+    <figcaption><b>报名情况</b> —— 上半是「已报名」（含男女人数），下半是「拟邀请」。
+      空着的时候也会告诉你差哪一步（没公开到官网 / 名册里还没有嘉宾绑定账号）。</figcaption>
+  </figure>
+  <div class="note warn"><span class="h">拟邀请 ≠ 报名</span>
+    你从名册点选的人只是<b>「已经叫了，还没答应」</b>。有账号的嘉宾看到「主办方邀请你参加」，
+    <b>TA 按了「我想参加」才算报名</b>。口头答应了的（还没发邀请码的）用「代为确认」由你替 TA 确认。</div>
+
+  <h3>上载报名清单</h3>
+  <p>报名页和当天签到板上都有两个导入入口：</p>
+  <ul>
+    <li><b>⬆ 导入名单 / 名单 CSV</b> — Excel 另存为 CSV 直接传。</li>
+    <li><b>📷 名单截图</b> — 群聊截图拍/传上去，AI 自动读出<b>姓名</b>。
+      它<b>不会</b>抄聊天内容、时间、群名，也<b>不会猜性别</b> —— 性别显示成灰色的 <code>♂?</code>，等你点一下确认。</li>
+  </ul>
+  <p>两条路进的都是同一张确认清单，你逐个核对之后才落进名册。</p>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 9 ─────────────────────────────── -->
+<section id="s9">
+  <div class="sec-k">PUBLIC</div>
+  <h2>9 · 公共网页 · 新闻 · 内容发布</h2>
+
+  <figure class="phone">
+    <img src="img/27-post.png" alt="发布页" loading="lazy">
+    <figcaption><b>发布</b>页 —— 三类内容：<b>文章</b>、<b>新闻</b>，以及从活动页「公开到官网」自动生成的<b>活动卡</b>。
+      每条都标着「● 已发布 / ○ 草稿」。</figcaption>
+  </figure>
+
+  <ol class="steps">
+    <li><b>在哪写都行</b> — Notion、Word、公众号草稿都可以，写好<b>直接粘贴进来</b>。格式会保留，危险内容自动清除。</li>
+    <li><b>存草稿或直接发布</b> — 发布后<b>立即</b>出现在官网上。</li>
+    <li><b>活动卡不用单独写</b> — 在计划页勾「公开到官网」，活动卡自己就出现了，内容跟着活动走。</li>
+  </ol>
+
+  <figure class="phone">
+    <img src="img/28-landing.png" alt="官网首页" loading="lazy">
+    <figcaption><b>官网</b> <code>ym.jjconnect.tokyo</code> —— 组织介绍 · 近期活动 · 文章 · 新闻。
+      右上角「登录 / 加入」按身份分成四个入口，点错门的人不会排错队。</figcaption>
+  </figure>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 10 ─────────────────────────────── -->
+<section id="s10">
+  <div class="sec-k">ROADMAP</div>
+  <h2>10 · 扩展功能 <span class="soon">规划中 · 暂未开放</span></h2>
+  <p>以下功能<b>目前系统里没有</b>，界面上也找不到入口。写在这里是为了让你知道边界在哪，
+     不用到处找按钮。</p>
+  <div class="tw"><table>
+    <tr><th>功能</th><th>现在的替代做法</th></tr>
+    <tr><td><b>界面美化</b><br><span style="color:var(--muted);font-size:12.5px">主题、配色、品牌化</span></td>
+        <td>目前是固定的一套深色主办台 + 浅色官网。</td></tr>
+    <tr><td><b>收费系统</b><br><span style="color:var(--muted);font-size:12.5px">在线收门票 / 报名费 / 捐款</span></td>
+        <td>系统<b>只记账</b>。钱线下收，收到之后拍票据或手工记一笔（见 <a href="#s7">§7</a>）。</td></tr>
+    <tr><td><b>SNS 交互</b><br><span style="color:var(--muted);font-size:12.5px">自动发帖、评论、粉丝互动</span></td>
+        <td>现在用系统里的「分享」按钮，走手机自带的微信 / LINE 分享面板，手动发。</td></tr>
+    <tr><td><b>内容制作与发布高级功能</b><br><span style="color:var(--muted);font-size:12.5px">排版模板、定时发布、多渠道分发</span></td>
+        <td>现在是「在别处写好 → 粘贴进来 → 发布」（见 <a href="#s9">§9</a>）。</td></tr>
+  </table></div>
+  <p style="color:var(--muted);font-size:13.5px">想调整这几项的优先次序，直接跟开发说一声就行 —— 顺序还没定。</p>
+</section>
+<hr>
+
+<!-- ─────────────────────────────── 11 ─────────────────────────────── -->
+<section id="s11">
+  <div class="sec-k">FAQ</div>
+  <h2>11 · 常见问题</h2>
+
+  <h4>忘记密码了</h4>
+  <p>主办台和成员页的登录框下面都有「忘记密码了」。填邮箱 → 收信 → 点信里的链接 → 直接设新密码。
+     成员忘记密码<b>不用找你</b>，自己就能重设。</p>
+
+  <h4>为什么总账 / 发布 / 发邀请码点不动</h4>
+  <p>这三样都要<b>登录且账号已通过批准</b>。点右上角头像登录；还在等批准时头像会变成一个等待中的图标。
+     没登录时其余功能照常可用，只是数据只留在这台设备上。</p>
+
+  <h4>到处都是「示例」两个字</h4>
+  <p>那是练习用的种子数据，不会上传到云端，也不会算进任何统计。练熟之后到
+     <b>资产库</b>页面最底下点「清除所有示例数据」，一次清干净。</p>
+
+  <h4>换了手机 / 换了电脑，东西不见了</h4>
+  <p>没登录的时候数据只在本机。<b>登录并通过批准之后</b>会自动云同步，换设备登录同一个账号就都回来了。</p>
+
+  <h4>「已结束 · 仍热」是什么</h4>
+  <p>活动结束后 14 天内的那一档 —— 还在跟进复盘、补票据的阶段。过了 14 天自动进「已归档」，
+     归档的活动打开是只读的。</p>
+
+  <h4>手机上看不清执行树</h4>
+  <p>手机上树是竖着排开的，功能一样。要看完整的<b>左右两侧 + 时间轴</b>那种视图，用电脑打开。</p>
+
+  <p class="top"><a href="#">↑ 回到顶部</a></p>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="brand">ym · 缘满沙龙</div>
+    <div>主办方使用手册 · 版本 2026-07 · 手册中全部截图均为示例数据，不含任何真实个人信息。</div>
+    <div style="margin-top:8px">
+      <a href="../">官网</a> ·
+      <a href="../organizer/">主办台</a> ·
+      <a href="../member/">成员页</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
