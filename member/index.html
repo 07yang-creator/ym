@@ -116,12 +116,20 @@ function toast(m){const t=document.createElement('div');t.className='toast';t.te
 function fmtDate(s){if(!s)return '';const d=new Date(s+'T00:00:00');if(isNaN(d))return s;
   return (d.getMonth()+1)+'/'+d.getDate()+'('+'日一二三四五六'[d.getDay()]+')';}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
-function shrink(file,cb){ // photos → ≤1600px jpeg before upload (same as the host app)
+/* 成员端这两路票据的字节是**存进数据库列的**（ym_submit.file_data 就是一列 base64），所以
+   400KB 那道上限是真的、得留着 —— 但压缩档必须配得上它。原来压到 1600px / q0.85 再拿
+   400KB 去卡，一张正常的票据照片落在 400–800KB，于是天天撞「这张太大了…请重拍」，而重拍
+   出来还是一样大：那句提示没有任何可执行的下一步。
+   改成和记账日记存图那档同一套（accountant/index.html fileToThumb: 1200px / q0.72），票据
+   照片基本落在 150–250KB，上限还在但撞不到。
+   ⚠ 主办端的 shrink() 是 1600 / .85 且**不要**跟着降 —— 那边喂的是 OCR，インボイス 番号是
+   T + 13 位小字，压狠了就读不出来。两个 app 各是独立单文件，函数不共享。 */
+function shrinkStore(file,cb){ // photos → ≤1200px jpeg，给要进 DB 行的图
   const img=new Image();
-  img.onload=()=>{const s=Math.min(1,1600/Math.max(img.width,img.height));
+  img.onload=()=>{const s=Math.min(1,1200/Math.max(img.width,img.height));
     const c=document.createElement('canvas');c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);
     c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    cb(c.toDataURL('image/jpeg',.85).split(',')[1]);URL.revokeObjectURL(img.src);};
+    cb(c.toDataURL('image/jpeg',.72).split(',')[1]);URL.revokeObjectURL(img.src);};
   img.src=URL.createObjectURL(file);
 }
 const SB_URL='https://ugkopxmeqsbtjeimultz.supabase.co', SB_KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
@@ -729,7 +737,7 @@ function upFile(host,evId,cid,input){
     rd.readAsDataURL(f);
   }else{
     toast('处理中…');
-    shrink(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));
+    shrinkStore(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));
   }
 }
 /* 捐赠票据 (owner 2026-07-27 ①d)。捐赠者在这套系统里从来没有过写入面 —— 0015 §8 的
@@ -776,7 +784,7 @@ function upGive(host,evId,input){
     const rd=new FileReader();
     rd.onload=()=>send(String(rd.result).split(',')[1]||'',f.name||'票据.pdf','application/pdf');
     rd.readAsDataURL(f);
-  }else{toast('处理中…');shrink(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));}
+  }else{toast('处理中…');shrinkStore(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));}
 }
 async function withdraw(id){
   const {error}=await sb.from('ym_submit').delete().eq('id',id);

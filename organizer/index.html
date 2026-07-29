@@ -805,6 +805,9 @@ const RECOVERY_ERR=(/error_description=([^&]+)/.exec(_hash)||[])[1];
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
 let SESSION=null,PROFILE=null,_pushT=null,_authKey=null;
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+/* 1600px / q0.85 —— 这一档喂的是 OCR，**不要往下压**。インボイス 登録番号是 T + 13 位小字，
+   per-line 消費税 率也是小字；压狠了 /api/parse 就读不出来。成员端存进 DB 行的那一路是另一档
+   （member/index.html shrinkStore 1200 / .72），两边不是一回事，别互相看齐。 */
 function shrink(file,cb){ // photos → ≤1600px jpeg before upload
   const img=new Image();
   img.onload=()=>{const s=Math.min(1,1600/Math.max(img.width,img.height));
@@ -813,6 +816,18 @@ function shrink(file,cb){ // photos → ≤1600px jpeg before upload
     cb(c.toDataURL('image/jpeg',.85).split(',')[1]);URL.revokeObjectURL(img.src);};
   img.src=URL.createObjectURL(file);
 }
+/* 主办端这几路的字节**一个字节都不进数据库行**，所以这里的上限不保护任何东西：
+     · rcParse  —— 图经 /api/ym_file 进主办自己的 Google Drive，ym_entry 只留 image_url（0017/0018）
+     · capShoot —— 写 capture_session.image，cap_claim 认领时原子消费并置 null（0005），10 分钟中转
+     · rosterShot / formPhoto —— 内存里解析完就丢，从不落库（本来就没设上限）
+   原来这几处卡在 60 万 b64 字符（≈440KB），**比它要打的服务端还严 5 倍** ——
+   0005_capture.sql:46 自己的门槛是 length(p_image) > 3000000 才拒。于是主办拍一张正常票据
+   就吃「约 400KB 以内，请重拍」，而重拍出来一样大，没有出路。
+   对齐服务端那个数，留 10 万给 'data:image/jpeg;base64,' 前缀和 JSON 开销；/api/parse 那侧
+   的真实天花板是 Vercel 的 4.5MB 请求体，2.9M 也在里面。
+   ⚠ attachTo() 的 400KB **不在此列**，那一路是真的往 ym_doc.payload 里塞 data URL —— 见
+   HANDOFF「硬约束 1 的活违规」，动它之前要先做 payload 数据审计。 */
+const OCR_B64_MAX=2900000, OCR_FILE_MAX=Math.floor(OCR_B64_MAX*3/4);
 
 /* ================= data ================= */
 // Test stage: local-first, per-browser (auth lands with 0008_ym.sql — see ym/PLAN.md §4)
@@ -4222,7 +4237,7 @@ function capShoot(inp,token){
   const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
   capStat('处理图片中…');
   const go=(b64,mime)=>{
-    if(!b64||b64.length>600000){capStat('这张太大或打不开（约 400KB 以内），请重拍');return;}
+    if(!b64||b64.length>OCR_B64_MAX){capStat('这张太大或打不开（约 2MB 以内），请重拍');return;}
     capStat('识别中…');
     // ⚠ 匿名，没有 user_token —— 用量由 cap_claim 在电脑认领时在**服务端**记一次
     fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
@@ -4257,7 +4272,7 @@ function capShoot(inp,token){
     });
   };
   if(f.type==='application/pdf'){
-    if(f.size>400000){capStat('这个 PDF 太大了（约 400KB 以内）');return;}
+    if(f.size>OCR_FILE_MAX){capStat('这个 PDF 太大了（约 2MB 以内）');return;}
     const rd=new FileReader();
     rd.onload=()=>go(String(rd.result).split(',')[1]||'','application/pdf');
     rd.readAsDataURL(f);return;}
@@ -4268,14 +4283,14 @@ function rcShoot(inp,ctx){
   if(!canCloud()){toast(SESSION?'等主办方账号通过审核后才能记账':'票据要登录后才能入账 —— 台账在云端');return;}
   toast('识别票据中…');    // 相机圆钮 (fab menu) 已经不存在了 —— 这里没有菜单要关
   if(f.type==='application/pdf'){
-    if(f.size>400000){toast('这个 PDF 太大了（约 400KB 以内）');return;}
+    if(f.size>OCR_FILE_MAX){toast('这个 PDF 太大了（约 2MB 以内）');return;}
     const rd=new FileReader();
     rd.onload=()=>rcParse(String(rd.result).split(',')[1]||'','application/pdf',f.name||'票据.pdf',ctx);
     rd.readAsDataURL(f);return;}
   shrink(f,b64=>rcParse(b64,'image/jpeg',f.name||'票据.jpg',ctx));
 }
 function rcParse(b64,mime,name,ctx){
-  if(!b64||b64.length>600000){toast('这张太大或打不开（约 400KB 以内），请重拍');return;}
+  if(!b64||b64.length>OCR_B64_MAX){toast('这张太大或打不开（约 2MB 以内），请重拍');return;}
   const open=(res,conf)=>{S.rc={d:res||{},ctx:Object.assign({},ctx||{}),img:b64,mime,name};
     rcSeed(conf);render();};
   fetch(API+'/api/parse',{method:'POST',headers:{'content-type':'application/json'},
