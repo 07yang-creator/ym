@@ -2597,26 +2597,70 @@ function aiPhrase(el,kind,ctx,longForm){
     else toast((res&&res.note)||'没有需要补的');})
   .catch(e=>{done();toast('补写失败：'+e.message);});
 }
-// 环节 attachments — small files inline (data URL); big ones keep the name only until the Drive proxy is wired
 function rowAttach(rid,input){const r=ev().rows.find(x=>x.id===rid);if(r)attachTo(r,input);}
-// shared multi-file attach: small files inline (data URL), big ones keep the name only
+/* 环节 / 复盘 附件 —— 字节一律进主办自己的 Drive，payload 里只留引用。
+   在此之前这里两条路都不好：
+     · ≤400KB 直接把 data URL 塞进 ym_doc.payload —— HANDOFF 记的「硬约束 1 的活违规」：
+       payload 是全系统唯一没有体积上限的面，而且每 800ms 保存都把它整个重传一遍；
+     · >400KB 则**只存一个文件名**，主办永远打不开它（「待接入云盘后可打开」那两句就是这么
+       来的）—— 一个看得见却点不开的幽灵条目，比直接拒绝还糟。
+   代理已经通了（0025 那次连成员端都在用），两条路都不需要了。
+   Drive 没接线（503）时**原样退回**上面的老行为 —— 那是它现在唯一还需要存在的理由。
+   ⚠ 这里**没有**给 ym_doc.payload 加体积 CHECK。加之前必须先做数据审计：现有 payload 可能
+   已经超过任何将要设的上限，那时 CHECK 会让 owner 下一次保存直接 500（HANDOFF 原话）。
+   这次只做「不再往里加新字节」—— 存量该多大还多大，所以风险是零，也不需要那次审计。 */
+const ATTACH_MAX=4000000;                 // ≈4MB；base64 后 ~5.3M，在代理 MAX_B64=6000000 之内
+/* 成功 → {id,url}；Drive 没接线 → 'unwired'；其它失败 → null。三态，因为这三种要走三条路。 */
+async function attachUpload(b64,mime,name){
+  try{
+    const e=ev(),group=e?((e.name||'活动')+' · '+(e.date||'')).trim():'';
+    const r=await fetch(API+'/api/ym_file',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({user_token:(SESSION&&SESSION.access_token)||undefined,
+        action:'upload_media',group,kind:'附件',
+        filename:String(name||'附件').slice(0,120),mime_type:mime,content_base64:b64})});
+    if(r.status===503)return 'unwired';
+    if(!r.ok)return null;
+    const j=await r.json();
+    return j&&j.ok&&j.url?{id:String(j.file_id||''),url:String(j.url)}:null;
+  }catch(e2){return null;}
+}
 function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs||!fs.length)return;
-  if(!holder.files)holder.files=[];let pending=fs.length;const n=fs.length;
-  const finish=()=>{if(!--pending){save();render();toast('已附上 '+n+' 个文件');}};
+  if(!holder.files)holder.files=[];let pending=fs.length;const n=fs.length;let bad=0;
+  const finish=()=>{if(!--pending){save();render();
+    toast(bad?('已附上 '+(n-bad)+' 个，'+bad+' 个没传上去'):('已附上 '+n+' 个文件'));}};
   [...fs].forEach(f=>{const fid=uid();
-    if(f.size>400000){holder.files.push({id:fid,name:f.name});finish();return;}
+    if(f.size>ATTACH_MAX){toast('「'+f.name+'」太大了（约 4MB 以内）');bad++;finish();return;}
     const rd=new FileReader();
-    rd.onload=()=>{holder.files.push({id:fid,name:f.name,url:rd.result,mime:f.type});finish();};
-    rd.onerror=finish;rd.readAsDataURL(f);});
+    rd.onerror=()=>{bad++;finish();};
+    rd.onload=async()=>{
+      const up=await attachUpload(String(rd.result).split(',')[1]||'',
+        f.type||'application/octet-stream',f.name);
+      if(up==='unwired'){                 // 老行为，原样保留：小的内联，大的只留名字
+        if(f.size<=400000)holder.files.push({id:fid,name:f.name,url:rd.result,mime:f.type});
+        else holder.files.push({id:fid,name:f.name});
+        finish();return;}
+      if(!up){bad++;finish();return;}
+      holder.files.push({id:fid,name:f.name,url:up.url,driveId:up.id,mime:f.type});finish();};
+    rd.readAsDataURL(f);});
   input.value='';}
+/* 老 payload 里存的是 data: URL，新的是 Drive 链接 —— 两种都要能开，别的一律不开。
+   payload 虽然是主办自己写的，但它会被发布/共享，不该成为一条能塞 javascript: 的通道。 */
+function openAtt(f){
+  const u=String((f&&f.url)||'');
+  if(!u){toast((f&&f.name||'这个附件')+' —— 旧版本只存了文件名，请重新上传一次');return;}
+  if(!/^data:/.test(u)&&!/^https:\/\/[a-z]+\.google\.com\//.test(u)){toast('这个附件的链接不对');return;}
+  window.open(u,'_blank','noopener');
+}
 /* 复盘 event-level attachments */
 function evAttach(input){const e=ev();if(e)attachTo(e,input);}
 function delEvFile(fid){const e=ev();if(e&&e.files){e.files=e.files.filter(x=>x.id!==fid);save();render();}}
-function openEvFile(fid){const e=ev();const f=((e&&e.files)||[]).find(x=>x.id===fid);if(!f)return;
-  if(f.url)window.open(f.url,'_blank');else toast(f.name+' — 待接入云盘后可打开');}
+function openEvFile(fid){const e=ev();const f=((e&&e.files)||[]).find(x=>x.id===fid);if(!f)return;openAtt(f);}
 function delFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);if(r&&r.files){r.files=r.files.filter(x=>x.id!==fid);save();render();}}
-function openFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);const f=r&&(r.files||[]).find(x=>x.id===fid);if(!f)return;
-  if(f.url)window.open(f.url,'_blank');else toast(f.name+' — 待接入云盘后可打开');}
+// 删掉附件只是把它从 payload 里摘掉 —— Drive 上那份留着。代理故意没有删除能力
+// （owner 2026-07-27「我不能接受账户风险」），孤儿文件可见、无害、主办可以手工删；
+// 反过来（先删文件）会留下指向空处的条目，那才是坏的那一边。和 0017 §2 同一处置。
+function openFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);const f=r&&(r.files||[]).find(x=>x.id===fid);if(!f)return;openAtt(f);}
 function addRow(){const e=ev();e.rows.push({id:uid(),time:'',seg:'',owner:'',resources:[],money:[]});
   S.sel=e.rows[e.rows.length-1].id;save();render();}
 function delRow(id){const e=ev();const r=e.rows.find(x=>x.id===id);
