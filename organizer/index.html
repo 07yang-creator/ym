@@ -4475,7 +4475,14 @@ async function rcConfirmDo(R){
   // —— 一行没有图的账目仍然是有用的记录。但成员/捐赠者交来的必须带凭证（0017 §2 的 CHECK），
   // 因为 ym_submit 那行随时会被 取消授权 删掉；那种情况下宁可不入账，也不能记一笔无据的钱。
   let img={id:'',url:''};
-  if(R.img){
+  /* 0025：成员交来的 PDF 原件本来就在主办的 Drive 上（member 那边 upPdf 直接传进去的），
+     ym_submit 行里只有引用、没有字节。这里**沿用同一份文件**，不重新上传 ——
+     帳簿行和成员那行从此指向同一个原件，也就不会出现「同一张票据在 Drive 里躺两份」。
+     凭证要求（0017 §2：src in (vol,donor) 必须 image_id <> ''）由此自然满足：
+     0025 的 CHECK 已经保证 file_id 和 file_url 同生同死。 */
+  if(R.drive&&R.drive.url){
+    img={id:R.drive.id||'',url:R.drive.url};
+  }else if(R.img){
     const evv=f.ev?STORE.events.find(x=>x.id===f.ev):null;
     img=await rcUpload(R.img,R.mime,R.name,evv)||{id:'',url:''};
     if(!img.id&&(c.src==='vol'||c.src==='donor')){
@@ -4531,6 +4538,21 @@ function rcSettle(evId,cid){
   let s=0;rows.forEach(r=>{s+=(r.direction===c.kind)?r.amount:-r.amount;});
   c.actual=s;c.rc=rows.length;save();
 }
+/* 0025 的 file_id / file_url 可能**还没迁移上去** —— 应用迁移和部署前端是两件独立的事，先后
+   没有任何保证。PostgREST 对不存在的列是整条 select 报错，不是忽略：真那样的话主办连**老的
+   内联票据**都打不开了 —— 一个还没启用的新功能，不该让已经在用的功能陪葬。
+   所以先按新列查，只在「列不存在」时退回老列表。和 ledgerNotReady() 同一套路（0018 之前
+   那次，每一次入账都吃 42703，而报错文本对主办毫无意义）。 */
+function colMissing(e){return /column .*(file_id|file_url).* does not exist/i.test((e&&e.message)||'');}
+async function submitFile(sid){
+  const TAIL=',amount,note';
+  let r=await sb.from('ym_submit')
+    .select('file_name,file_mime,file_data,file_id,file_url'+TAIL).eq('id',sid).maybeSingle();
+  if(r.error&&colMissing(r.error))
+    r=await sb.from('ym_submit')
+      .select('file_name,file_mime,file_data'+TAIL).eq('id',sid).maybeSingle();
+  return r;
+}
 // 从成员上传的那张（ym_submit）入账：取字节 → 识别 → 同一张确认卡。
 // selfPaid は SUBMIT 行から取る —— cost は file 行ではなく submit 行にある（member L~430）。
 function rcFromSubmit(sid,src){
@@ -4543,18 +4565,34 @@ function rcFromSubmit(sid,src){
     &&String(x.member_code||'')===String(r.member_code||'')&&x.event_id===r.event_id);
   const selfPaid=src==='vol'&&!!(sub&&(parseInt(sub.cost,10)||0)>0);
   toast('读取并识别中…');
-  sb.from('ym_submit').select('file_name,file_mime,file_data,amount,note').eq('id',sid).maybeSingle()
+  submitFile(sid)
     .then(({data,error})=>{
-      if(error||!data||!data.file_data){toast('读取失败');return;}
-      const b64=String(data.file_data).replace(/[^A-Za-z0-9+/=]/g,'');   // 0014's XSS lesson
-      const mime=/^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/.test(data.file_mime||'')
-        ?data.file_mime:'image/jpeg';
-      rcParse(b64,mime,data.file_name||'票据',{
-        src,submitId:sid,memberCode:r.member_code||'',
+      if(error||!data){toast('读取失败');return;}
+      const ctx={src,submitId:sid,memberCode:r.member_code||'',
         evId:r.event_id||'',chipId:src==='donor'?'':(r.chip_id||''),
         selfPaid,forceDir:src==='donor'?'in':null,
         account:src==='donor'?'受取寄付金':'',
-        memo:src==='donor'?('捐赠 · '+pendWho(r)):String(data.note||'').slice(0,120)});});
+        memo:src==='donor'?('捐赠 · '+pendWho(r)):String(data.note||'').slice(0,120)};
+      /* 0025：PDF 那一路的原件在 Drive 上，行里没有字节 —— OCR 无从读起（代理故意只上传
+         不下载，Drive 链接浏览器也跨域取不回来）。所以不假装识别，直接开一张空卡让主办照着
+         原件填，并把**同一个** Drive 引用带进去（rcConfirmDo 会原样搬到 ym_entry，不重传）。
+         链接照 0025 的 CHECK 再验一次 —— 服务端已经钉过 google.com，这里是同一条客户端复核，
+         和 CODE_RE 那条一个道理：能在本地挡掉的，别让它变成 href。 */
+      if(data.file_url){
+        const url=String(data.file_url);
+        if(!/^https:\/\/[a-z]+\.google\.com\//.test(url)){
+          toast('这一条的原件链接不对 —— 请让成员重新上传');return;}
+        S.rc={d:{},ctx,img:'',mime:'application/pdf',
+              name:data.file_name||'票据.pdf',drive:{id:String(data.file_id||''),url}};
+        rcSeed('hand');render();
+        toast('这是一张 PDF —— 点「看原件」打开后照着填');
+        return;
+      }
+      if(!data.file_data){toast('读取失败');return;}
+      const b64=String(data.file_data).replace(/[^A-Za-z0-9+/=]/g,'');   // 0014's XSS lesson
+      const mime=/^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/.test(data.file_mime||'')
+        ?data.file_mime:'image/jpeg';
+      rcParse(b64,mime,data.file_name||'票据',ctx);});
 }
 // 凭证原图 —— 只在主办点开时取一次。BUILD THE NODE, never attribute HTML (0014's XSS fix).
 function rcImage(id,boxId){
@@ -5877,9 +5915,21 @@ function pendOpenFile(sid){
   if(!canCloud())return;
   const box=$('pendview_'+((PENDING.find(r=>r.id===sid)||{}).chip_id||''));if(!box)return;
   box.textContent='读取中…';
-  sb.from('ym_submit').select('file_name,file_mime,file_data').eq('id',sid).maybeSingle()
+  submitFile(sid)
     .then(({data,error})=>{
       if(error||!data){box.textContent='读取失败';return;}
+      /* 0025：PDF 存在 Drive 上，行里只有引用。开新标签页看 —— 不要塞 iframe，Drive 自己
+         带 X-Frame-Options，塞进去只会得到一个空白框。href 用**属性赋值**、并且照服务端那条
+         google.com 规则再验一次，理由和下面 file_data 那段 XSS 教训是同一条。 */
+      if(data.file_url){
+        const url=String(data.file_url);
+        box.textContent='';
+        if(!/^https:\/\/[a-z]+\.google\.com\//.test(url)){box.textContent='这条的原件链接不对';return;}
+        const a=document.createElement('a');a.className='pf';
+        a.href=url;a.target='_blank';a.rel='noopener';
+        a.textContent='看原件 '+(data.file_name||'票据.pdf');
+        box.appendChild(a);return;
+      }
       // file_data is MEMBER-controlled. Interpolating it into src="…" let a quote inside the
       // "base64" break out of the attribute and run script on the host's origin — i.e. the host's
       // session token. Strip to the base64 charset, re-pin the mime, and BUILD THE NODE rather

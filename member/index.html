@@ -719,25 +719,72 @@ async function loadMine(){
     .select('id,host,event_id,chip_id,kind,status,note,host_note,hours,cost,amount,diff,file_name,created_at');
   MINE=error?[]:(data||[]);
 }
+/* ---------- 票据的两条路（0025）：图片 = 字节，PDF = Drive 引用 ----------
+   PDF 没法在客户端压，而 ym_submit.file_data 的**服务端**上限就是 600000（0014 的 CHECK）——
+   一张扫描版发票 PDF 很容易超，压不了也传不上，是死路。所以 PDF 改走 /api/ym_file 存进主办
+   自己的 Drive，行里只留 file_url。
+   图片**故意不走这条路**：主办要拿字节喂 /api/parse 做 OCR 入账（organizer rcFromSubmit），
+   而这个代理是故意只上传、不下载的（owner 2026-07-27：「我不能接受账户风险」），Drive 链接
+   在浏览器里跨域取不回字节。图片经 shrinkStore 之后 ~158KB，留在 file_data 里毫无压力。 */
+const PDF_MAX=4000000;                 // ≈4MB；base64 后 ~5.3M，在代理 MAX_B64=6000000 之内
+// Drive 目录名要和主办端对齐（organizer rcUpload: `<活动名> · <日期>`），否则同一场活动的票据
+// 会散在两个文件夹里。名字从我自己的 share payload 里取 —— 成员本来就只看得到这些。
+function evGroup(host,evId){
+  for(const row of (SHARES||[])){
+    if(row.host!==host)continue;
+    for(const j of ((row.payload||{}).jobs||[]))
+      if(String(j.eventId||'')===String(evId))return ((j.event||'活动')+' · '+(j.date||'')).trim();
+  }
+  return '';
+}
+/* 成功 → cb({file_id,file_url})；Drive 没接线(503) → 退回内联那条老路，但它只有 400KB，
+   所以大 PDF 必须说清楚**为什么**过不去，不能只甩一句「太大了」让人去重拍一张压不小的 PDF。 */
+function upPdf(f,host,evId,cb){
+  if(f.size>PDF_MAX){toast('这个 PDF 太大了（约 4MB 以内）');return;}
+  toast('上传中…');
+  const rd=new FileReader();
+  rd.onerror=()=>toast('这个文件读不了，请换一个');
+  rd.onload=async()=>{
+    const b64=String(rd.result).split(',')[1]||'';
+    let r;
+    try{r=await post('/api/ym_file',{user_token:(SESSION&&SESSION.access_token)||'',
+      action:'upload_media',group:evGroup(host,evId),kind:'票据',
+      filename:String(f.name||'票据.pdf').slice(0,120),mime_type:'application/pdf',
+      content_base64:b64});}catch(e){r={status:0,j:{}};}
+    if(r.status===200&&r.j&&r.j.ok&&r.j.url){
+      cb({file_id:String(r.j.file_id||'').slice(0,200),file_url:String(r.j.url).slice(0,500)});return;}
+    if(r.status===503){                       // 代理自己说的「还没接线」，不是失败
+      if(b64.length<=600000){cb({file_data:b64});return;}
+      toast('主办方还没接上云端存储，暂时只能收 400KB 以内的 PDF —— 请联系主办方');return;}
+    toast(r.status===403?'你的账号现在不能上传 —— 请联系主办方':'上传失败了，请再试一次');
+  };
+  rd.readAsDataURL(f);
+}
+/* 迁移 0025 还没应用时，带 file_url 的 insert 会撞「列不存在」。那条原文对成员毫无意义，
+   而且会让人以为是自己的文件有问题、反复重传。说清楚是主办那边还没弄好。 */
+function upErr(error,fallback){
+  const m=(error&&error.message)||'';
+  if(/column .*(file_id|file_url).* does not exist/i.test(m))
+    return '主办方的云端存储还没启用完 —— 请把这张票据直接发给主办方';
+  if(/row-level|policy/i.test(m))return fallback;
+  return '上传失败：'+m;
+}
 function upFile(host,evId,cid,input){
   const f=input.files&&input.files[0];input.value='';if(!f)return;
-  const send=(b64,name,mime)=>{
-    if(b64.length>600000){toast('这张太大了（约 400KB 以内），请重拍或裁一下');return;}
-    sb.from('ym_submit').insert({host,member:SESSION.user.id,event_id:evId,chip_id:cid,
-      kind:'file',slot:uid(),file_name:String(name).slice(0,200),file_mime:mime,file_data:b64})
+  // fields = {file_data} 或 {file_id,file_url}，二选一 —— 0025 的 CHECK 不许一行两个都有
+  const send=(fields,name,mime)=>{
+    if(fields.file_data&&fields.file_data.length>600000){toast('这张太大了（约 400KB 以内），请重拍或裁一下');return;}
+    sb.from('ym_submit').insert(Object.assign({host,member:SESSION.user.id,event_id:evId,chip_id:cid,
+      kind:'file',slot:uid(),file_name:String(name).slice(0,200),file_mime:mime},fields))
       .then(({error})=>{
-        if(error){toast(/row-level|policy/i.test(error.message)
-          ? '主办方还没发布这一项，请稍后再试' : '上传失败：'+error.message);return;}
+        if(error){toast(upErr(error,'主办方还没发布这一项，请稍后再试'));return;}
         loadMine().then(()=>{render();toast('票据已传给主办方');});});
   };
   if(f.type==='application/pdf'){
-    if(f.size>400000){toast('这个文件太大了（约 400KB 以内）');return;}
-    const rd=new FileReader();
-    rd.onload=()=>send(String(rd.result).split(',')[1]||'',f.name||'票据.pdf','application/pdf');
-    rd.readAsDataURL(f);
+    upPdf(f,host,evId,fields=>send(fields,f.name||'票据.pdf','application/pdf'));
   }else{
     toast('处理中…');
-    shrinkStore(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));
+    shrinkStore(f,b64=>send({file_data:b64},f.name||'票据.jpg','image/jpeg'));
   }
 }
 /* 捐赠票据 (owner 2026-07-27 ①d)。捐赠者在这套系统里从来没有过写入面 —— 0015 §8 的
@@ -768,23 +815,19 @@ function upGive(host,evId,input){
   const g=i=>{const el=$('g_'+evId+i);return el?el.value.trim():'';};
   const a=parseInt(String(g('a')).replace(/[^\d]/g,''),10);
   const note=String(g('n')||'').slice(0,2000);
-  const send=(b64,name,mime)=>{
-    if(b64.length>600000){toast('这张太大了（约 400KB 以内），请重拍或裁一下');return;}
-    sb.from('ym_submit').insert({host,member:SESSION.user.id,event_id:evId,chip_id:'',
+  const send=(fields,name,mime)=>{
+    if(fields.file_data&&fields.file_data.length>600000){toast('这张太大了（约 400KB 以内），请重拍或裁一下');return;}
+    sb.from('ym_submit').insert(Object.assign({host,member:SESSION.user.id,event_id:evId,chip_id:'',
         kind:'give',slot:uid(),note,file_name:String(name).slice(0,200),
-        file_mime:mime,file_data:b64,
-        amount:isNaN(a)?null:Math.min(10000000,Math.max(0,a))})
+        file_mime:mime,
+        amount:isNaN(a)?null:Math.min(10000000,Math.max(0,a))},fields))
       .then(({error})=>{
-        if(error){toast(/row-level|policy/i.test(error.message)
-          ? '这场活动现在不能提交捐赠票据' : '上传失败：'+error.message);return;}
+        if(error){toast(upErr(error,'这场活动现在不能提交捐赠票据'));return;}
         loadMine().then(()=>{render();toast('票据已交给主办方 —— 等确认入账');});});
   };
   if(f.type==='application/pdf'){
-    if(f.size>400000){toast('这个文件太大了（约 400KB 以内）');return;}
-    const rd=new FileReader();
-    rd.onload=()=>send(String(rd.result).split(',')[1]||'',f.name||'票据.pdf','application/pdf');
-    rd.readAsDataURL(f);
-  }else{toast('处理中…');shrinkStore(f,b64=>send(b64,f.name||'票据.jpg','image/jpeg'));}
+    upPdf(f,host,evId,fields=>send(fields,f.name||'票据.pdf','application/pdf'));
+  }else{toast('处理中…');shrinkStore(f,b64=>send({file_data:b64},f.name||'票据.jpg','image/jpeg'));}
 }
 async function withdraw(id){
   const {error}=await sb.from('ym_submit').delete().eq('id',id);
