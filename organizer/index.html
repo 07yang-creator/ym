@@ -766,6 +766,12 @@ function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'
 function escJs(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));}
 // 示例 badge for any seeded/demo record, shown on every screen so the host never mistakes it for real data
 function dtag(x,dim){return x&&x.demo?`<span class="demotag${dim?' dim':''}">示例</span>`:'';}
+/* 使用手册的入口。放两处：工作台（新主办第一眼的那一屏）和头像面板（任何页面都点得到）——
+   一个只在工作台露脸的入口，等于主办在计划页卡住的时候找不到它。
+   手册是另一个独立页面，一律 target=_blank：别把主办正在编的台本从屏幕上顶掉。
+   相对路径 ../guide/ —— app 在 /organizer/ 下，写死域名会让本地预览点进线上。 */
+function guideLink(txt){return `<a href="../guide/" target="_blank" rel="noopener"
+  style="color:var(--brass);text-decoration:none">${txt||'使用手册'} ↗</a>`;}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function yen(n){return '¥'+Number(n||0).toLocaleString('ja-JP');}
 function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
@@ -2176,8 +2182,12 @@ function authSheet(){
       <p class="note9" style="margin:10px 0 4px"><b style="color:var(--brass)">已经有 jjconnect / 记账账号？直接用它登录</b>
         —— 同一个账号可以同时是会计和主办方，不用重新注册。</p>
       <button class="btn ghost sm" style="width:100%" onclick="doSignUp()">我是新用户，注册主办方账号</button>`;
+  // 手册的第二个入口 —— 头像在每一页的右上角，所以这是唯一「哪儿都点得到」的位置。
+  // 重设密码那一屏不放：从邮件链接进来的人只有一件事要做，别给第二个出口。
+  const help=S.authRecovery?'':`<p class="note9" style="margin-top:18px;text-align:center">
+    ${guideLink('使用手册')}</p>`;
   return `<div class="drawerbg" onclick="S.auth=false;render()"></div>
-    <div class="drawer" style="left:auto;right:0;animation:none">${inner}</div>`;
+    <div class="drawer" style="left:auto;right:0;animation:none">${inner}${help}</div>`;
 }
 /* 设新密码 —— 邮件链接回来后用，也用于登录状态下主动改密码 */
 function authNewPw(recovery){
@@ -5980,6 +5990,8 @@ function viewDesk(){
     ${sec('plan','筹备中的活动。')}
     ${sec('hot','刚结束、还在跟进复盘的活动（14 天内）。')}
     ${sec('archived','已归档的活动 — 点开只读回看。')}
+    <p class="note9" style="margin-top:20px;text-align:center">
+      第一次用？${guideLink('看使用手册')} —— 十节，配截图，每个页面怎么用讲一遍。</p>
     ${S.peek?peekCard():''}
   </div>`;
 }
