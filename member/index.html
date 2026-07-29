@@ -234,7 +234,9 @@ function regHtml(){
       都由这串邀请码决定</b> —— 这里不需要选，也选不了：码是谁发的，你就在谁名下，
       主办方发码时指定的是什么身份，你注册出来就是什么身份。<br>
       邮箱和密码都由你自己决定 —— 主办方不知道，也不需要知道。邀请码一周内有效，
-      只能用一次；注册成功后你会拿到一个永久编号（例如 V0014），以后用编号或邮箱登录都行。</p>
+      只能用一次；以后登录就用注册时填的邮箱 + 密码。<br>
+      注册成功后你还会拿到一个永久编号（例如 V0014）—— 编号是你的显示身份
+      （名册卡、成员页、服务经历上都是它），不用来登录。</p>
     <div style="text-align:center;margin-top:14px">
       <span class="fold" onclick="TAB='login';render()">← 我已经注册过了</span></div></div>`;
 }
@@ -536,16 +538,6 @@ async function sendSubmit(host,evId,cid,hours,cost,note){
 function fold(k){OPEN[k]=!OPEN[k];render();}
 
 /* ---------- auth ---------- */
-// Login is EMAIL + password only (PLAN-Y7 §A3). The 用户编码 is a display identity and touches no
-// auth path, so there is no 编码→email resolver and therefore no email-harvesting oracle.
-function signIn(){
-  if(_busy||!sb)return;
-  const email=($('em').value||'').trim().toLowerCase(),pw=$('pw').value||'';
-  if(!email||!pw){toast('请输入邮箱和密码');return;}
-  _busy=true;
-  sb.auth.signInWithPassword({email,password:pw}).then(({error})=>{_busy=false;
-    if(error)toast('登录失败：邮箱或密码不对');});
-}
 // user_metadata is user-writable — a UX flag, never a boundary; the boundary is RLS.
 async function post(path,b){
   const r=await fetch(API+path,{method:'POST',headers:{'content-type':'application/json'},
@@ -554,7 +546,7 @@ async function post(path,b){
   return {status:r.status,j};
 }
 async function install(sess){
-  if(!sess||!sess.access_token){toast('成功了 —— 请用编号和密码登录一次');return;}
+  if(!sess||!sess.access_token){toast('成功了 —— 请用刚才填的邮箱和密码登录一次');return;}
   const {error}=await sb.auth.setSession({access_token:sess.access_token,
     refresh_token:sess.refresh_token});                     // onAuthStateChange calls load()
   if(error)toast('登录失败：'+error.message);

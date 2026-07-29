@@ -1387,7 +1387,7 @@ function grantPaint(){
       <div class="lbl">用户编码 · 永久</div>
       <div class="num" style="font-size:26px;letter-spacing:.16em;color:var(--brass);margin:2px 0 6px">${esc(a.code)}</div>
       <div class="sub" style="margin:0 0 10px">${esc(ROLE_LBL[roleKey(a)]||'')} · ${esc(st.t)}${a.invite_tail?' · 码尾 '+esc(a.invite_tail):''}</div>
-      ${a.bound?`<div class="sub" style="margin-bottom:10px">TA 已经注册好了。以后用 <b>${esc(a.code)}</b> 或自己的邮箱 + 密码登录。</div>`
+      ${a.bound?`<div class="sub" style="margin-bottom:10px">TA 已经注册好了，以后用<b>注册时填的邮箱 + 密码</b>登录。编号 ${esc(a.code)} 是 TA 的显示身份（名册卡、成员页、服务经历上都是它），不用来登录。</div>`
         :`<div class="df"><button class="btn" style="flex:1" ${g.busy?'disabled':''} onclick="codeReissue()">${g.busy?'生成中…':ico('again')+'重发邀请码'}</button></div>
           <p class="note9">重发会立刻作废上一个邀请码，编号不变。</p>`}
       <div style="text-align:center;margin-top:10px">
@@ -1447,8 +1447,8 @@ function grantSend(){
   share(['【缘满沙龙】'+p.name+' 你好，这是你的账号邀请：',
     '打开 https://ym.jjconnect.tokyo/member/ → 选「注册」',
     '邀请码：'+g.invite,
-    '你的编号（以后用它或邮箱登录）：'+st.code,
-    '注册时邮箱和密码由你自己填。邀请码一周内有效，只能用一次，请勿转发。'].join('\n'));
+    '你的编号（显示身份，不用来登录）：'+st.code,
+    '注册时邮箱和密码由你自己填，以后就用这个邮箱 + 密码登录。邀请码一周内有效，只能用一次，请勿转发。'].join('\n'));
 }
 function grantRevoke(){
   const g=_grant;if(!g)return;
