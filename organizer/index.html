@@ -2199,7 +2199,8 @@ function recheck(){
 function doSignOut(){clearPendingCode();   // never carry a code across identities
   // …and never carry the previous host's volunteer data either: PENDING holds their members'
   // names and 确认完成 stays wired, so the next person on this device could flip a chip.
-  PENDING=[];CODES={};JOINREQ=null;if(_pendT){clearInterval(_pendT);_pendT=null;}
+  PENDING=[];CODES={};JOINREQ=null;LEDGER=null;capStop();   // 手机拍的通道不能跨账号留着
+  if(_pendT){clearInterval(_pendT);_pendT=null;}
   if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
 
 /* ---------- reuse prompts (read-time projections — the assets remember themselves) ---------- */
@@ -3201,6 +3202,13 @@ function ticketInfo(e){
       単価 × **到场人数**，它不知道谁已经单独交过了。所以逐笔记过的人要从头数里扣掉 ——
       两边自动互斥，主办不用记住自己在用哪一种。0022 的唯一索引是数据库那一侧的兜底。 */
 function feeRows(e){return e?(LEDGER||[]).filter(r=>r.src==='fee'&&r.event_id===e.id&&r.status!=='void'):[];}
+// 「一个人都没交」和「总账还没读到」是两回事 —— 后者画成前者，主办会以为钱没收到
+function feeReady(){return !canCloud()||LEDGER!==null;}
+// payer_ref 已经不在名单里的 fee 行（人被删了）。它们仍然在账上，但**扣不掉任何人** ——
+// 默默计进「已收 N 人」就是在说谎，那句话的意思是「这 N 个人不会被门票汇总重复算」。
+function feeOrphans(e){if(!e)return [];
+  const has={};(e.participants||[]).forEach(p=>{has[p.id]=1;});
+  return feeRows(e).filter(r=>!has[r.payer_ref]);}
 function feeOf(e,p){return p?feeRows(e).find(r=>r.payer_ref===p.id)||null:null;}
 function feePaidIds(e){const s={};feeRows(e).forEach(r=>{if(r.payer_ref)s[r.payer_ref]=1;});return s;}
 // 到场、且**没有**单独记过款的人 —— 门票汇总只该算这些人
@@ -3222,6 +3230,9 @@ function feeAsk(pid){
   const e=ev();if(!e)return;
   const p=(e.participants||[]).find(x=>x.id===pid);if(!p)return;
   if(!canCloud()){toast('登录并通过批准后才能记账 —— 台账在云端');return;}
+  /* 总账**没读到**时，feeOf() 一律返回 null —— 于是每个人看起来都没交过，
+     一点就会撞上唯一索引，还以为是自己记错了。和 confirmTickets 同一道闸。 */
+  if(!feeReady()){toast('总账还没读到 —— 先刷新一下，免得重复记账');loadLedger(1);return;}
   if(feeOf(e,p)){toast(p.name+' 已经记过一笔了 —— 要改就去总账里「取消」那一条重记');return;}
   ask({title:'收到 '+esc(p.name)+' 的报名费',
     note:'记一条真账（'+(e.name||'本场')+'）。记过的人「不会」再被「门票确认入账」重复算一次。',
@@ -3236,17 +3247,21 @@ async function feeAdd(p,v){
   if(!amt){toast('金额填一下');return;}
   const pay=RC_PAY.indexOf(v[1])>=0?v[1]:'現金';
   const day=/^\d{4}-\d{2}-\d{2}$/.test(v[2]||'')?v[2]:todayStr();
-  const b=Math.floor(amt/1.1);
+  /* ⚠ **不编税额**。参加費是内部証憑，票面上根本没有内訳；用 amt/1.1 反推出来的
+     「10% 消費税」不是读取，是捏造 —— 而且进的是税理士当事实读的那一列。
+     这条规矩这个文件里已经写过一次（rcTax：读不到就空着，改过金额的旧明细直接丢掉），
+     owner 也裁过「按含税来记，税务问题交给税理士思考」。amount 永远是税込，那一列是权威。 */
   // 裸 insert，然后读错误码 —— 0011 §3：部分唯一索引不许被 on conflict 点名
   const {error}=await sb.from('ym_entry').insert({
     host:SESSION.user.id,entry_date:day,paid_date:day,direction:'in',amount:amt,
-    tax:[{r:'10',b,t:amt-b}],tax_total:amt-b,
+    tax:[],tax_total:0,
     account:'売上高(参加費)',payment:pay,vendor:p.name||'参加者',reg_no:'',
     memo:'参加費 '+(p.name||'')+(p.n?'（'+p.gender+p.n+'）':''),
     event_id:e.id,chip_id:'',payer_ref:p.id,src:'fee',member_code:'',confidence:'hand',
     image_id:'',image_url:'',image_mime:null,image_name:''});
   if(error){
-    if(error.code==='23505'){toast(p.name+' 已经记过一笔了');loadLedger(1);return;}
+    // 0023 之后唯一索引只盖 posted，所以撞上就是「确实还有一条活着的」，不是被取消的那条挡路
+    if(error.code==='23505'){toast(p.name+' 名下已经有一条没取消的报名费了');loadLedger(1);return;}
     toast(ledgerNotReady(error)?'没记进总账 —— 数据库迁移 0022 还没应用'
       :'没记进总账：'+error.message);return;}
   await loadLedger(1);render();
@@ -3300,9 +3315,11 @@ function confirmTickets(){const e=ev();const ts=ticketInfo(e);if(!ts.length)retu
   // 遅れて来た一人でやり直せるよう UPDATE 優先（ym_entry_one_ticket が backstop）。
   Promise.all(ts.map(c=>{
     const heads=ticketHeads(e,c),amt=(c.unit||0)*heads;
-    const b=Math.floor(amt/1.1);
+    /* 同 feeAdd：門票也是内部証憑，票面上没有内訳。以前这里用 amt/1.1 反推一个 10% ——
+       那是捏造，不是读取（rcTax 为同一件事留过一整段说明）。owner 裁的是
+       「按含税来记，税务问题交给税理士思考」，所以只留税込的 amount。 */
     const row={host:SESSION.user.id,entry_date:e.date||todayStr(),paid_date:e.date||todayStr(),
-      direction:'in',amount:amt,tax:[{r:'10',b,t:amt-b}],tax_total:amt-b,
+      direction:'in',amount:amt,tax:[],tax_total:0,
       account:'売上高(参加費)',payment:'現金',vendor:'当日参加者',reg_no:'',
       // 証憑は再現できなければ意味がない：頭数から**外した**人数もここに書く
       memo:(c.name||'门票')+' '+yen(c.unit)+' × '+heads+'名'
@@ -3348,7 +3365,23 @@ function addFromLib(libId){
   save();render();toast(g.name+' 已加入本场');
 }
 /* ---- 参加者 名单 on the planning UI: list + import + name-match (recorded for next time) ---- */
-function delParticipant(pid){if(S.readonly)return;const e=ev();e.participants=e.participants.filter(p=>p.id!==pid);save();render();}
+/* ⚠ 这个 ✕ 就贴在「✓ ¥6,000」右边一指宽的地方，而 fee 行的身份只有 payer_ref = 这个人的
+   客户端 id。删掉人不会碰台账，再从名册加回来又是**新 id** —— 于是 (a) 「收款」按钮重新出现，
+   第二笔干净地插进去（唯一索引管的是 payer_ref，新 id 不撞）；(b) 就算不再记，他也重新落进
+   arrUnpaid，被门票汇总按単価算一遍，而旧那条 fee 行还挂在账上。同一笔钱两次。
+   所以：**有未取消的 fee 行就先说清楚**，让主办自己决定，别让一次误触把账搞乱。 */
+function delParticipant(pid){if(S.readonly)return;const e=ev();
+  const p=(e.participants||[]).find(x=>x.id===pid),fe=p&&feeOf(e,p);
+  const go=()=>{e.participants=e.participants.filter(x=>x.id!==pid);save();render();};
+  if(!fe)return go();
+  ask({title:'把 '+esc(p.name)+' 从名单里删掉？',
+    note:'TA 名下有一条已经入账的报名费 '+yen(fe.amount)+'（'+(fe.voucher_no||'已记账')+'）。'
+      +'删掉人「不会」动台账那一条 —— 而且再把 TA 加回来时是一个新的身份，'
+      +'那条旧的就再也对不上人了，门票汇总也会重新把 TA 算进去（同一笔钱两次）。'
+      +'要删就先去总账把那一条「取消」。',
+    fields:[],ok:'仍然从名单里删掉',fn:()=>{go();
+      toast('已从名单删掉 —— 台账里那条 '+yen(fe.amount)+' 还在，记得去总账处理');}});
+}
 // a guest already in the registry, matched by name OR a previously-recorded alias
 function matchGuestByName(name){const k=(name||'').trim();if(!k)return null;
   return peoList('guest').find(g=>(g.name||'').trim()===k||((g.aliases||[]).some(a=>(a||'').trim()===k)))||null;}
@@ -3454,14 +3487,23 @@ function signupBlock(e){
       下面已经给他们标上<b>号牌 / 编号</b>。叫名字点人、派事、签到之前先看一眼这个。</div>`:''}
     <div class="lbl" style="margin:6px 0 5px">已报名 · ${e.participants.length} 人（男 ${men} · 女 ${women}）${full?' —— 已满员':''}</div>
     ${/* 收到一笔就记一笔（owner 2026-07-28）。记过的人会从门票汇总的头数里扣掉 —— 见 ticketHeads */''}
-    ${canCloud()&&e.participants.length?`<div class="sub" style="margin:0 0 6px">
-      ${ico('coin')}已收 ${feeRows(e).length} 人 · ${yen(feeSum(e))}
-      <span class="muted"> · 剩 ${Math.max(0,e.participants.length-feeRows(e).length)} 人没记</span>
-      <span class="muted" style="font-size:10.5px">（点名字后面的「收款」记一笔；记过的不会被门票汇总重复算）</span></div>`:''}
+    ${canCloud()&&e.participants.length?(!feeReady()
+      ? `<div class="sub" style="margin:0 0 6px;color:var(--alarm)">${ico('wait')}
+          总账还没读到 —— <b>先别按「确认入账」</b>，也别急着判断谁交了没交。
+          <span class="bk" style="color:var(--brass);cursor:pointer" onclick="loadLedger(1)">重新读一次</span></div>`
+      : (()=>{const orp=feeOrphans(e),live=feeRows(e).length-orp.length;
+         return `<div class="sub" style="margin:0 0 6px">
+          ${ico('coin')}已收 ${live} 人 · ${yen(feeSum(e))}
+          <span class="muted"> · 剩 ${Math.max(0,e.participants.length-live)} 人没记</span>
+          <span class="muted" style="font-size:10.5px">（点名字后面的「收款」记一笔；记过的不会被门票汇总重复算）</span>
+          ${orp.length?`<br><span style="color:var(--alarm)">${ico('warn')}还有 ${orp.length} 条报名费的人已经不在名单里了
+            （${orp.map(r=>esc(r.vendor||'?')+' '+esc(yen(r.amount))).join('、')}）——
+            这些<b>扣不掉任何人</b>，门票汇总会照常按人头算。去总账处理那几条。</span>`:''}</div>`;})()):''}
     <div class="plist">${e.participants.length?e.participants.map(p=>{const fe=feeOf(e,p);
       return `<span class="chip s1">${p.gender==='男'?'♂':'♀'} ${esc(p.name)}${
       dup[String(p.name||'').trim()]?` <span class="lbl" style="color:var(--brass)">${esc(p.gender+p.n)}</span>`:''}${p.libId?'':' <span class="lbl" style="color:var(--alarm)">新</span>'}
-      ${canCloud()?(fe?`<span class="lbl" style="color:var(--ok)">✓ ${esc(yen(fe.amount))}</span>`
+      ${canCloud()?(!feeReady()?'' /* 总账没读到就别画「收款」—— 那等于说这个人没交过 */
+        :fe?`<span class="lbl" style="color:var(--ok)">✓ ${esc(yen(fe.amount))}</span>`
         :`<span class="rz" style="color:var(--brass);cursor:pointer;font-size:10.5px;margin-left:6px"
             onclick="event.stopPropagation();feeAsk('${escJs(p.id)}')">收款</span>`):''}
       <span class="x" onclick="delParticipant('${p.id}')">✕</span></span>`;}).join('')
@@ -3880,8 +3922,12 @@ function loadLedger(force){
   if(LEDGER&&!force)return Promise.resolve();
   // never select parse — the list must not drag the raw OCR across the wire (the same
   // discipline loadPending() applies to file_data). 图片本来就只是一个 Drive 链接。
+  /* ⚠ payer_ref 必须在这张清单里。少了它，feeOf()/feePaidIds() 读到的永远是 undefined，
+     于是「已经单独交过钱的人」一个都认不出来 —— 0022 那整套防重复计账在客户端**全线失效**，
+     报名费和门票汇总会同时入账。2026-07-28 复查抓到：**列清单是一道会静默失效的门**，
+     而我自己的浏览器验证之所以过了，是因为手工塞了带 payer_ref 的假行，没走这条真路。 */
   return sb.from('ym_entry').select('id,voucher_no,entry_date,paid_date,direction,amount,'+
-      'tax_total,tax,account,payment,vendor,reg_no,memo,event_id,chip_id,src,src_submit,'+
+      'tax_total,tax,account,payment,vendor,reg_no,memo,event_id,chip_id,payer_ref,src,src_submit,'+
       'member_code,confidence,status,void_reason,image_id,image_url,image_name,created_at')
     .order('entry_date',{ascending:false}).order('seq',{ascending:false}).limit(3000)
     .then(({data,error})=>{
@@ -3906,7 +3952,8 @@ function loadLedger(force){
    ⚠ 手机那一侧是**匿名**的，所以它打 /api/parse 时没有 user_token —— 计量由 cap_claim
      在电脑认领时记，一张一次，客户端伪造不了。套件里那条「每个调用点都带 user_token」
      的断言相应放宽为「带 token **或** 走 cap_submit」。 */
-let CAP={token:null,url:null,timer:null,busy:false};
+const CAP_TTL=10*60*1000;                 // 0005：capture_session 10 分钟过期
+let CAP={token:null,url:null,timer:null,busy:false,exp:0};
 function capQrLib(){return new Promise(res=>{
   if(window.qrcode)return res();
   const s=document.createElement('script');
@@ -3914,35 +3961,64 @@ function capQrLib(){return new Promise(res=>{
   s.onload=()=>res();s.onerror=()=>res();document.head.appendChild(s);});}
 async function capOpen(){
   if(!canCloud()){toast('登录并通过批准后才能用「手机拍」');return;}
+  /* 已经有一条活着的会话就**复用**它，别再开一条。认领一张之后我们只收起二维码、
+     会话留着（那是「连着拍」的前提），此时再点「手机拍」应当是把那张码**拿回来**，
+     而不是作废掉手机上正扫着的那一个。 */
+  if(CAP.token&&Date.now()<CAP.exp){capDraw();await capQrLib();capDraw();capPoll();return;}
+  capStop();
   try{await sb.from('capture_session').delete().eq('owner',SESSION.user.id).eq('status','open');}catch(e){}
   const {data,error}=await sb.from('capture_session').insert({owner:SESSION.user.id}).select('id').single();
   if(error){toast('开不了会话：'+error.message);return;}
-  CAP={token:data.id,url:location.origin+location.pathname+'?cap='+data.id,timer:null,busy:false};
+  CAP={token:data.id,url:location.origin+location.pathname+'?cap='+data.id,
+       timer:null,busy:false,exp:Date.now()+CAP_TTL};
   capDraw('二维码生成中…');await capQrLib();capDraw();capPoll();
 }
 function capDraw(msg){
+  const dead=!CAP.token||Date.now()>=CAP.exp;    // 过期了就别再画一张扫不通的码
   let img='';
-  if(window.qrcode&&CAP.url){try{const q=qrcode(0,'M');q.addData(CAP.url);q.make();img=q.createImgTag(5,12);}catch(e){}}
+  if(!dead&&window.qrcode&&CAP.url){try{const q=qrcode(0,'M');q.addData(CAP.url);q.make();img=q.createImgTag(5,12);}catch(e){}}
   let host=$('capwrap');
   if(!host){host=document.createElement('div');host.id='capwrap';document.body.appendChild(host);}
+  const left=dead?0:Math.max(1,Math.ceil((CAP.exp-Date.now())/60000));
   host.innerHTML=`<div class="drawerbg" onclick="capClose()"></div>
     <div class="exdlg jobdlg askdlg" style="text-align:center">
       <div class="hd"><span class="tp">${ico('qr')}用手机拍这张票</span>
         <button class="btn ghost sm" onclick="capClose()">✕</button></div>
-      <div class="sub" style="margin:0 0 10px">手机相机 / 微信「扫一扫」扫下面这个码 → 在手机上拍票据 →
-        自动解析并传回这一页确认。手机那边<b>不用登录</b>。</div>
-      <div style="min-height:150px;display:grid;place-items:center;background:#fff;border-radius:6px;padding:8px">
-        ${img||'<span class="note9" style="color:#333">二维码生成中…（也可以把下面这个链接发到手机上打开）</span>'}</div>
-      <div class="note9" style="word-break:break-all;margin-top:8px">${esc(CAP.url||'')}</div>
-      <div class="sub" style="margin-top:10px">${esc(msg||'等手机拍照中…（可以连着拍，一张一张确认）')}</div>
-      <p class="note9">二维码 10 分钟内有效。上一张确认完，才能再传下一张 —— 免得没确认的被覆盖掉。</p>
+      ${dead?`<div class="sub" style="margin:0 0 10px;color:var(--alarm)">${ico('wait')}
+          这张二维码已经过期了（有效期 10 分钟）—— 手机再扫会看到「找不到会话」。</div>
+        <button class="btn" style="width:100%" onclick="capStop();capOpen()">${ico('again')}重新生成一张</button>`
+      :`<div class="sub" style="margin:0 0 10px">手机相机 / 微信「扫一扫」扫下面这个码 → 在手机上拍票据 →
+          自动解析并传回这一页确认。手机那边<b>不用登录</b>。</div>
+        <div style="min-height:150px;display:grid;place-items:center;background:#fff;border-radius:6px;padding:8px">
+          ${img||'<span class="note9" style="color:#333">二维码生成中…（也可以把下面这个链接发到手机上打开）</span>'}</div>
+        <div class="note9" style="word-break:break-all;margin-top:8px">${esc(CAP.url||'')}</div>
+        <div class="sub" style="margin-top:10px">${esc(msg||'等手机拍照中…（可以连着拍，一张一张确认）')}</div>
+        <p class="note9">还有约 ${left} 分钟有效。上一张确认完，才能再传下一张 —— 免得没确认的被覆盖掉。<br>
+          收起这个窗口<b>不会</b>中断：手机接着拍，确认完上一张就会自动接住下一张。</p>`}
     </div>`;
 }
-function capClose(){
-  if(CAP.timer){clearInterval(CAP.timer);CAP.timer=null;}
-  const h=$('capwrap');if(h)h.remove();
-  if(CAP.token&&sb&&SESSION){try{sb.from('capture_session').delete().eq('id',CAP.token).then(()=>{});}catch(e){}}
-  CAP={token:null,url:null,timer:null,busy:false};
+// 只收起界面，**会话留着** —— 认领一张之后走这条：手机还要接着拍下一张
+function capHide(){const h=$('capwrap');if(h)h.remove();}
+function capStop(){if(CAP.timer){clearInterval(CAP.timer);CAP.timer=null;}
+  CAP={token:null,url:null,timer:null,busy:false,exp:0};}
+/* 用户主动关（✕ / 点背景）才真的销毁会话。
+   ⚠ 但**先认领一次**：手机可能刚传回一张（status='ready'），而轮询在主办正确认别的票据时
+     是暂停的（capPoll 的 S.rc 互斥）。无条件 delete 会把那一张连图片一起弄没，两边都没有提示。
+     delete 也加上 .eq('status','open') 兜底 —— 万一认领失败，也不会删掉 ready 的那一行。 */
+async function capClose(){
+  const tok=CAP.token;
+  capHide();
+  if(!tok||!sb||!SESSION){capStop();return;}
+  let pending=null;
+  try{const {data}=await sb.rpc('cap_claim',{p_token:tok});if(data&&data.draft)pending=data;}catch(e){}
+  if(pending){
+    // 手机传回的那张还没被确认 —— 别丢，直接打开确认卡；会话这一轮就到此为止
+    capStop();
+    try{await sb.from('capture_session').delete().eq('id',tok).eq('status','open');}catch(e){}
+    capTake(pending);toast('手机刚传回一张 —— 先把它确认掉');
+    return;}
+  capStop();
+  try{await sb.from('capture_session').delete().eq('id',tok).eq('status','open');}catch(e){}
 }
 /* 草稿是**匿名手机**传来的，一个字都不能信 —— 逐格夹到 rcSeed 认得的形状和上限。
    （rcSeed 里已经有 num0/dateOf/T 号正则那几道，这里补的是长度、条数和枚举。） */
@@ -3963,21 +4039,39 @@ function capClean(raw){
     payment_method:s(raw.payment_method,10),
     tax_lines:tax};
 }
+/* 认领到的一张 → ym 自己的确认卡。
+   ⚠ 手机那一侧**明确支持 PDF**（请求書多半是 PDF），所以白名单必须认它 ——
+     以前只认 data:image，PDF 会静默变成 img:''，账记下了而**証憑一个字节都没留**，
+     屏幕上还照常说「原图已存进网盘」。带不回来的时候必须说出来。 */
+const CAP_IMG_RE=/^data:(image\/(?:png|jpe?g|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/;
+function capTake(data){
+  const raw=String(data.image||'');
+  const m=CAP_IMG_RE.exec(raw);
+  const pdf=m&&m[1]==='application/pdf';
+  S.rc={d:capClean(data.draft),ctx:{src:'host',evId:''},
+        img:m?m[2]:'',mime:m?m[1]:'image/jpeg',name:'手机拍.'+(pdf?'pdf':'jpg')};
+  rcSeed('');capHide();render();
+  if(raw&&!m)toast('⚠ 手机传回来了，但原件没能带过来 —— 入账前请自己另存一份');
+  else toast('手机传回来一张 —— 请核对');
+}
 function capPoll(){
   if(CAP.timer)clearInterval(CAP.timer);
   CAP.timer=setInterval(async()=>{
-    if(!CAP.token||CAP.busy||S.rc)return;        // 已经有一张在确认了，别覆盖
-    if(!$('capwrap')){capClose();return;}
+    if(!CAP.token){capStop();return;}
+    /* ⚠ 轮询**不跟着二维码窗口走**。认领一张之后我们只收起窗口、会话留着 ——
+       两边文案承诺的「可以连着拍」全靠这条：手机接着传，主办确认完上一张就自动接住下一张。
+       （以前这里是 `if(!$('capwrap'))capClose()`，于是第一张确认完通道就被销毁了，
+        手机上第二张按下去只会看到一句日文的「セッションが見つかりません」。） */
+    if(Date.now()>=CAP.exp){                     // 0005 的 cap_claim 不看 expires_at，得我们自己看
+      const had=!!$('capwrap');capStop();
+      if(had)capDraw();                          // 会画成「已过期 —— 重新生成」那一屏
+      else toast('手机拍的二维码已过期 —— 要接着拍请重新点「手机拍」');
+      return;}
+    if(CAP.busy||S.rc)return;                    // 已经有一张在确认了，别覆盖
     CAP.busy=true;
     try{
       const {data}=await sb.rpc('cap_claim',{p_token:CAP.token});
-      if(data&&data.draft){
-        // 图片进的是 rcUpload / <img src>，所以只认真正的 data:image
-        const m=/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(data.image||''));
-        S.rc={d:capClean(data.draft),ctx:{src:'host',evId:''},
-              img:m?m[2]:'',mime:m?m[1]:'image/jpeg',name:'手机拍.jpg'};
-        rcSeed('');capClose();render();toast('手机传回来一张 —— 请核对');
-      }
+      if(data&&data.draft)capTake(data);
     }catch(e){}
     finally{CAP.busy=false;}
   },1600);
@@ -4018,7 +4112,15 @@ function capShoot(inp,token){
       return sb.rpc('cap_submit',{p_token:token,p_draft:res||{},
         p_image:'data:'+mime+';base64,'+b64})
         .then(({error})=>{
-          if(error){capStat('传不过去：'+(error.message||error));return;}
+          if(error){
+            /* 0005 的报错是日文原文，中文界面里直接甩出来没人看得懂。三种情况分开说，
+               而且每一种都要说**下一步做什么** —— 手机上没有别的线索可循。 */
+            const t=String((error&&error.message)||error||'');
+            capStat(/有効期限|expire/i.test(t)?'二维码过期了 —— 请让电脑那边重新点一次「手机拍」'
+              :/見つかりません|not found/i.test(t)?'这个二维码已经失效 —— 请重新扫一次电脑上的码'
+              :/前の写真|確認して/.test(t)?'上一张还没在电脑上确认 —— 确认完再拍下一张'
+              :'传不过去：'+t);
+            return;}
           capStat('');
           const d=$('cap_done');if(!d)return;
           d.innerHTML='';
@@ -4182,8 +4284,15 @@ function rcEv(v){rcKeep();S.rc.f.ev=v;S.rc.f.chip='';render();}
 
 // 0018 还没应用时数据库回的是 42703「column "image" does not exist」—— 那是触发器里的列名，
 // 跟主办拍的这张票据毫无关系，所以单独认出来，说人话。
+/* 「这张表还差一条迁移」到底长什么样，取决于**哪一层**先拒绝：
+     · 数据库拒绝（列真的不存在）→ 42703
+     · **PostgREST 的 schema cache 先拒**（它在请求到达数据库之前就发现字段不认识）→ PGRST204
+     · CHECK 约束不认新枚举值（比如 src='fee' 而 0022 还没应用）→ 23514
+   以前只认第一种，于是 0022 没应用时 feeAdd 那句「迁移还没应用」**永远不会出现**，
+   主办看到的是一句 PostgREST 的英文原文。 */
 function ledgerNotReady(e){const m=String((e&&e.message)||'')+' '+String((e&&e.code)||'');
-  return /42703/.test(m)||/column .*image.* does not exist/i.test(m);}
+  return /42703|PGRST204|23514/.test(m)||/schema cache/i.test(m)
+    ||/column .*(image|payer_ref).* does not exist/i.test(m);}
 /* ---- THE ONE WRITER ---- */
 /* 票据图片 → 主办自己的 Google Drive，按 <活动>/<类型> 分目录 (owner 2026-07-27)。
    走 /api/ym_file：Apps Script 的 /exec 对公网开放，所以那边只有上传能力、没有删除；
