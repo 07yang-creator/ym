@@ -1950,6 +1950,47 @@ function evSchedule(e){
 }
 function evEndMin(e){const s=evSchedule(e);for(let i=s.length-1;i>=0;i--)if(s[i].end!=null)return s[i].end;return null;}
 function evTotalMin(e){return ((e&&e.rows)||[]).reduce((n,r)=>n+Math.max(0,parseInt(r.dur,10)||0),0);}
+/* 调顺序**之前**，把「手填的时刻」换算成「时长」(owner 2026-07-29 在真机上撞到的)。
+   手填的时刻是锚点（evSchedule 里 t!=null 就重设 cur），而 moveRow / rowDragEnd 搬的是**整行** ——
+   锚点跟着环节一起走，台本上的时间当场串位：…14:10 → 15:10 → 14:40…。
+   ⚠ 示例台本、以及「再办一场 / 从模板铺」出来的台本**每一行都手填了时刻**（cpR 照抄 time），
+   所以主办在当天拖一下必中，而这恰恰是最需要拖的时候。
+   换算在**视觉上是空操作**：每行的时长就取它到下一行开始的间隔，所以换算完屏幕上一个时刻都没变
+   （计划页那个时刻框的 placeholder 画的本来就是算出来的时刻，当天台本走 r.time||算出来的）。
+   变的是之后 —— 顺序一改，后面的时刻按时长自己重排，永远升序。
+   第一行的时刻留着：整场几点开始是主办定的，不该被算出来。
+   只在「时刻都读得到、且不倒退」时换算；否则原样不动 —— 宁可留着旧行为，也不静默改屏幕上的数字。 */
+function rowsAnchorToDur(e){
+  const rows=(e&&e.rows)||[];
+  if(rows.length<2)return false;
+  if(!rows.some((r,i)=>i>0&&r.time))return false;      // 除第一行外没有别的锚点 —— 不用动
+  const sc=evSchedule(e);
+  for(let i=0;i<rows.length;i++){                      // 读不到时刻 / 时刻倒退：不碰
+    if(sc[i].start==null)return false;
+    if(i&&sc[i].start<sc[i-1].start)return false;
+  }
+  for(let i=0;i<rows.length;i++){
+    if(i+1<rows.length){const d=sc[i+1].start-sc[i].start;
+      if(d)rows[i].dur=d;else delete rows[i].dur;}
+    if(i)delete rows[i].time;                          // 最后一行的 dur 保持原样（它后面没有间隔可取）
+  }
+  return true;
+}
+/* 换位的唯一入口。两步，缺一不可：
+   ① rowsAnchorToDur —— 把多余的锚点换算成时长；
+   ② 换完位，把那个唯一的锚点交给**新的第一行**。台本从几点开始是「第一格」的属性，不是某个
+      环节的属性 —— 少了这一步，把第一行往下挪就会让整段时刻倒退（14:00 → 13:00 → 13:30），
+      因为 evSchedule 走到第 2 行才读到锚点，然后往回重设 cur。
+   ② 只在台本已经是「只有第一行带时刻」时才做：①bail 掉的台本（时刻倒退 / 读不到）保持原样，
+      我们说过不静默改它。返回是否做过 ①，让调用方决定要不要说一声。 */
+function reorderRows(e,swap){
+  const conv=rowsAnchorToDur(e);
+  const single=!((e.rows||[]).some((r,i)=>i>0&&r.time));
+  swap();
+  if(single){const rows=e.rows||[],a=rows.find(r=>r.time);
+    if(a&&rows[0]&&a!==rows[0]){rows[0].time=a.time;delete a.time;}}
+  return conv;
+}
 function moneyTotals(e){
   const t={inPlan:0,inActual:0,outPlan:0,outActual:0};
   allMoneyChips(e).forEach(x=>{const c=x.c;
@@ -2557,7 +2598,10 @@ function delRow(id){const e=ev();const r=e.rows.find(x=>x.id===id);
   if(r&&(r.seg||r.resources.length||r.money.length)&&!confirm('删除环节「'+(r.seg||'')+'」？'))return;
   e.rows=e.rows.filter(x=>x.id!==id);if(S.sel===id)S.sel='header';save();render();}
 function moveRow(id,d){const e=ev();const i=e.rows.findIndex(x=>x.id===id);const j=i+d;
-  if(i<0||j<0||j>=e.rows.length)return;const t=e.rows[i];e.rows[i]=e.rows[j];e.rows[j]=t;save();render();}
+  if(i<0||j<0||j>=e.rows.length)return;
+  const conv=reorderRows(e,()=>{const t=e.rows[i];e.rows[i]=e.rows[j];e.rows[j]=t;});
+  save();render();
+  if(conv)toast('时刻已改成按时长自动顺延 —— 这样调顺序不会串位');}
 function rowDur(id,v){const r=ev().rows.find(x=>x.id===id);if(!r)return;
   const n=parseInt(String(v).replace(/[^\d]/g,''),10)||0;
   if(n)r.dur=n;else delete r.dur;save();render();}   // render: 后面每一行的时刻都要跟着变
@@ -2596,8 +2640,12 @@ function rowDragEnd(){
   const next=order.map(id=>by[id]).filter(Boolean);
   // 只有当 DOM 里的行和模型里的行**一一对应**时才接受这个新顺序 —— 少一行就说明读到的
   // 不是这份台本（比如另一个视图也有 .rowcard），那时候写回去会静默丢环节。
-  if(next.length===e.rows.length)e.rows=next;
+  let conv=false;
+  // reorderRows 的第 ① 步读的是**换位前**的 e.rows，所以赋值要交给它包起来（next 里装的是同一批
+  // 行对象，就地改 time/dur 不影响它的顺序）。不提交这次拖动时也不换算 —— 没动过就别改数据。
+  if(next.length===e.rows.length)conv=reorderRows(e,()=>{e.rows=next;});
   save();render();
+  if(conv)toast('时刻已改成按时长自动顺延 —— 这样调顺序不会串位');
 }
 function cycleRes(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h&&h.resources.find(x=>x.id===cid);
   if(c){c.status=((c.status||0)+1)%4;stampDone(c);save();render();}}
