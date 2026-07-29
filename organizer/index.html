@@ -2200,6 +2200,11 @@ function doSignOut(){clearPendingCode();   // never carry a code across identiti
   // …and never carry the previous host's volunteer data either: PENDING holds their members'
   // names and 确认完成 stays wired, so the next person on this device could flip a chip.
   PENDING=[];CODES={};JOINREQ=null;LEDGER=null;capStop();   // 手机拍的通道不能跨账号留着
+  /* ⚠ 这几个**界面状态**也必须清。authSheet 里 S.memberOnly 那三个分支排在登录表单**前面**，
+     所以一个成员退出登录之后，下一个人打开抽屉看到的还是「这是一个成员账号」
+     （邮箱那一格已经空了，因为 SESSION 没了）—— 登录表单再也点不到，只能刷新页面。
+     退出登录的意思是「把上一个人留下的一切都清掉」，不只是数据。 */
+  S.memberOnly=0;S.memberWhy='';S.noJoin=0;S.nameDup=false;S.joinDone=false;S.pOpen=null;
   if(_pendT){clearInterval(_pendT);_pendT=null;}
   if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
 
