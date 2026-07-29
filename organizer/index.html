@@ -1120,6 +1120,11 @@ function joinBlock(){
     <div class="hd"><span class="lbl">待批申请${pend.length?' · '+pend.length:''}</span>
       <span class="bk" style="color:var(--brass);cursor:pointer;font-size:11px" onclick="setPubName()">
         公开名称：${nm?esc(nm):'<span style="color:var(--alarm)">还没设</span>'}</span></div>
+    ${/* 0019 §5：待批满 50 之后新申请被**静默丢弃** —— 申请人那边看不出区别（有意的），
+         但主办必须知道，否则他会以为「最近没人申请」，而其实是自己的队列堵死了。 */''}
+    ${pend.length>=50?`<div class="sub" style="color:var(--alarm);margin:0 0 8px">${ico('warn')}
+      <b>待批已经满 50 条 —— 再来的自助申请会被直接丢掉。</b>
+      申请人那边看不出任何区别（那是有意的无泄露设计），所以只能靠你把下面这些先处理掉。</div>`:''}
     ${S.nameDup?`<div class="sub" style="color:var(--alarm);margin:0 0 8px">${ico('warn')}
       <b>还有另一个主办也在用「${esc(nm)}」</b> —— 撞名期间自助申请<b>两边都收不到</b>
       （申请人手打的是名字，他手上没有编号可打，所以系统宁可不送，也不会送错人）。
@@ -1180,6 +1185,8 @@ async function joinApprove(id){
         // 传输层失败：**留着**名册记录，去问一次真相，让主办看得到实际状态
         await loadCodes();await loadJoin();
         if(codeOf(rec)){
+          // 码已经铸出来了 —— 名册也必须跟着上云并 pushShares，否则 TA 注册进来是一片空白
+          await cloudPushAll();
           toast('网络断了一下，但编号已经生成 —— 用「重发邀请码」拿一串新的给 TA');
           _grant={pid:rec.id,role:r.want_role,invite:'',busy:false,err:''};render();grantPaint();return;}
         STORE.library.resources=STORE.library.resources.filter(x=>x.id!==rec.id);save();
@@ -1471,11 +1478,31 @@ function memberInvite(s){
      **那份真的主办申请** —— 而且她再也建不回来（重载时上面那道门看到她名下有 live 码就
      直接 return，ym_redeem_invite 没有 ym_member 行会回 'no-profile'，那个码框也再看不到）。
      只有 cloudLoad 那个**自动**入口能确定「这一行必是点错门留下的」（那时 mem 本来就是 null）。 */
+/* ⚠ withdraw 那个参数**结构上永远删不到东西**（2026-07-28 收尾复查抓到，我自己写的）：
+   它唯一的调用点在 cloudLoad 的 `if(!mem&&!admin)` 里 —— 那里 mem 必然是 null，
+   也就是**根本没有 ym_member 行**。真正留着一行假 pending 主办申请的人，走的是
+   redeemInvite（那里我故意传 false，因为分不清他是不是**真的**在申请当主办）。
+   所以改成：**问一句**。查一下有没有那行 pending，有就在这一屏给一个按钮，让本人决定 ——
+   不替他删（那可能是一份真申请），也不装作它不存在（它还挂在管理员的待批队列里）。 */
 function memberOnly(why,withdraw){
   PROFILE=null;S.memberOnly=1;S.memberWhy=why||'bound';S.auth=true;stopPoll();
-  if(withdraw&&sb&&SESSION)
-    sb.from('ym_member').delete().eq('user_id',SESSION.user.id).eq('status','pending').then(()=>{});
+  S.memberPend=0;
+  if(sb&&SESSION)
+    sb.from('ym_member').select('status').eq('user_id',SESSION.user.id).maybeSingle()
+      .then(({data})=>{const p=data&&data.status==='pending';
+        if(p!==!!S.memberPend){S.memberPend=p?1:0;render();}});
   render();
+}
+function memberWithdraw(){
+  if(!sb||!SESSION)return;
+  ask({title:'撤回那份「主办方」申请？',
+    note:'你的账号是通过邀请码进来的成员账号。之前在这台设备上还留下过一份「申请成为主办方」，'
+      +'它现在挂在管理员的待批列表里，看起来和真的主办申请一模一样。撤回它不影响你的成员身份。',
+    fields:[],ok:'撤回那份申请',fn:async()=>{
+      const {error}=await sb.from('ym_member').delete()
+        .eq('user_id',SESSION.user.id).eq('status','pending');
+      if(error){toast('撤不掉：'+error.message);return;}
+      S.memberPend=0;render();toast('已撤回 —— 管理员那边不会再看到它');}});
 }
 async function cloudLoad(){
   if(!sb||!SESSION){PROFILE=null;stopPoll();render();return;}
@@ -1507,6 +1534,12 @@ async function cloudLoad(){
     const live=(myCodes||[]).filter(c=>!c.revoked);
     if(live.length&&!live.some(c=>c.role==='H')){
       memberOnly('bound');return;                          // 不登记、不进队列
+    }
+    /* 被**取消授权**的成员（revoked）也不是来申请当主办的 —— 以前只看 live，
+       于是他一打开 /organizer/ 就重新变成一行 pending「主办方」，而管理员那屏的 ⚠ 提示
+       按「名下有未撤销的码」筛，恰好也认不出他。一批就凭空多一个主办。 */
+    if((myCodes||[]).length&&!(myCodes||[]).some(c=>c.role==='H')){
+      memberOnly('revoked');return;
     }
     /* ⚠ 上面那道门只认**已经绑过码**的人。owner 2026-07-28 报的正是漏掉的那一半：
        「主办分配用户时指定了志愿者，邀请码注册以后却成了主办」—— 一个**刚拿到 16 位成员码
@@ -2020,6 +2053,12 @@ function authSheet(){
       <button class="btn" style="width:100%;margin-top:12px" onclick="S.memberOnly=0;S.memberWhy='';cloudLoad()">
         ${ico('again')}再试一次</button>
       <button class="btn ghost sm" style="margin-top:8px" onclick="doSignOut()">退出登录</button>`;
+  else if(S.memberOnly&&S.memberWhy==='revoked')
+    inner=`<div style="font-size:13px;line-height:2">${ico('ban')}<b>${esc((SESSION&&SESSION.user.email)||'')}</b><br>
+      <span class="muted">这是一个<b>成员</b>账号，而主办方已经取消了它的授权。</span></div>
+      <p class="note9">这不是主办方账号，所以这里也不会把你排进「申请当主办」的队列。<br>
+        要恢复请直接联系发码给你的主办方；真要申请当主办方，请找管理员要一个邀请码。</p>
+      <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
   // 成员点错门进来了 —— 明说，并把人送去该去的那一页。不登记、不排队。
   else if(S.memberOnly&&S.memberWhy==='badcode')
     inner=`<div style="font-size:13px;line-height:2">${ico('warn')}<b>${esc((SESSION&&SESSION.user.email)||'')}</b><br>
@@ -2040,6 +2079,10 @@ function authSheet(){
         href="../member/">${ico('go')}打开我的页面</a>
       <p class="note9">主办台是给办活动的人用的。你要看的（你负责的事 · 当天流程 · 你的号牌）都在「我的页面」。<br>
         真要申请当主办方，请找管理员要一个邀请码。</p>
+      ${/* 之前点错门时留下的那行 pending 还挂在管理员的待批队列里 —— 说出来，让本人决定 */''}
+      ${S.memberPend?`<div class="sub" style="color:var(--alarm);margin-top:10px">${ico('warn')}
+          你名下还有一份「申请成为主办方」在等管理员审批。
+          <span class="bk" style="color:var(--brass);cursor:pointer" onclick="memberWithdraw()">撤回它</span></div>`:''}
       <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
   else if(canCloud())
     inner=`<div style="font-size:13px;line-height:2">${ico('cloud')}<b>${esc(SESSION.user.email||'')}</b><br>
@@ -3269,8 +3312,19 @@ async function feeAdd(p,v){
     if(error.code==='23505'){toast(p.name+' 名下已经有一条没取消的报名费了');loadLedger(1);return;}
     toast(ledgerNotReady(error)?'没记进总账 —— 数据库迁移 0022 还没应用'
       :'没记进总账：'+error.message);return;}
-  await loadLedger(1);render();
-  toast('已记一笔 '+yen(amt)+' —— 门票汇总会自动跳过 '+(p.name||'这个人'));
+  await loadLedger(1);
+  /* ⚠ 「以后不会重复算」和「已经重复算了」是两回事。门票那条汇总**已经入账**的话，
+     它是按当时的到场人数算的，不会自己变小 —— 这一笔就实实在在地进了第二次。
+     confirmTickets 对同一条 ticket 行本来就是 UPDATE（迟到的人来了要重算），
+     所以这里直接让它按新的头数重算一遍，把这个人从汇总里减掉。 */
+  if(ticketPosted(ev())&&ev()&&ev().id===e.id){
+    confirmTickets(true);
+    await loadLedger(1);
+    toast('已记一笔 '+yen(amt)+' —— 门票汇总已同步减掉 '+(p.name||'这个人'));
+  }else{
+    render();
+    toast('已记一笔 '+yen(amt)+' —— 门票汇总会自动跳过 '+(p.name||'这个人'));
+  }
 }
 function dayBoard(e){
   const tickets=ticketInfo(e);
@@ -3305,7 +3359,9 @@ function dayBoard(e){
 }
 function toggleArr(pid){const e=ev();const p=e.participants.find(x=>x.id===pid);if(!p)return;
   p.arrived=!p.arrived;p.at=p.arrived?nowHM():null;save();render();}
-function confirmTickets(){const e=ev();const ts=ticketInfo(e);if(!ts.length)return;
+// 这一场的门票汇总已经入过账了吗 —— 入过的话，之后每记一笔逐笔收款都必须让它跟着变小
+function ticketPosted(e){return e&&(LEDGER||[]).some(r=>r.src==='ticket'&&r.event_id===e.id&&r.status==='posted');}
+function confirmTickets(quiet){const e=ev();const ts=ticketInfo(e);if(!ts.length)return;
   /* ⚠ 「没有单独记账的人」和「总账还没读到」必须分开。LEDGER 还是 null 时 feeRows() 返回空，
      门票汇总就**不会**扣掉那些人 —— 同一笔钱进两次账。宁可让主办多点一下刷新。
      （同一条教训：LEDGER=LEDGER||[] 曾经让总账整场显示 ¥0 而屏幕上写着「还没有记录」。） */
@@ -3313,7 +3369,7 @@ function confirmTickets(){const e=ev();const ts=ticketInfo(e);if(!ts.length)retu
     toast('还没读到总账 —— 先等一下或刷新，免得和「单独记的报名费」重复入账');
     loadLedger(1);return;}
   ts.forEach(c=>{c.actual=(c.unit||0)*ticketHeads(e,c);});
-  save();render();toast('门票已入账（可在收支牌上修改）');
+  save();render();if(!quiet)toast('门票已入账（可在收支牌上修改）');
   if(!canCloud())return;
   // 現金売上には外部証憑が無いので「内部証憑」を一本立てる —— 相手方・年月日・内容・対価が
   // 帳簿に残らないと誰も再現できない。頭数は今まで捨てていた（product しか残らなかった）。
@@ -3976,7 +4032,10 @@ async function capOpen(){
   if(error){toast('开不了会话：'+error.message);return;}
   CAP={token:data.id,url:location.origin+location.pathname+'?cap='+data.id,
        timer:null,busy:false,exp:Date.now()+CAP_TTL};
-  capDraw('二维码生成中…');await capQrLib();capDraw();capPoll();
+  capDraw('二维码生成中…');await capQrLib();
+  // 二维码库拉不下来（CDN 被挡）→ 说出来并让人用链接，别一直停在「生成中…」
+  capDraw(window.qrcode?'':'画不出二维码（组件没加载出来）—— 把下面这个链接发到手机上打开也一样');
+  capPoll();
 }
 function capDraw(msg){
   const dead=!CAP.token||Date.now()>=CAP.exp;    // 过期了就别再画一张扫不通的码
@@ -5906,8 +5965,16 @@ function openArchived(id){S.evId=id;S.readonly=true;go('sheet');}
    必须**在这里**分流：不 seed、不 render、不 authInit —— 那一页不该有登录、
    不该有主办台的任何内容，也不该在别人的手机上写下这台设备的 STORE。 */
 const CAP_TOKEN=new URLSearchParams(location.search).get('cap');
-if(CAP_TOKEN&&sb){
-  capPhone(CAP_TOKEN);
+/* ⚠ 分流只看 **有没有 token**，不看 sb 加载成功没有。以前写的是 `CAP_TOKEN&&sb` ——
+   supabase-js 的 CDN 被墙/超时的时候，一个拿着拍照链接的**外人**会掉进主办台的完整 boot：
+   seed 出一整套示例、写这台设备的 localStorage、看到工作台。那正是这段注释禁止的事。 */
+if(CAP_TOKEN){
+  if(sb)capPhone(CAP_TOKEN);
+  else document.getElementById('app').innerHTML=
+    '<div style="max-width:460px;margin:0 auto;padding:40px 16px;text-align:center">'
+    +'<div class="lbl">拍一张票据</div>'
+    +'<p class="note9" style="line-height:2">组件没加载出来（网络被挡住了？）。<br>'
+    +'请换个网络刷新这一页 —— 在此之前拍了也传不回去。</p></div>';
 }else{
   STORE=load();
   if(!STORE||!STORE.library){STORE=seed();save();}
