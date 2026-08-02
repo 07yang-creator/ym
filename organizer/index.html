@@ -2649,10 +2649,13 @@ async function attachUpload(b64,mime,name,kind){
     // 401/403 = 没登录，或这个账号不是已批准主办/持码成员 —— 和「网络断了」是两回事，
     // 混成一句「失败」会让人去查网盘授权（2026-08-02 真发生了）。失败要说人话。
     if(r.status===401||r.status===403)return 'denied';
-    if(!r.ok)return null;
+    // 其余失败带上「哪一层、什么码」：owner 只能把 toast 原话发回来，这句话就是全部线索
+    if(!r.ok){let d='';try{d=JSON.stringify(await r.json());}catch(e3){}
+      console.warn('ym_file HTTP '+r.status,d);return {fail:'HTTP '+r.status};}
     const j=await r.json();
-    return j&&j.ok&&j.url?{id:String(j.file_id||''),url:String(j.url)}:null;
-  }catch(e2){return null;}
+    if(j&&j.ok&&j.url)return {id:String(j.file_id||''),url:String(j.url)};
+    console.warn('ym_file bad payload',j);return {fail:'回包不对'};
+  }catch(e2){console.warn('ym_file network',e2);return {fail:'网络'};}
 }
 function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs||!fs.length)return;
   if(!holder.files)holder.files=[];let pending=fs.length;const n=fs.length;let bad=0,denied=0;
@@ -2673,7 +2676,7 @@ function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs
         else holder.files.push({id:fid,name:f.name});
         finish();return;}
       if(up==='denied'){denied++;bad++;finish();return;}
-      if(!up){bad++;finish();return;}
+      if(!up||up.fail){bad++;finish();return;}
       holder.files.push({id:fid,name:f.name,url:up.url,driveId:up.id,mime});finish();};
     if(isImg){shrink(f,b64=>go(b64,'image/jpeg',b64?'data:image/jpeg;base64,'+b64:''));return;}
     const rd=new FileReader();
@@ -2725,26 +2728,33 @@ function mediaDownload(i){const m=mediaList(ev())[i];if(!m)return;const u=driveD
 function mediaDel(id){const e=ev();if(!e||!e.media)return;
   if(!confirm('从媒体库移除这张？网盘上那份还在，要删得去 Drive 手删。'))return;
   e.media=e.media.filter(x=>x.id!==id);S.mediaN=null;save();render();}
-function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e)return;
-  const all=[...(input.files||[])];input.value='';
+function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value='';return;}
+  const all=[...(input.files||[])];
   const fs=all.filter(f=>/^image\//.test(f.type||''));
   if(all.length>fs.length)toast((all.length-fs.length)+' 个不是图片 —— 媒体库只收图片');
-  if(!fs.length)return;
+  if(!fs.length){input.value='';return;}
   if(!e.media)e.media=[];
-  let pending=fs.length,bad=0,unwired=0,denied=0;const n=fs.length;
+  let pending=fs.length,decodeBad=0,svrBad=0,svrWhy='',unwired=0,denied=0;const n=fs.length;
   toast('正在传 '+n+' 张…');
   const fin=()=>{if(--pending)return;save();render();
+    const okN=n-decodeBad-svrBad-unwired-denied;
     toast(unwired?'云盘没接线，照片传不上去（媒体库不往手机里存底）':
       denied?'传不上去 —— 没登录，或这个账号不是主办/成员。请用主办账号登录后再传':
-      bad?('传好 '+(n-bad)+' 张，'+bad+' 张失败（照片打不开或网络断了）'):('传好 '+n+' 张'));};
+      svrBad?('传好 '+okN+' 张，'+svrBad+' 张没传上去 —— 服务端/网络出错（'+svrWhy+'）。把括号里的码发给管理员'):
+      decodeBad?('传好 '+okN+' 张，'+decodeBad+' 张照片读不出来 —— 请回相册重选一次再传'):
+      ('传好 '+n+' 张'));};
   fs.forEach(f=>shrink(f,async b64=>{
-    if(!b64){bad++;fin();return;}                    // 坏图/HEIC：算失败，别静静挂住
+    if(!b64){decodeBad++;fin();return;}               // 坏图：算失败，别静静挂住
     const up=await attachUpload(b64,'image/jpeg',f.name,'照片');
     if(up==='unwired'){unwired++;fin();return;}
     if(up==='denied'){denied++;fin();return;}
-    if(!up){bad++;fin();return;}
+    if(!up||up.fail){svrBad++;svrWhy=String((up&&up.fail)||'网络');fin();return;}
     e.media.push({id:uid(),name:f.name,driveId:up.id,url:up.url,ts:f.lastModified||Date.now()});
     fin();}));
+  /* ⚠ 清空必须放在所有读取都**启动之后**（和 attachTo 同一顺序）。iOS WebKit 在 value
+     清空后可能作废 File 底层的临时文件 —— 先清后读的写法在 iPhone 上是「张张都打不开」
+     （owner 2026-08-02 实测 0/3，两次）。 */
+  input.value='';
 }
 function mediaThumbFail(el){const t=el.closest('.mtile');if(t)t.classList.add('bad');
   const h=document.getElementById('mthint');if(h)h.style.display='';}

@@ -27,6 +27,19 @@ owner 要的：附件传照片有 400KB 墙、传上了也看不成 —— 复�
    ym_member 行，前端 `{status:'none',is_admin:true}` 照样进工作台）。已对齐 0012 §2
    的定义，GET 健康检查加 `"gate":"ym_ok"` 当部署标记。**同一道门两份定义**（canCloud
    / ym_ok / caller_ok）—— 这个月第五次；改任何一份都要去数另外几份。
+3. **过了权限还是 0/3，「照片打不开或网络不好」** —— `mediaAdd` 曾「先清 `input.value`、
+   后读字节」：iOS WebKit 清空后会作废 File 底层的临时文件，iPhone 上张张解码失败。
+   清空已挪到所有 shrink() 启动之后（attachTo 一直是这个顺序）。同一批还把剩余失败
+   分层：服务端/网络错带 **HTTP 码进 toast**（「把括号里的码发给管理员」），读不出来
+   单独一句 —— owner 只能把 toast 原话发回来，那句话必须自己携带诊断。
+4. **一个少写的 ASCII 右括号让整个 app 脚本编译失败**（字符串里的全角「）」骗过眼睛），
+   而 589 条正则断言照常全绿 —— 它们只看文本在不在。套件新增：把两个 app 的整段
+   `<script>` 用 `new Function` **真编译一遍**（不执行）。修浏览器验证 vs 套件的这个盲区。
+
+⚠ **Apps Script 的 KINDS 还没有「照片」**（`docs/apps-script-upload.js` 源码已加，
+**线上部署未更新**）：媒体库照片暂时回落进 `附件/` 目录 —— 能传能看，只是不分目录。
+owner 有空时：script.google.com → 该项目 → 贴入新源码 → **Edit existing deployment**
+（千万别 New deployment，会换 /exec URL）。
 
 ---
 
