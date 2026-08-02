@@ -2646,15 +2646,18 @@ async function attachUpload(b64,mime,name,kind){
         action:'upload_media',group,kind:kind||'附件',
         filename:String(name||'附件').slice(0,120),mime_type:mime,content_base64:b64})});
     if(r.status===503)return 'unwired';
+    // 401/403 = 没登录，或这个账号不是已批准主办/持码成员 —— 和「网络断了」是两回事，
+    // 混成一句「失败」会让人去查网盘授权（2026-08-02 真发生了）。失败要说人话。
+    if(r.status===401||r.status===403)return 'denied';
     if(!r.ok)return null;
     const j=await r.json();
     return j&&j.ok&&j.url?{id:String(j.file_id||''),url:String(j.url)}:null;
   }catch(e2){return null;}
 }
 function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs||!fs.length)return;
-  if(!holder.files)holder.files=[];let pending=fs.length;const n=fs.length;let bad=0;
+  if(!holder.files)holder.files=[];let pending=fs.length;const n=fs.length;let bad=0,denied=0;
   const finish=()=>{if(!--pending){save();render();
-    toast(bad?('已附上 '+(n-bad)+' 个，'+bad+' 个没传上去'):('已附上 '+n+' 个文件'));}};
+    toast(bad?('已附上 '+(n-bad)+' 个，'+bad+' 个没传上去'+(denied?'（请先登录主办账号）':'')):('已附上 '+n+' 个文件'));}};
   [...fs].forEach(f=>{const fid=uid();
     /* 照片先压到 1600px 再传 —— 和票据同一条规矩（rcShoot 一直是这么做的）。
        手机照片动辄 4–8MB，不压就会撞上 ATTACH_MAX：**同一张照片「当票据」传得上去、
@@ -2669,6 +2672,7 @@ function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs
         if(dataUrl&&dataUrl.length<=550000)holder.files.push({id:fid,name:f.name,url:dataUrl,mime});
         else holder.files.push({id:fid,name:f.name});
         finish();return;}
+      if(up==='denied'){denied++;bad++;finish();return;}
       if(!up){bad++;finish();return;}
       holder.files.push({id:fid,name:f.name,url:up.url,driveId:up.id,mime});finish();};
     if(isImg){shrink(f,b64=>go(b64,'image/jpeg',b64?'data:image/jpeg;base64,'+b64:''));return;}
@@ -2727,15 +2731,17 @@ function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e)return;
   if(all.length>fs.length)toast((all.length-fs.length)+' 个不是图片 —— 媒体库只收图片');
   if(!fs.length)return;
   if(!e.media)e.media=[];
-  let pending=fs.length,bad=0,unwired=0;const n=fs.length;
+  let pending=fs.length,bad=0,unwired=0,denied=0;const n=fs.length;
   toast('正在传 '+n+' 张…');
   const fin=()=>{if(--pending)return;save();render();
     toast(unwired?'云盘没接线，照片传不上去（媒体库不往手机里存底）':
-      bad?('传好 '+(n-bad)+' 张，'+bad+' 张失败'):('传好 '+n+' 张'));};
+      denied?'传不上去 —— 没登录，或这个账号不是主办/成员。请用主办账号登录后再传':
+      bad?('传好 '+(n-bad)+' 张，'+bad+' 张失败（照片打不开或网络断了）'):('传好 '+n+' 张'));};
   fs.forEach(f=>shrink(f,async b64=>{
     if(!b64){bad++;fin();return;}                    // 坏图/HEIC：算失败，别静静挂住
     const up=await attachUpload(b64,'image/jpeg',f.name,'照片');
     if(up==='unwired'){unwired++;fin();return;}
+    if(up==='denied'){denied++;fin();return;}
     if(!up){bad++;fin();return;}
     e.media.push({id:uid(),name:f.name,driveId:up.id,url:up.url,ts:f.lastModified||Date.now()});
     fin();}));
