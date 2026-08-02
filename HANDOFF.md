@@ -36,6 +36,12 @@ owner 要的：附件传照片有 400KB 墙、传上了也看不成 —— 复�
    而 589 条正则断言照常全绿 —— 它们只看文本在不在。套件新增：把两个 app 的整段
    `<script>` 用 `new Function` **真编译一遍**（不执行）。修浏览器验证 vs 套件的这个盲区。
 
+✅ **已修复（2026-08-02 当天收尾）：owner 重新部署了 Apps Script（源码含「照片」）并更新
+`YM_DRIVE_EXEC` → 探针全绿：`gas.ok:true` + `gas_write.ok:true`（真写入了
+`连通性测试/附件/probe.txt`，顺带证明「限制」共享不影响上传，那个测试文件可删）。
+新部署头几分钟冷启动会超时，`?probe=1` 的 GET 15 秒预算可能报 timed out —— 多试一次或
+直接看 `?probe=write`（25 秒）。下面是当时的诊断，留档。**
+
 🔴 **真正的根子（2026-08-02 探针实锤）：`YM_DRIVE_EXEC` 指着的 Apps Script 部署 404 了。**
 `curl 'https://www.jjconnect.tokyo/api/ym_file?probe=1'` →
 `{"q_member":200,"q_admin":200,"q_code":200,"gas":{"http":404}}` ——
