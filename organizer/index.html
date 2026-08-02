@@ -814,6 +814,10 @@ function shrink(file,cb){ // photos → ≤1600px jpeg before upload
     const c=document.createElement('canvas');c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);
     c.getContext('2d').drawImage(img,0,0,c.width,c.height);
     cb(c.toDataURL('image/jpeg',.85).split(',')[1]);URL.revokeObjectURL(img.src);};
+  // 解不开就回空串，**一定要回**。以前没有 onerror：一张坏图/不支持的格式（HEIC 在某些
+  // 浏览器上就是）会让回调永远不来 —— 附件那边 pending 减不到 0，提示永远不出现，
+  // 看起来就是「点了没反应」。空串各处都有既有的判空（rcParse 的「这张太大或打不开」）。
+  img.onerror=()=>{try{URL.revokeObjectURL(img.src);}catch(e){}cb('');};
   img.src=URL.createObjectURL(file);
 }
 /* 主办端这几路的字节**一个字节都不进数据库行**，所以这里的上限不保护任何东西：
@@ -2630,18 +2634,26 @@ function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs
   const finish=()=>{if(!--pending){save();render();
     toast(bad?('已附上 '+(n-bad)+' 个，'+bad+' 个没传上去'):('已附上 '+n+' 个文件'));}};
   [...fs].forEach(f=>{const fid=uid();
-    if(f.size>ATTACH_MAX){toast('「'+f.name+'」太大了（约 4MB 以内）');bad++;finish();return;}
-    const rd=new FileReader();
-    rd.onerror=()=>{bad++;finish();};
-    rd.onload=async()=>{
-      const up=await attachUpload(String(rd.result).split(',')[1]||'',
-        f.type||'application/octet-stream',f.name);
+    /* 照片先压到 1600px 再传 —— 和票据同一条规矩（rcShoot 一直是这么做的）。
+       手机照片动辄 4–8MB，不压就会撞上 ATTACH_MAX：**同一张照片「当票据」传得上去、
+       「当附件」被拒**，这种不一致最难自己想明白（owner 2026-07-29 报「附件上传失败」）。
+       压完通常只剩一两百 KB，所以图片不再受 ATTACH_MAX 约束。 */
+    const isImg=/^image\//.test(f.type||'');
+    if(!isImg&&f.size>ATTACH_MAX){toast('「'+f.name+'」太大了（约 4MB 以内）');bad++;finish();return;}
+    const go=async(b64,mime,dataUrl)=>{
+      if(!b64){bad++;finish();return;}                 // 解不开的图片：算失败，别静静地挂住
+      const up=await attachUpload(b64,mime,f.name);
       if(up==='unwired'){                 // 老行为，原样保留：小的内联，大的只留名字
-        if(f.size<=400000)holder.files.push({id:fid,name:f.name,url:rd.result,mime:f.type});
+        if(dataUrl&&dataUrl.length<=550000)holder.files.push({id:fid,name:f.name,url:dataUrl,mime});
         else holder.files.push({id:fid,name:f.name});
         finish();return;}
       if(!up){bad++;finish();return;}
-      holder.files.push({id:fid,name:f.name,url:up.url,driveId:up.id,mime:f.type});finish();};
+      holder.files.push({id:fid,name:f.name,url:up.url,driveId:up.id,mime});finish();};
+    if(isImg){shrink(f,b64=>go(b64,'image/jpeg',b64?'data:image/jpeg;base64,'+b64:''));return;}
+    const rd=new FileReader();
+    rd.onerror=()=>{bad++;finish();};
+    rd.onload=()=>go(String(rd.result).split(',')[1]||'',
+      f.type||'application/octet-stream',String(rd.result));
     rd.readAsDataURL(f);});
   input.value='';}
 /* 老 payload 里存的是 data: URL，新的是 Drive 链接 —— 两种都要能开，别的一律不开。
