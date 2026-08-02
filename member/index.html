@@ -846,7 +846,11 @@ if(sb){
     // 点重设邮件的链接回来时 supabase-js 会先建立一个 recovery 会话再发这个事件。
     // 必须挡在 load() 前面，否则页面会直接进内容页，用户永远看不到设密码这一步。
     if(ev2==='PASSWORD_RECOVERY'){RECOVERY=true;render();return;}
-    if(was!==now){if(s2)load();else{SHARES=null;MINE=[];RECOVERY=false;TAB='login';render();}}});
+    /* ⚠ `MYCODES` 也要清。它不在这份清单里的时候，顶栏那句「我的成员页 · V0014」是画在
+       `!SESSION` 分支**外面**的 —— 会话过期（或另一个标签页退出）之后，登录框回来了，
+       上一个志愿者的**编号**还挂在共用手机的屏幕上给下一个人看。
+       主动点「退出」那条路一直是干净的（signOut 里清了），漏的正是过期这条。 */
+    if(was!==now){if(s2)load();else{SHARES=null;MINE=[];MYCODES=null;RECOVERY=false;TAB='login';render();}}});
 }else{$('app').innerHTML='<div class="empty">加载失败，请刷新</div>';}
 render();
 </script>

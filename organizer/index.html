@@ -724,11 +724,11 @@
   .tlbase .cd{font-family:Oswald,sans-serif;font-size:38px;line-height:.9;color:var(--brass);font-variant-numeric:tabular-nums}
   .tlbase .cd.over{color:var(--alarm)}
   .tlbase .lab{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:.06em}
-  /* 示例 (demo/tutorial) marker — shown wherever seeded data appears */
-  .demotag{display:inline-block;font-size:9px;line-height:1.4;letter-spacing:.1em;
+  /* 小标签：物资的 类别 / 保存期限 / 已使用 / 已归档 */
+  .chiptag{display:inline-block;font-size:9px;line-height:1.4;letter-spacing:.1em;
     color:var(--felt);background:var(--brass);border-radius:3px;padding:1px 5px;margin-left:6px;
     font-weight:700;vertical-align:middle;font-family:"Noto Sans JP",sans-serif}
-  .demotag.dim{background:none;color:var(--brass-dim);border:1px solid var(--brass-dim);font-weight:400}
+  .chiptag.dim{background:none;color:var(--brass-dim);border:1px solid var(--brass-dim);font-weight:400}
 </style>
 </head>
 <body>
@@ -786,8 +786,6 @@ function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'
 // named 「Guest's talk」 breaks the ✨ button today). Backslash-escape FIRST, then esc() — the
 // backslash survives decoding, so the JS source sees \'.
 function escJs(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));}
-// 示例 badge for any seeded/demo record, shown on every screen so the host never mistakes it for real data
-function dtag(x,dim){return x&&x.demo?`<span class="demotag${dim?' dim':''}">示例</span>`:'';}
 /* 使用手册的入口。放两处：工作台（新主办第一眼的那一屏）和头像面板（任何页面都点得到）——
    一个只在工作台露脸的入口，等于主办在计划页卡住的时候找不到它。
    手册是另一个独立页面，一律 target=_blank：别把主办正在编的台本从屏幕上顶掉。
@@ -825,7 +823,7 @@ const _hash=(location.hash||'')+'&'+(location.search||'');
 const RECOVERY_URL=/type=recovery/.test(_hash);
 const RECOVERY_ERR=(/error_description=([^&]+)/.exec(_hash)||[])[1];
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
-let SESSION=null,PROFILE=null,_pushT=null,_authKey=null,_cloudBase=0;
+let SESSION=null,PROFILE=null,_pushT=null,_authKey=null,_cloudBase=0,_authReady=false;
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 /* 1600px / q0.85 —— 这一档喂的是 OCR，**不要往下压**。インボイス 登録番号是 T + 13 位小字，
    per-line 消費税 率也是小字；压狠了 /api/parse 就读不出来。成员端存进 DB 行的那一路是另一档
@@ -875,8 +873,8 @@ function canCloud(){return !!(sb&&SESSION&&PROFILE
 //    microtask —— joinApprove 里那句「名册要先上云」的注释是不成立的，人还没上云就往下走了。
 function cloudPushAll(){
   if(!canCloud())return Promise.resolve();
-  // the 教学示例 tutorial event is seeded locally in every browser — never upload it as if it
-  // were the salon's real data
+  // demo 行不再产生（示例 2026-08-03 退役），这道闸留着当皮带：另一台还开着的老页面
+  // 仍可能造出 demo 行，它不该被当成沙龙的真实数据推上云
   /* ⚠ mtime 闸（owner 2026-08-02「手机传的照片，再次打开就没有了」）：同步是整份文档
      后写的赢 —— 手机把带照片的活动推上云之后，桌面上还开着的**旧页面**只要存一次盘
      （任何编辑的 800ms 防抖），就会拿内存里那份没有照片的旧活动把云端盖掉。
@@ -1308,7 +1306,7 @@ function peopleRow(p,cat){
   const isNew=isFresh(a);
   return `<div class="prow${S.pOpen===p.id?' on':''}" onclick="S.pOpen=S.pOpen===
       '${escJs(p.id)}'?null:'${escJs(p.id)}';loadAccepted();render()">
-    <span class="pn">${esc(p.name)}${dtag(p,1)}</span>
+    <span class="pn">${esc(p.name)}</span>
     <span class="pc num">${a?esc(a.code):'<span class="muted" style="font-size:10px">未发码</span>'}</span>
     ${a&&a.role==='V'?`<span class="prank">${esc(a.rank||'C')}</span>`:'<span class="prank sp"></span>'}
     <span class="pm">${meta}</span>
@@ -1540,6 +1538,56 @@ function memberInvite(s){
    redeemInvite（那里我故意传 false，因为分不清他是不是**真的**在申请当主办）。
    所以改成：**问一句**。查一下有没有那行 pending，有就在这一屏给一个按钮，让本人决定 ——
    不替他删（那可能是一份真申请），也不装作它不存在（它还挂在管理员的待批队列里）。 */
+/* 🔒 换人闸（2026-08-03 复查后的版本）。退出登录会把本机清干净，但**会话过期不走退出** ——
+   旧主办的名单/台本还躺在 localStorage，此刻登进来的却是另一个账号。不拦的话有两条实害：
+   pending / 成员点错门那两条路在下面提前 return，画的正是本机 STORE（上一个人的名单）；
+   已批准的账号还会把这批活动**合并上传进自己的云**（跨账号搬家）。
+   三个入口都要过闸（复查抓到的两条）：
+     · cloudLoad —— 常规登录；
+     · 重设密码链接回来那两个分支 —— 它们 return 得比 cloudLoad 早，`_authKey` 又把随后的
+       SIGNED_IN 吞掉，于是在 doNewPw 成功之前**一次闸都不过**：抽屉背后就是上一个人的工作台，
+       点一下 drawerbg 就能翻。这正是「共用设备上第二个人拿到会话」最自然的一条路。
+   ⚠ 比的是**这一页开机时读到的** `_storeOwner`，不是此刻的 localStorage：两个标签页都停在
+   登录墙时，B 在 tab2 登录会先把 key 改成 B，tab1 收到广播再读就「相同」了，于是不重置 ——
+   而 tab1 内存里还是 A 的整份 STORE，接着就把它合并上传进 B 的云。
+   ⚠ 没有 key 的旧设备（这个 key 是今天才有的，线上每一台都还没有）：**非空就当外人的**。
+   登录墙之后没有会话根本建不了本地数据，所以「有数据却没盖章」= 这次改动之前留下的。
+   不直接删：整份挪到 `jjym_orphan`（不渲染、不上传、不合并），并当面说一句 —— 那可能是
+   一个还没被批准、只存在本机的主办的草稿（他被批准后自己回来找我们要）。 */
+let _storeOwner=null;                    // 开机时读一次：内存里这份 STORE 属于谁
+function ownerGate(){
+  if(!SESSION)return;
+  const prev=_storeOwner;
+  const foreign=prev?prev!==SESSION.user.id:!!(STORE&&(STORE.events||[]).length);
+  if(foreign){
+    /* 两条分支**都要**先收起再清空（复查抓到的：第一版只在「没有 key 的旧设备」那条
+       收，而注释里写的理由——「那可能是一份只存在本机的主办草稿」——恰恰**总是**发生在
+       另一条：一个还没被批准的主办第一次登录时就已经把 key 盖成自己了，他后面所有的
+       本地草稿都走 prev 匹配那条路，被下一个人一登录就无声清光，而云端一份都没有）。 */
+    let kept=false;
+    try{const raw=localStorage.getItem(LS_KEY);
+      if(raw&&raw.length>60){localStorage.setItem('jjym_orphan',raw);kept=true;}
+    }catch(e){}
+    /* ⚠ 收不下（配额满是真会发生的：Drive 没接线时附件按 data: 内联）也照样要清 ——
+       安全不能取决于「存得下」。但那时**必须说**，否则正是「静默毁掉」。 */
+    const hadData=!!(STORE&&(STORE.events||[]).length);
+    if(hadData)setTimeout(()=>toast(kept
+      ?'本机残留着上一个账号的数据，已收起（不属于这个账号，也不会上传）'
+      :'本机残留着上一个账号的数据，已清除 —— 本机存储已满，没能留底'),600);
+    clearTimeout(_pushT);                // 上一个人 800ms 防抖里挂着的那一推，绝不能落到这个账号的云上
+    STORE=seed();
+    try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){}
+    S.evId=STORE.events[0]?STORE.events[0].id:null;S.sel='header';
+    /* 内存里的跨账号缓存也要清 —— 和 doSignOut 同一份清单，外加它没有的两个。
+       `S.rc` 是最扎眼的一条：那张卡在每一次 render 都画，上一个人拍到一半的票据会浮在
+       新账号的工作台上，一按保存就把 A 的票据传进 B 的网盘、记进 B 的账。 */
+    PROFILE=null;PENDING=[];CODES={};JOINREQ=null;ACCEPTED=[];_accAt=0;
+    LEDGER=null;LEDGER_ERR='';POSTS=null;ADMIN=null;capStop();
+    S.rc=null;S.draft=null;S.pOpen=null;S.mediaOpen=false;S.mediaN=null;S.view='desk';
+  }
+  _storeOwner=SESSION.user.id;
+  try{localStorage.setItem('jjym_owner',SESSION.user.id);}catch(e){}
+}
 function memberOnly(why,withdraw){
   PROFILE=null;S.memberOnly=1;S.memberWhy=why||'bound';S.auth=true;stopPoll();
   S.memberPend=0;
@@ -1560,12 +1608,22 @@ function memberWithdraw(){
       if(error){toast('撤不掉：'+error.message);return;}
       S.memberPend=0;render();toast('已撤回 —— 管理员那边不会再看到它');}});
 }
+/* 每次 cloudLoad 领一个号；换人闸只在**进门那一刻**成立，而这个函数进门之后有十来个
+   await。复查抓到的那条：tab1 的 cloudLoad 停在「读 ym_doc」上时，B 在 tab2 登录 ——
+   tab1 的闸照常把本机清成空，可**挂起的那一次**回来之后仍然拿 A 的行覆盖 STORE、save()、
+   render()：B 看到 A 的整个工作台，A 的活动被写进 B 的 localStorage，B 一改动就带着
+   新 mtime 推进 B 的云。所以每个 await 之后都要问一句「我还是当前那一次吗」。 */
+let _loadSeq=0;
 async function cloudLoad(){
   if(!sb||!SESSION){PROFILE=null;stopPoll();render();return;}
+  ownerGate();
+  const seq=++_loadSeq, uid=SESSION.user.id;
+  const stale=()=>seq!==_loadSeq||!SESSION||SESSION.user.id!==uid;
   // is_admin lives on the shared profile (it spans both products); absent row = not admin.
   // Read it FIRST: an admin reaches ym through is_admin and must not auto-register as a
   // pending 主办方, which would put them in their own 待批准 list.
   const {data:pr}=await sb.from('profile').select('is_admin').eq('user_id',SESSION.user.id).maybeSingle();
+  if(stale())return;                     // 换人了（另一个标签页登了别人）—— 这一次作废
   const admin=!!(pr&&pr.is_admin);
   // ym membership is its OWN row (0012), orthogonal to the cashflow 区分 — so one account can
   // be a 会計士 in jjcashflow AND a 主办方 here. We never write profile.role from this app.
@@ -1636,6 +1694,7 @@ async function cloudLoad(){
     if(ins.error&&ins.error.code!=='23505')toast('注册失败：'+ins.error.message);
     if(!mem){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();mem=re.data||null;}
   }
+  if(stale())return;
   S.memberOnly=0;S.memberWhy='';
   PROFILE=mem?Object.assign({},mem,{is_admin:admin}):(admin?{status:'none',role:'',is_admin:true}:null);
   // An invite code entered at signup is redeemed on the first real session. It is bound to the
@@ -1648,14 +1707,18 @@ async function cloudLoad(){
     if(r==='ok'){const re=await sb.from('ym_member').select(cols).eq('user_id',SESSION.user.id).maybeSingle();
       if(re.data)PROFILE=Object.assign({},re.data,{is_admin:PROFILE.is_admin});}
   }
+  if(stale())return;
   if(!canCloud()){startPoll();render();return;}   // pending → watch for the admin's approval
   stopPoll();loadCodes().then(pushShares);loadPending();loadLedger(1);loadJoin();
   const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
+  /* 🔒 这一句是整条链上最要命的一道：下面就要拿这批行**覆盖 STORE 并 save()**。
+     挂起期间换了人的话，写下去的就是上一个账号的名单/台本。 */
+  if(stale())return;
   if(error){toast('云端读取失败：'+error.message);render();return;}
   const cloudEvs=(rows||[]).filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
   const lib=(rows||[]).find(r=>r.kind==='library');
   // MERGE, never replace. cloud wins per event id; every local event NOT in the cloud is kept
-  // (a second device's offline work, and the 教学示例 tutorial — which still never uploads).
+  // (a second device's offline work). demo 行由 purgeDemo 在加载时滤掉。
   const have={};cloudEvs.forEach(e=>{if(e&&e.id)have[e.id]=1;});
   const localKept=(STORE.events||[]).filter(e=>e&&e.id&&!have[e.id]);
   const localReal=localKept.filter(e=>!e.demo);          // demo is kept locally but not counted as "uploaded"
@@ -1674,9 +1737,9 @@ async function cloudLoad(){
 }
 // union by id; cloud entries win, local-only entries survive
 // ⚠ 每个浏览器第一次打开都会自己跑一遍 seed()，而 seed 出来的 id 是 uid() 现生成的 —— 同一条
-// 「场地费」在 A 机和 B 机的 id 不一样。只按 id 合并的话，B 机同步一次就把整套示例又搬上去一份，
+// 「场地费」在 A 机和 B 机的 id 不一样。只按 id 合并的话，老页面的种子会被搬上去一份，
 // 而且它推回云端后就永久留在那里：owner 的资产库里出现了三套「场地费/饮料点心/男士门票」。
-// 所以本地独有的 示例 条目，若云端已有同名同类的，就不搬 —— 主办自己建的同名条目不受影响。
+// 所以本地独有的 demo 条目，若云端已有同名同类的，就不搬 —— 主办自己建的同名条目不受影响。
 function mergeLibrary(cloud,local){
   if(!cloud)return local;
   if(!local)return cloud;
@@ -1763,103 +1826,69 @@ function authInit(){
   // 链接本身就带着失败原因（过期 / 用过了）—— 不说的话主办只看到一个普通的登录页
   if(RECOVERY_ERR)setTimeout(()=>toast('这个重设链接不能用了（'+decodeURIComponent(RECOVERY_ERR).replace(/\+/g,' ')+'）—— 请重新点一次「忘记密码了」'),300);
   sb.auth.getSession().then(({data})=>{
+    _authReady=true;
     SESSION=data.session;_authKey=SESSION?SESSION.user.id:null;
     // URL 说这是重设密码回来的 → 不管 PASSWORD_RECOVERY 事件有没有赶上，都直接开那一屏
-    if(RECOVERY_URL&&SESSION){S.authRecovery=true;S.auth=true;render();return;}
+    // ⚠ 过闸再画：这条路 return 得比 cloudLoad 早，不过闸的话抽屉背后就是上一个人的工作台
+    if(RECOVERY_URL&&SESSION){ownerGate();S.authRecovery=true;S.auth=true;render();return;}
     if(SESSION)cloudLoad();
-  });
+    else if(!$('au_email'))render();   // 登录墙从「正在打开…」换成登录表单
+  }).catch(()=>{_authReady=true;if(!$('au_email'))render();});
+  /* ⚠ `!$('au_email')` 不是小气：看门狗先画出表单、getSession 十秒后才带着「没有会话」回来
+     的情况下（离线 + 令牌过期，正是看门狗存在的理由），无条件重画会把**正在输入的密码**
+     清掉 —— 密码框故意不绑 S（不把密码留在内存状态里），所以重画就是丢。 */
+  /* 看门狗：离线且令牌过期时 getSession 的续期请求可能悬着 —— 墙上那句「正在打开…」
+     不能永远挂着。4 秒没有答案就先给登录表单（有会话的话，随后的事件自己会把工作台画出来）。 */
+  setTimeout(()=>{if(!_authReady){_authReady=true;if(!SESSION)render();}},4000);
   sb.auth.onAuthStateChange((ev2,s2)=>{
+    _authReady=true;
     const key=s2?s2.user.id:null;
     SESSION=s2;
     // 点重设邮件的链接回来：supabase-js 先建立一个 recovery 会话，再发这个事件。必须在
     // cloudLoad 之前接住并把登录抽屉打开到「设新密码」，否则主办直接落进工作台，
     // 那封信就白发了 —— 成员页早就是这么做的 (member L~709)。
-    if(ev2==='PASSWORD_RECOVERY'){_authKey=key;S.authRecovery=true;S.auth=true;render();return;}
+    if(ev2==='PASSWORD_RECOVERY'){_authKey=key;ownerGate();S.authRecovery=true;S.auth=true;render();return;}
     if(key===_authKey)return;   // token refresh etc — never re-render over user input
     _authKey=key;cloudLoad();
   });
 }
 function load(){try{return JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){return null;}}
 
-/* --- seeded demo library + event (all fabricated data) --- */
+/* 空 store —— 示例数据 2026-08-03 整体退役（owner：「不再需要示例，也不要一键清理」）。
+   登录墙之后主办台没有匿名试用者了，示例唯一的读者（演示模式）不存在；而每个浏览器
+   各自 seed() 出一套 id 不同的种子，一直是「资产库里三套场地费」这类重复的来源。
+   迁移旗全部预置：新 store 不该再跑那些「把老数据补齐」的分支。 */
 function seed(){
-  const R=(n,t,role)=>({id:uid(),name:n,type:t,role:role||''});
-  const M=(n,k,a)=>({id:uid(),name:n,kind:k,amount:a});
-  const lib={
-    resources:[R('小林','人','主持'),R('王芳','人','签到'),R('阿健','人','摄影'),
-      R('张姐','人','后勤'),R('陈叔','人','配对协助'),
-      R('陽光カフェ 2F','物','场地'),R('●●堂 茶点','物','茶歇'),R('号牌·笔·登记表','物','物料')],
-    money:[M('场地费','out',40000),M('饮料点心','out',15000),M('物料印刷','out',3000),
-      M('活动保险','out',5000),
-      Object.assign(M('男士门票 ×10','in',60000),{unit:6000}),
-      Object.assign(M('女士门票 ×10','in',30000),{unit:3000})],
-    ideas:[
-      {id:uid(),seg:'场地布置',dur:30,res:['后勤']},{id:uid(),seg:'签到入场',dur:30,res:['签到']},
-      {id:uid(),seg:'开场介绍',dur:10,res:['主持']},{id:uid(),seg:'自我介绍轮',dur:30,res:['主持']},
-      {id:uid(),seg:'快问快答',dur:30,res:['主持']},{id:uid(),seg:'茶歇',dur:20,res:['茶歇']},
-      {id:uid(),seg:'一对一轮转',dur:60,res:['主持','配对协助']},{id:uid(),seg:'心动投票',dur:15,res:['配对协助']},
-      {id:uid(),seg:'配对公布',dur:10,res:['主持']},{id:uid(),seg:'自由交流 · 合影',dur:20,res:['摄影']},
-      {id:uid(),seg:'复盘收尾',dur:30,res:['后勤']}],
-    templates:[]
-  };
-  const findR=q=>lib.resources.find(r=>r.role===q||r.name===q);
-  const rchip=(q,st)=>{const r=findR(q);return r?{id:uid(),refId:r.id,name:r.name,role:r.role,type:r.type,status:st==null?0:st}:null;};
-  const mchip=(name,actual)=>{const m=lib.money.find(x=>x.name===name);return m?{id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,unit:m.unit,actual:actual==null?null:actual}:null;};
-  const row=(time,seg,owner,res,mon)=>({id:uid(),time,seg,owner:owner||'',
-    resources:(res||[]).filter(Boolean),money:(mon||[]).filter(Boolean)});
-  const job=(name,st)=>({id:uid(),type:'任务',name,status:st==null?0:st});   // 要做的事 on a 环节
-  const tplRows=[
-    row('13:00','场地布置','张姐',[rchip('后勤'),rchip('物料'),job('预订场地',3),job('布置签到台')]),
-    row('13:30','签到入场','王芳',[rchip('签到'),job('打印签到表')]),
-    row('14:00','开场介绍','小林',[rchip('主持')]),
-    row('14:10','自我介绍轮','小林',[]),
-    row('14:40','快问快答','小林',[]),
-    row('15:10','茶歇','张姐',[rchip('茶歇'),job('订饮料点心')],[mchip('饮料点心')]),
-    row('15:30','一对一轮转','小林',[rchip('配对协助')]),
-    row('16:30','心动投票','陈叔',[]),
-    row('16:50','配对公布','小林',[]),
-    row('17:00','自由交流 · 合影','阿健',[rchip('摄影')]),
-    row('17:30','复盘收尾','张姐',[rchip('后勤')])];
-  lib.templates.push({id:uid(),name:'十对十 标准流程',note:'11环节 · 13:00-18:00',
-    rows:tplRows,header:{resources:[rchip('场地')].filter(Boolean),
-      money:[mchip('场地费'),mchip('男士门票 ×10'),mchip('女士门票 ×10'),mchip('物料印刷'),mchip('活动保险')].filter(Boolean)}});
-  // demo event: next Saturday, partially followed-up
-  const d=new Date();d.setDate(d.getDate()+((6-d.getDay()+7)%7||7));
-  const ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  const ev=instantiate(lib.templates[0],lib);
-  ev.name='夏日茶会 · 十对十';ev.theme='轻松茶会 · 25-35岁';ev.date=ds;ev.start='14:00';ev.venue='陽光カフェ 2F';
-  ev.header.resources.forEach(c=>c.status=2);
-  ev.rows[0].resources.forEach(c=>c.status=3);
-  ev.rows[1].resources.forEach(c=>c.status=2);
-  ev.rows[2].resources.forEach(c=>c.status=1);
-  const hm=ev.header.money.find(c=>c.name==='场地费');if(hm)hm.actual=40000;
-  ev.participants=seedParticipants();
-  ev.demo=true;                      // tutorial case — kept on purpose (owner 2026-07-20)
-  // a finished, archived worked-example so the host can DISCOVER the whole plan→执行→复盘 arc
-  const past=instantiate(lib.templates[0],lib);
-  past.name='春日联谊 · 八对八';past.theme='已办完的示例 · 回看用';
-  const pd=new Date();pd.setDate(pd.getDate()-24);
-  past.date=pd.getFullYear()+'-'+String(pd.getMonth()+1).padStart(2,'0')+'-'+String(pd.getDate()).padStart(2,'0');
-  past.start='14:00';past.venue='星见咖啡 3F';past.status='done';
-  const ed=new Date();ed.setDate(ed.getDate()-24);past.endedAt=ed.toISOString();
-  [past.header].concat(past.rows).forEach(h=>{h.resources.forEach(c=>c.status=3);   // all 到位=完成
-    h.money.forEach(c=>{if(c.actual==null)c.actual=c.plan;});});
-  past.participants=seedParticipants().slice(0,16).map((p,i)=>Object.assign(p,{arrived:true,at:'14:0'+(i%9)}));
-  past.participants[6].evals=[{id:uid(),strengths:'沟通积极，主动介绍工作',improvements:'家庭话题略紧张',
-    follow_up:'推荐参加下一次活动',source:'manual',at:new Date().toISOString()}];
-  past.volLog={};past.demo=true;
-  // mark EVERY seeded asset so the host can tell 示例 data from their own on any screen
-  ['resources','money','ideas','templates'].forEach(k=>lib[k].forEach(x=>{x.demo=true;}));
-  return {events:[ev,past],library:lib};
+  return {events:[],library:{resources:[],money:[],ideas:[],templates:[]},
+    y2:1,y6:1,y7:1,y8:1,y9:1,y10:1};
 }
-// Fabricated demo roster (design: ym/design/ym-event-day.jsx). No real people.
-function seedParticipants(){
-  const mk=(gender,n,name,job)=>({id:uid(),gender,n,name,job,arrived:false,at:null,evals:[],profile:null,demo:true});
-  const men=[['王思远','建筑师'],['陈立坤','研究员'],['李泽宇','医生'],['周明轩','教师'],['吴俊杰','工程师'],
-    ['郑家豪','会计'],['孙志强','律师'],['马文涛','厨师'],['冯浩然','设计师'],['许伟辰','销售']];
-  const women=[['陈雨桐','护士'],['林静怡','编辑'],['黄佳宁','药剂师'],['赵晓萌','设计师'],['刘欣然','教师'],
-    ['何雅琳','翻译'],['唐清雅','咨询师'],['邓子涵','程序员'],['苏梦琪','策展人'],['曹亦柔','会计']];
-  return men.map((x,i)=>mk('男',i+1,x[0],x[1])).concat(women.map((x,i)=>mk('女',i+1,x[0],x[1])));
+/* 示例退役的清除 —— 每次加载都跑（不是一次性迁移：挡不住「另一台还开着的老页面又推
+   一份上来」）。
+
+   🔴 **这里绝不能按 `demo` 标记删资产库**，这是复查抓到的、我自己写的第一版差点造成的
+   数据毁灭。原因：被删掉的那个 y8 迁移是**按名字**盖章的 ——
+     `if(r.demo===undefined && NAMES.res.includes(r.name)) r.demo=true;`
+   而 NAMES 里是 小林/王芳/张姐/场地费/饮料点心/开场介绍/茶歇/十对十 标准流程 这种
+   **沙龙真的会用的名字**。主办自己建的「场地费」、真名叫王芳的志愿者，全都被盖了章，
+   而且那些章早就随 cloudPushAll 存进了云端的 library。拿它当删除依据 =
+   删主办的真数据，还会顺着 save() 推上云覆盖掉。
+
+   所以：**资产库一条都不删，只把这个不可信的标记摘掉。** 活动只删「明显是种子」的那两场
+   （名字就是种子名，且带标记；主办改过名的、转过正的都不带标记或不同名，一律留下）。
+   剩下的「资产库里还留着老种子」是**主办自己看着删**（每一行都有 ✕）—— owner 不要
+   一键清理，那就不替他猜哪条是示例。 */
+const SEED_EV_NAMES=['夏日茶会','春日联谊'];
+function purgeDemo(){
+  if(!STORE||!STORE.library)return;
+  STORE.events=(STORE.events||[]).filter(e=>{
+    if(!e||!e.demo)return true;
+    return !SEED_EV_NAMES.some(n=>String(e.name||'').indexOf(n)>=0);
+  });
+  // 标记本身不可信 —— 全站摘掉，别留给任何未来的代码当判据
+  ['templates','ideas','resources','money'].forEach(k=>{
+    (STORE.library[k]||[]).forEach(x=>{if(x)delete x.demo;});});
+  (STORE.events||[]).forEach(e=>{delete e.demo;
+    (e.participants||[]).forEach(p=>{if(p)delete p.demo;});});
 }
 // Y1 → Y2 localStorage migration: add fields older stores don't have.
 function ensureY2(){
@@ -1868,8 +1897,6 @@ function ensureY2(){
     e.rows.forEach(r=>{if(r.actual===undefined)r.actual=null;});
   });
   if(!STORE.y2){
-    const demo=STORE.events.find(e=>e.name==='夏日茶会 · 十对十');
-    if(demo&&!demo.participants.length)demo.participants=seedParticipants();
     const setU=arr=>(arr||[]).forEach(m=>{
       if(m.name&&m.name.indexOf('男士门票')>=0&&!m.unit)m.unit=6000;
       if(m.name&&m.name.indexOf('女士门票')>=0&&!m.unit)m.unit=3000;});
@@ -1877,35 +1904,13 @@ function ensureY2(){
     STORE.events.forEach(e=>{setU(e.header.money);e.rows.forEach(r=>setU(r.money));});
     STORE.y2=1;
   }
-  if(!STORE.y6){                     // the seeded event becomes the tutorial case
-    STORE.events.forEach(e=>{if((e.name||'').indexOf('夏日茶会')>=0&&e.participants.length)e.demo=true;});
-    STORE.y6=1;
-  }
   if(!STORE.y7){                     // 人员 → three registries (志愿者/嘉宾/捐赠人)
     STORE.library.resources.forEach(r=>{if(!r.cat)r.cat=(r.type==='物')?'goods':'volunteer';});
     STORE.events.forEach(e=>(e.participants||[]).forEach(p=>{if(!p.libId)fileGuest(p);}));
     STORE.y7=1;
   }
-  if(!STORE.y8){                     // mark existing seeded data as 示例 (name-match, deterministic)
-    const NAMES={
-      res:['小林','王芳','阿健','张姐','陈叔','陽光カフェ 2F','●●堂 茶点','号牌·笔·登记表',
-        '王思远','陈立坤','李泽宇','周明轩','吴俊杰','郑家豪','孙志强','马文涛','冯浩然','许伟辰',
-        '陈雨桐','林静怡','黄佳宁','赵晓萌','刘欣然','何雅琳','唐清雅','邓子涵','苏梦琪','曹亦柔'],
-      money:['场地费','饮料点心','物料印刷','活动保险','男士门票 ×10','女士门票 ×10'],
-      seg:['场地布置','签到入场','开场介绍','自我介绍轮','快问快答','茶歇','一对一轮转','心动投票','配对公布','自由交流 · 合影','复盘收尾'],
-      tpl:['十对十 标准流程']};
-    STORE.library.resources.forEach(r=>{if(r.demo===undefined&&NAMES.res.includes(r.name))r.demo=true;});
-    STORE.library.money.forEach(m=>{if(m.demo===undefined&&NAMES.money.includes(m.name))m.demo=true;});
-    STORE.library.ideas.forEach(i=>{if(i.demo===undefined&&NAMES.seg.includes(i.seg))i.demo=true;});
-    STORE.library.templates.forEach(t=>{if(t.demo===undefined&&NAMES.tpl.includes(t.name))t.demo=true;});
-    // participants of a demo event, and their filed guest records, are 示例 too
-    STORE.events.forEach(e=>{if(e.demo)(e.participants||[]).forEach(p=>{
-      if(p.demo===undefined)p.demo=true;
-      if(p.libId){const g=STORE.library.resources.find(r=>r.id===p.libId);if(g&&g.demo===undefined)g.demo=true;}
-    });});
-    STORE.y8=1;
-  }
-  if(!STORE.y9){                     // Y8 台账（STORE.y8 早被 示例 标记占用了）
+  purgeDemo();
+  if(!STORE.y9){                     // Y8 台账（y8 那个旗号早年被 示例 标记占用过，别复用）
     // 2026-07-27 owner：「按含税来记，税务问题交给税理士思考」—— 課税/免税 的开关整个撤掉了，
     // 老 store 里留着的 taxMode 现在没有任何读者，也就不必迁移。
     STORE.y9=1;
@@ -2066,6 +2071,12 @@ function followUps(e){const f=[];   // unmet, non-ignored — drives 催 + desk 
 /* ================= render ================= */
 const $=id=>document.getElementById(id);
 function render(){
+  /* 🔒 登录墙（owner 2026-08-03：手机上任何人点「主办登录」都直接看到了工作台）。
+     主办台没有匿名「演示模式」：无会话就只画登录页 —— 工作台/台本/名单/账目在会话之前
+     一个字不渲染。?cap= 手机拍照页在 boot 就分流了（token 即凭据），到不了这里；
+     成员页从第一天就是这个结构（!SESSION → loginHtml）。等待批准 / 成员点错门 /
+     重设密码回来的人都**带着会话**，照旧走下面的工作台 + 抽屉。 */
+  if(!SESSION){$('app').innerHTML=authWall();return;}
   const navItems=[['desk','工作台'],['sheet','计划'],['people','用户'],['lib','资产库'],['post','发布']];
   if(PROFILE&&PROFILE.is_admin)navItems.push(['admin','管理']);
   // 待批申请 / 刚注册的人在**任何**页面都要看得见 —— 只长在 用户 页里的提醒，等于要主办
@@ -2094,7 +2105,8 @@ function render(){
       <span class="logo">ym</span><span class="ttl">主办台</span>
       <span class="sp"></span>
       <div class="navlinks">${nav}</div>
-      <span class="avatar" onclick="S.auth=!S.auth;render()" title="${canCloud()?'云同步已开启':(SESSION?'等待管理员批准':'演示模式 — 点击登录')}">${canCloud()?esc((SESSION.user.email||'C')[0].toUpperCase()):(SESSION?ico('wait'):'演')}</span>
+      ${/* 「演」的第三态没有了 —— 无会话根本到不了这里（render 开头的登录墙） */''}
+      <span class="avatar" onclick="S.auth=!S.auth;render()" title="${canCloud()?'云同步已开启':'等待管理员批准'}">${canCloud()?esc((SESSION.user.email||'C')[0].toUpperCase()):ico('wait')}</span>
     </div>${body}
     ${fabsHtml()}
     ${S.auth?authSheet():''}
@@ -2210,6 +2222,26 @@ function authSheet(){
         <p class="note9">批准后本页会自动开通（每15秒检查一次），也可以点上面的按钮立即刷新。</p>`}
       <button class="btn ghost sm" style="margin-top:12px" onclick="doSignOut()">退出登录</button>`;
   }
+  /* 登录/忘记密码那两屏搬去了 authWall() —— 抽屉只会在有会话的工作台里打开，
+     无会话的人在 render() 第一行就被送去登录墙，这里永远轮不到那两屏。 */
+  // 手册的第二个入口 —— 头像在每一页的右上角，所以这是唯一「哪儿都点得到」的位置。
+  // 重设密码那一屏不放：从邮件链接进来的人只有一件事要做，别给第二个出口。
+  const help=S.authRecovery?'':`<p class="note9" style="margin-top:18px;text-align:center">
+    ${guideLink('使用手册')}</p>`;
+  return `<div class="drawerbg" onclick="S.auth=false;render()"></div>
+    <div class="drawer" style="left:auto;right:0;animation:none">${inner}${help}</div>`;
+}
+/* 🔒 登录墙 —— 无会话时整页只有它（owner 2026-08-03：任何人点「主办登录」都看到了工作台）。
+   「演示模式」不再存在（示例数据也在同一天整体退役 —— 它唯一的读者就是这个匿名态）。
+   四种态：组件没加载 / 会话还没读出来（已登录的主办不该看到登录框闪一下）/ 忘记密码 / 登录。 */
+function authWall(){
+  let inner='';
+  if(!sb)inner=`<div class="lbl">登录组件加载失败</div>
+      <p class="note9" style="line-height:2">网络可能被挡住了 —— 请换个网络刷新这一页。<br>
+      没有登录组件就没法核对身份，主办台不能打开。</p>`;
+  else if(!_authReady)inner=`<p class="note9" style="text-align:center;line-height:2">正在打开主办台…</p>`;
+  /* 设新密码不在墙上：重设链接一定带着会话（authSheet 顶层那一屏管它），过期的链接
+     没有会话 —— RECOVERY_ERR 的 toast 已经说了原因，这里给的就该是登录表单。 */
   else if(S.authTab==='forgot')
     inner=`<div class="lbl" style="margin-bottom:10px">重设密码</div>
       <p class="note9" style="margin:0 0 10px">填注册时用的邮箱，我们发一封信；点信里的链接回到这一页设新密码。</p>
@@ -2220,7 +2252,7 @@ function authSheet(){
       <div style="text-align:center;margin-top:12px">
         <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.authTab='';render()">← 回登录</span></div>`;
   else
-    inner=`<div class="lbl" style="margin-bottom:10px">登录主办台 — 开启云备份/多设备</div>
+    inner=`<div class="lbl" style="margin-bottom:10px">登录主办台</div>
       <input id="au_email" type="email" placeholder="邮箱" style="margin-bottom:8px"
         value="${esc(S.authEmail||'')}" oninput="S.authEmail=this.value">
       <input id="au_pw" type="password" placeholder="密码" style="margin-bottom:8px"
@@ -2237,12 +2269,13 @@ function authSheet(){
       <p class="note9" style="margin:10px 0 4px"><b style="color:var(--brass)">已经有 jjconnect / 记账账号？直接用它登录</b>
         —— 同一个账号可以同时是会计和主办方，不用重新注册。</p>
       <button class="btn ghost sm" style="width:100%" onclick="doSignUp()">我是新用户，注册主办方账号</button>`;
-  // 手册的第二个入口 —— 头像在每一页的右上角，所以这是唯一「哪儿都点得到」的位置。
-  // 重设密码那一屏不放：从邮件链接进来的人只有一件事要做，别给第二个出口。
-  const help=S.authRecovery?'':`<p class="note9" style="margin-top:18px;text-align:center">
-    ${guideLink('使用手册')}</p>`;
-  return `<div class="drawerbg" onclick="S.auth=false;render()"></div>
-    <div class="drawer" style="left:auto;right:0;animation:none">${inner}${help}</div>`;
+  return `<div style="max-width:380px;margin:0 auto;padding:64px 20px 40px">
+    <div style="margin-bottom:22px;text-align:center">
+      <span class="logo" style="font-size:26px">ym</span> <span class="ttl">主办台</span></div>
+    ${inner}
+    <p class="note9" style="margin-top:26px;text-align:center">主办台是给办活动的人用的 ——
+      志愿者 / 嘉宾 / 捐赠者请走<a href="../member/" style="color:var(--brass)">成员页</a>${sb&&_authReady?` · ${guideLink('使用手册')}`:''}</p>
+  </div>`;
 }
 /* 设新密码 —— 邮件链接回来后用，也用于登录状态下主动改密码 */
 function authNewPw(recovery){
@@ -2401,11 +2434,11 @@ function libPanel(){
   const grp=(l,note,inner)=>`<div class="libgroup"><div class="gh">${esc(l)}<span class="gn">${note||''}</span></div>${inner}</div>`;
   if(S.libTab==='tpl'){
     items=L.templates.map(t=>`<div class="libitem" style="cursor:pointer" onclick="applyTpl('${t.id}')">
-      <div class="t">${esc(t.name)}${dtag(t)}</div><div class="m">${esc(t.note||((t.rows||[]).length+'环节'))}${del('templates',t.id)}</div></div>`).join('');
+      <div class="t">${esc(t.name)}</div><div class="m">${esc(t.note||((t.rows||[]).length+'环节'))}${del('templates',t.id)}</div></div>`).join('');
     hint='点一下 → 整份台本铺进当前活动。';
   }else if(S.libTab==='idea'){
     const one=i=>`<div class="libitem" style="cursor:pointer" onclick="applyIdea('${i.id}')">
-      <div class="t">${esc(i.seg)}${dtag(i)}</div><div class="m">约${i.dur}分${i.res&&i.res.length?' · 需要：'+esc(i.res.join('/')):''}${del('ideas',i.id)}</div></div>`;
+      <div class="t">${esc(i.seg)}</div><div class="m">约${i.dur}分${i.res&&i.res.length?' · 需要：'+esc(i.res.join('/')):''}${del('ideas',i.id)}</div></div>`;
     items=IDEA_KIND.map(([k,l])=>{const rows=L.ideas.filter(x=>ideaKind(x)===k);
       return rows.length?grp(l,k==='game'?'— 三段都能用':'',rows.map(one).join('')):'';}).join('');
     hint='点一下 → 在台本末尾加一个环节（所需资源自动挂上）。';
@@ -2416,7 +2449,7 @@ function libPanel(){
     const one=r=>{const u=usedEvents(r.id);
       const meta=[esc(r.role),r.contact?esc(r.contact):'',cat==='goods'&&r.inv!=null?INV_ST[r.inv]:'',u?`用过 ${u} 场`:''].filter(Boolean).join(' · ');
       return `<div class="libitem" style="cursor:pointer" onclick="applyRes('${r.id}')">
-      <div class="t">${ico(cat==='volunteer'?'person':'box')}${esc(r.name)}${dtag(r)}${cat==='goods'?goodsTags(r):''}</div>
+      <div class="t">${ico(cat==='volunteer'?'person':'box')}${esc(r.name)}${cat==='goods'?goodsTags(r):''}</div>
       <div class="m">${meta}${del('resources',r.id)}</div></div>`;};
     if(cat==='goods'){
       // 已归档的不出现在这里 —— 「归档」的意思就是不再往台本上挂它
@@ -2430,7 +2463,7 @@ function libPanel(){
   }else{
     items=L.money.map(m=>{const u=usedEvents(m.id);
       return `<div class="libitem" style="cursor:pointer" onclick="applyMoney('${m.id}')">
-      <div class="t">${ico(m.kind==='in'?'up':'down')}${esc(m.name)}${dtag(m)}</div>
+      <div class="t">${ico(m.kind==='in'?'up':'down')}${esc(m.name)}</div>
       <div class="m num">${yen(m.amount)} · ${m.kind==='in'?'收入':'支出'}${u?' · 用过 '+u+' 场':''}${del('money',m.id)}</div></div>`;}).join('');
     hint='先点选一行（或活动卡），再点这里 → 收支项挂到该行（金额=计划）。';
   }
@@ -2475,7 +2508,7 @@ function viewSheet(){
   const e=ev();
   const sw=`<div class="evsw">
     <select onchange="S.evId=this.value;S.sel='header';render()">
-      ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${x.demo?'【教学】':''}${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
+      ${STORE.events.map(x=>`<option value="${x.id}" ${e&&x.id===e.id?'selected':''}>${esc(x.name)} · ${fmtDate(x.date)}</option>`).join('')}
     </select>
     ${e?`<button class="btn ghost sm" onclick="cloneEvent('${e.id}')">${ico('again')}再办一场</button>`:''}
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
@@ -2583,10 +2616,6 @@ function viewSheet(){
         <span class="rem">把计划变成会自己提醒你的执行看板</span></div>`):'';
   return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main${S.readonly?' ro':''}">
     ${sw}${roBanner}
-    ${e.demo?`<div class="hintbar" style="border:1px dashed var(--brass-dim);border-radius:5px;padding:9px 11px">
-      <b>教学示例</b> — 这场是练习用的，随便点、随便改，不会影响真实活动，也不会上云或公开到官网。
-      练熟了按「＋ 新活动」建自己的（这场留着当说明书，或随时删除）。
-      <button class="btn ghost sm" style="margin-left:6px" onclick="promoteDemo()">转为正式活动</button></div>`:''}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧的资产库点选应用。</div>
     ${strips}${giveStrip(e)}${hd}${kickoff}${schedBar}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
@@ -2674,10 +2703,39 @@ async function liveToken(){
   return (SESSION&&SESSION.access_token)||null;
 }
 /* 成功 → {id,url}；Drive 没接线 → 'unwired'；其它失败 → null。三态，因为这三种要走三条路。 */
-async function attachUpload(b64,mime,name,kind){
+/* 🚦 所有上传排成一条队 —— 一个活动只能有一个目录（owner 2026-08-03：传 2 张照片，
+   Drive 上建出 2 个同名活动目录，各带一个 照片/ 子目录）。
+   根子在服务端：Apps Script 的 findOrCreate 是「找不到就建」，两个请求并排跑就各建一个，
+   而 Drive 允许同名目录并存。仓库里的 `docs/apps-script-upload.js` 已经加了 LockService，
+   但**部署上去的那份还是旧的**（owner 08-02 重新部署时锁还没写）—— 所以客户端这条队伍
+   是当下唯一真正生效的防线，也是「一台设备上多个入口同时传」的正解：
+   附件（多选）· 媒体库（多选）· 票据 · 从任务拍 —— 任意组合都不再重叠。
+   ⚠ 跨设备/跨标签页同时传仍然会重建目录：那一半只有服务端的锁能修，
+   等 owner 下次更新 Apps Script 部署（HANDOFF 有步骤）。 */
+let _upChain=Promise.resolve();
+function upSerial(fn){
+  const run=()=>fn();
+  const p=_upChain.then(run,run);
+  _upChain=p.then(()=>{},()=>{});   // 一个失败不能卡死后面所有人
+  return p;
+}
+/* ⚠ 排队之后，「一次卡住」就不再是一个人的事：半开的连接（登录门户 / 代理握了手不回话，
+   owner 在手机上撞过两次这一类）会让后面**所有**上传永远排在它后面 —— 附件那边
+   pending 减不到 0（不 save 不 render 不提示），而 rcConfirm 的 `_rcBusy` 会一直是 true，
+   之后每一次「确认入账」都只回一句「正在入账，别重复点」，只有刷新页面能解。
+   所以每个上传请求自带 90 秒上限：宁可这一张失败并说出来，也不能把整条队伍锁死。 */
+const UP_TIMEOUT=90000;
+function upFetch(url,opt){
+  if(typeof AbortController==='undefined')return fetch(url,opt);
+  const ac=new AbortController();
+  const t=setTimeout(()=>{try{ac.abort();}catch(e){}},UP_TIMEOUT);
+  return fetch(url,Object.assign({},opt,{signal:ac.signal})).finally(()=>clearTimeout(t));
+}
+async function attachUpload(b64,mime,name,kind){return upSerial(()=>attachUploadDo(b64,mime,name,kind));}
+async function attachUploadDo(b64,mime,name,kind){
   try{
     const e=ev(),group=e?((e.name||'活动')+' · '+(e.date||'')).trim():'';
-    const r=await fetch(API+'/api/ym_file',{method:'POST',
+    const r=await upFetch(API+'/api/ym_file',{method:'POST',
       headers:{'content-type':'application/json'},
       body:JSON.stringify({user_token:(await liveToken())||undefined,
         action:'upload_media',group,kind:kind||'附件',
@@ -2767,9 +2825,6 @@ function mediaDel(id){const e=ev();if(!e||!e.media)return;
   e.media=e.media.filter(x=>x.id!==id);S.mediaN=null;save();render();}
 function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value='';return;}
   if(!SESSION){toast('这台设备还没登录 —— 点右上角登录后再传');input.value='';return;}
-  // 示例活动不入云（cloudPushAll 过滤 demo）—— 传在这里的照片重开页面就会消失，
-  // Drive 上还会多出一个示例目录。当面拒掉，别让真照片掉进去。
-  if(e.demo){toast('这是示例活动，不入云 —— 打码照片请传在真实的活动里');input.value='';return;}
   const all=[...(input.files||[])];
   const fs=all.filter(f=>/^image\//.test(f.type||''));
   if(all.length>fs.length)toast((all.length-fs.length)+' 个不是图片 —— 媒体库只收图片');
@@ -3048,10 +3103,6 @@ function editMoney(loc,cid){if(S.readonly)return;const h=holderOf(loc);const c=h
       if(per){const u=num(v[1]);if(u==null||u===0)delete c.unit;else c.unit=u;}
       c.actual=num(v[per?2:1]);
       save();render();}});}
-// the host may well rename the tutorial into their real event — give that an exit
-function promoteDemo(){S.readonly=false;const e=ev();if(!e||!e.demo)return;
-  if(!confirm('把「'+e.name+'」转为正式活动？转正后会上云备份，也可以公开到官网。'))return;
-  delete e.demo;save();render();toast('已转为正式活动');}
 function newEvent(){S.readonly=false;const e=instantiate(null);e.name='新活动';STORE.events.push(e);
   S.evId=e.id;S.sel='header';save();render();toast('从资产库点一个模板铺台本');}
 // 一键复办 — the last event's ASSETS (台本 · 环节 · 资源 · 要做的事 · 收支项) become the next event;
@@ -3094,7 +3145,7 @@ function viewToday(){
     const f=followUps(e);const days=Math.round((new Date(e.date+'T00:00:00')-new Date(t+'T00:00:00'))/86400000);
     return `<div class="todaycard" onclick="S.evId='${e.id}';go('sheet')" style="cursor:pointer">
       <div class="d">${fmtDate(e.date)}${e.start?' '+e.start:''} · ${days===0?'<b style="color:var(--brass)">今天</b>':'还有 '+days+' 天'}</div>
-      <div class="t">${esc(e.name)}${dtag(e)}</div>
+      <div class="t">${esc(e.name)}</div>
       <div class="fu">${f.length?('待跟进 <b>'+f.length+'</b> 项：'+
         f.slice(0,4).map(x=>esc(x.c.name)+(x.type==='res'?'('+RES_ST[x.c.status||0]+')':'(未记实际)')).join(' · ')+
         (f.length>4?' …':'')):'✓ 跟进全部完成'}</div></div>`;}).join('');
@@ -3104,7 +3155,7 @@ function viewToday(){
     <div class="sec">本月</div>${calHtml()}
     ${past.length?`<div class="sec">已过往</div>`+past.map(e=>
       `<div class="todaycard" onclick="S.evId='${e.id}';go('sheet')" style="cursor:pointer;opacity:.6">
-        <div class="d">${fmtDate(e.date)}</div><div class="t">${esc(e.name)}${dtag(e)}</div></div>`).join(''):''}
+        <div class="d">${fmtDate(e.date)}</div><div class="t">${esc(e.name)}</div></div>`).join(''):''}
   </div>`;
 }
 function calHtml(){
@@ -3117,7 +3168,7 @@ function calHtml(){
     const ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     const here=STORE.events.filter(e=>e.date===ds);
     cells+=`<div class="day ${ds===t?'today':''}"><span class="num">${d}</span>
-      ${here.map(e=>`<div class="dot">${e.demo?'◇':'●'} ${esc(e.name.slice(0,6))}</div>`).join('')}</div>`;}
+      ${here.map(e=>`<div class="dot">● ${esc(e.name.slice(0,6))}</div>`).join('')}</div>`;}
   return `<div class="cal">${cells}</div>`;
 }
 
@@ -3128,13 +3179,13 @@ function viewLib(){
     `<button class="${S.libTab===k?'on':''}" onclick="S.libTab='${k}';render()">${l}</button>`).join('');
   let list='',form='';
   if(S.libTab==='tpl'){
-    list=L.templates.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('templates','${x.id}')"><div class="t">${esc(x.name)}${dtag(x)}</div>
+    list=L.templates.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('templates','${x.id}')"><div class="t">${esc(x.name)}</div>
       <div class="m">${esc(x.note||'')} · ${(x.rows||[]).length}环节
       <span class="ic del" style="float:right" title="删除" onclick="event.stopPropagation();libDel('templates','${x.id}')">✕</span></div></div>`).join('');
     form=`<div class="libhint">模板来自活动：Y3 的「保存回资产库」把办完的活动一键存为模板。现阶段由种子提供。</div>`;
   }else if(S.libTab==='idea'){
     // 四类分组 (owner 2026-07-27)。互动游戏单独一组 —— 它不属于任何一个阶段，三段里都能用。
-    const ideaCard=x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('ideas','${x.id}')"><div class="t">${esc(x.seg)}${dtag(x)}</div>
+    const ideaCard=x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('ideas','${x.id}')"><div class="t">${esc(x.seg)}</div>
       <div class="m">约${x.dur}分 · ${esc((x.res||[]).join('/'))||'无需资源'}${x.desc?' · '+esc(x.desc.slice(0,12)):''}
       <span class="ic del" style="float:right" title="删除" onclick="event.stopPropagation();libDel('ideas','${x.id}')">✕</span></div></div>`;
     list=IDEA_KIND.map(([k,l])=>{
@@ -3161,7 +3212,7 @@ function viewLib(){
                     :(x.totalAmount?' · 累计（手记）'+esc(x.totalAmount):''));})()
         : `${esc(x.role||'')}${x.contact?' · '+esc(x.contact):''}${x.avail?' · '+esc(x.avail):''}`;
       return `<div class="libitem" style="cursor:pointer" onclick="libEditOpen('${cat}','${x.id}')">
-        <div class="t">${icon}${esc(x.name)}${dtag(x)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}${cat==='goods'?goodsTags(x):''}</div>
+        <div class="t">${icon}${esc(x.name)}${x.gender?`<span class="lbl"> ${esc(x.gender)}</span>`:''}${cat==='goods'?goodsTags(x):''}</div>
         <div class="m">${meta}${codeOf(x)?` · <span class="num" style="color:var(--brass)">${esc(codeState(x).code)}</span> · ${esc(codeState(x).t)}`:''}
         <span style="float:right">
           ${cat==='goods'?`<button class="exchip b${(x.inv||0)===3?0:((x.inv||0)?1:0)}" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();cycleInv('${x.id}')">${ico('box')}${INV_ST[x.inv||0]}</button> `:''}
@@ -3188,7 +3239,7 @@ function viewLib(){
       :cat==='donor'?`<p class="note9">累计金额来自总账里真正入过账的捐赠票据；名册那一栏是手记的备用。</p>`
       :cat==='goods'?`<p class="note9">大类决定资料卡上出现哪些字段：<b>消耗品</b>才有 物品类别 / 保存期限 / 已使用。</p>`:'');
   }else{
-    list=L.money.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('money','${x.id}')"><div class="t">${x.kind==='in'?'⊕':'⊖'} ${esc(x.name)}${dtag(x)}</div>
+    list=L.money.map(x=>`<div class="libitem" style="cursor:pointer" onclick="libEditOpen('money','${x.id}')"><div class="t">${x.kind==='in'?'⊕':'⊖'} ${esc(x.name)}</div>
       <div class="m num">${yen(x.amount)} · ${x.kind==='in'?'收入':'支出'}${x.unit?' · 单价'+yen(x.unit):''}
       <span class="ic del" style="float:right" title="删除" onclick="event.stopPropagation();libDel('money','${x.id}')">✕</span></div></div>`).join('');
     form=libAddBtn('money');
@@ -3199,53 +3250,13 @@ function viewLib(){
     ? `<div class="libtabs" style="max-width:300px;margin-top:-4px">${PEO_CATS.map(([k,l])=>
         `<button class="${(S.peoCat||'volunteer')===k?'on':''}" onclick="S.peoCat='${k}';render()">${l}
           <span class="lbl"> ${peoList(k).length}</span></button>`).join('')}</div>` : '';
-  const dn=demoCount();
   return `<div class="main" style="max-width:720px;margin:0 auto">
     <div class="sec">资产库 — 每办一场活动，这里越攒越值钱</div>
     <div class="libtabs" style="max-width:360px">${tabs}</div>
     ${subtabs}
     ${list||'<div class="empty">空</div>'}${form}
-    <p class="note9">点任一条目 → 打开资料卡（V1.0 完整字段）。带 <span class="demotag dim">示例</span> 的是练习用的种子数据。</p>
-    ${(()=>{const d=dupDemo().n;return d?`<button class="btn sm" style="margin-top:6px" onclick="mergeDupDemo()">${ico('again')}合并重复的示例（${d} 条）</button> `:'';})()}
-    ${dn?`<button class="btn ghost sm" style="margin-top:6px" onclick="clearDemo()">${ico('trash')}清除所有示例数据（${dn} 项）</button>`:''}
+    <p class="note9">点任一条目 → 打开资料卡（V1.0 完整字段）。</p>
   </div>`;
-}
-// how many 示例 items exist across the whole store (library + demo events)
-function demoCount(){
-  let n=STORE.events.filter(e=>e.demo).length;
-  ['templates','ideas','resources','money'].forEach(k=>(STORE.library[k]||[]).forEach(x=>{if(x.demo)n++;}));
-  return n;
-}
-/* 已经堆进来的重复示例（owner 的库里 181 项，一套种子才 48）—— mergeLibrary 修好的是「以后不再
-   多」，这个是「把已经多出来的收掉」。只合并 示例：主办自己建的同名条目一个都不动。
-   ⚠ 台本上的牌子用 refId 指向库里的条目，所以删之前必须把 refId 改指到留下的那一条，
-   否则「用过几场」和「保存回资产库」会指向一个已经不存在的 id。 */
-function dupDemo(){
-  const map={};let n=0;
-  ['templates','ideas','resources','money'].forEach(k=>{
-    const seen={};
-    (STORE.library[k]||[]).forEach(x=>{
-      if(!x||!x.demo)return;
-      const key=String(x.name||x.seg||'').trim()+'|'+String(x.kind||'');
-      if(seen[key]){map[x.id]=seen[key];n++;}else seen[key]=x.id;});});
-  return {map,n};
-}
-function mergeDupDemo(){
-  const {map,n}=dupDemo();if(!n)return;
-  if(!confirm('把 '+n+' 条重复的示例合并掉？\n（每种只留一条，台本上已经挂着的牌子会自动改指到留下的那一条；你自己建的条目不受影响。）'))return;
-  STORE.events.forEach(e=>[e.header].concat(e.rows||[]).forEach(h=>{
-    ['resources','money'].forEach(k=>(h[k]||[]).forEach(c=>{if(c.refId&&map[c.refId])c.refId=map[c.refId];}));}));
-  ['templates','ideas','resources','money'].forEach(k=>{
-    STORE.library[k]=(STORE.library[k]||[]).filter(x=>!map[x.id]);});
-  save();render();toast('已合并 '+n+' 条重复示例');
-}
-function clearDemo(){
-  const n=demoCount();if(!n)return;
-  if(!confirm('清除所有 '+n+' 项示例数据（练习活动 + 种子名册/模板）？\n你自己创建的内容不受影响。'))return;
-  STORE.events=STORE.events.filter(e=>!e.demo);
-  ['templates','ideas','resources','money'].forEach(k=>{STORE.library[k]=(STORE.library[k]||[]).filter(x=>!x.demo);});
-  if(S.evId&&!STORE.events.some(e=>e.id===S.evId))S.evId=STORE.events[0]?STORE.events[0].id:null;
-  save();render();toast('已清除示例数据');
 }
 function libAddBtn(kind){
   return `<div class="addform" style="text-align:center">
@@ -3255,11 +3266,11 @@ function libAddBtn(kind){
 // 物资卡片上的两个标签 (owner 2026-07-27)。「部分使用」不算已使用，所以这是主办自己按的。
 function goodsTags(x){
   const c=gclassOf(x);
-  return (c?`<span class="demotag dim">${esc(gclassLabel(c))}</span>`:'')
-    +(x.category?`<span class="demotag dim">${esc(x.category)}</span>`:'')
-    +(x.used?'<span class="demotag">已使用</span>':'')
-    +(x.archived?'<span class="demotag dim">已归档</span>':'')
-    +(x.expiry?`<span class="demotag dim">保质 ${esc(x.expiry)}</span>`:'');
+  return (c?`<span class="chiptag dim">${esc(gclassLabel(c))}</span>`:'')
+    +(x.category?`<span class="chiptag dim">${esc(x.category)}</span>`:'')
+    +(x.used?'<span class="chiptag">已使用</span>':'')
+    +(x.archived?'<span class="chiptag dim">已归档</span>':'')
+    +(x.expiry?`<span class="chiptag dim">保质 ${esc(x.expiry)}</span>`:'');
 }
 function libDel(k,id){const L=STORE.library;
   const rec=L[k].find(x=>x.id===id),a=rec?codeOf(rec):null;
@@ -3348,7 +3359,6 @@ function fileGuest(p){
       occupation:p.job||'',role:''};
     Object.assign(rec,p.profile||{});
     rec.name=key;                                  // profile fields must not clobber identity
-    if(p.demo)rec.demo=true;                        // a seeded guest stays 示例 in the registry
     STORE.library.resources.push(rec);
   }else if(p.profile){
     Object.keys(p.profile).forEach(k=>{if(p.profile[k]&&!rec[k])rec[k]=p.profile[k];});
@@ -3362,7 +3372,7 @@ function guestHistory(libId){
   const out=[];
   STORE.events.forEach(e=>(e.participants||[]).forEach(p=>{
     if(p.libId!==libId)return;
-    out.push({event:e.name,date:e.date,demo:!!e.demo,arrived:!!p.arrived,
+    out.push({event:e.name,date:e.date,arrived:!!p.arrived,
       badge:p.gender+p.n,evals:p.evals||[]});}));
   return out;
 }
@@ -3448,7 +3458,7 @@ function guestHistoryHtml(libId){
     <div class="fl" style="font-size:9px;opacity:.5;letter-spacing:.18em;margin-bottom:6px">
       参加记录 · ${h.length} 场</div>
     ${h.map(x=>`<div style="font-size:12.5px;margin:6px 0;line-height:1.7">
-      <b>${esc(x.event)}</b>${x.demo?'（教学）':''} · ${fmtDate(x.date)} ·
+      <b>${esc(x.event)}</b> · ${fmtDate(x.date)} ·
       ${x.arrived?'到场 '+esc(x.badge):'<span style="opacity:.6">未到</span>'}
       ${x.evals.map(v2=>`<div style="opacity:.75;padding-left:10px">
         ${v2.strengths?'优点：'+esc(v2.strengths):''}${v2.improvements?' ／ 建议：'+esc(v2.improvements):''}${v2.follow_up?' ／ 跟进：'+esc(v2.follow_up):''}</div>`).join('')}
@@ -3515,7 +3525,7 @@ function viewDay(){
   return `<div class="main" style="max-width:560px;margin:0 auto;padding-bottom:130px">
     <div class="dayhead">
       <div><div class="d"><span class="bk" onclick="go('sheet')">← 计划</span> · ${fmtDate(e.date)}${e.start?' '+esc(e.start):''}</div>
-        <div class="t">${esc(e.name)}${dtag(e)}</div></div>
+        <div class="t">${esc(e.name)}</div></div>
       ${ratioHtml(e)}
     </div>${inner}</div>
   <div class="daytabs">${[['board','看板'],['run','台本'],['rec','记录']].map(([k,l])=>
@@ -3812,7 +3822,7 @@ function viewSignup(){
   const e=ev();if(!e){S.view='desk';return viewDesk();}
   return `<div class="main" style="max-width:640px;margin:0 auto">
     <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('desk')">← 工作台</span> · 报名情况</div>
-      <div class="t">${esc(e.name)}${dtag(e)} · ${fmtDate(e.date)}</div></div></div>
+      <div class="t">${esc(e.name)} · ${fmtDate(e.date)}</div></div></div>
     ${signupBlock(e)}
     <p class="note9">公开到官网之后，报名会自己进来；「拟邀请」是你点名叫的人，
       要 TA 自己在页面上按「我想参加」才算报名。</p></div>`;
@@ -4657,12 +4667,16 @@ function ledgerNotReady(e){const m=String((e&&e.message)||'')+' '+String((e&&e.c
    走 /api/ym_file：Apps Script 的 /exec 对公网开放，所以那边只有上传能力、没有删除；
    这边先确认调用者是已批准主办或有效成员，才转发一个字节。
    Drive 没配好时端点回 503 —— 那时账照记，只是没有图，不该因此丢掉主办刚拍的东西。 */
-async function rcUpload(b64,mime,name,ev){
+async function rcUpload(b64,mime,name,ev){return upSerial(()=>rcUploadDo(b64,mime,name,ev));}
+async function rcUploadDo(b64,mime,name,ev){
   try{
     const group=ev?((ev.name||'活动')+' · '+(ev.date||'')).trim():'';
-    const r=await fetch(API+'/api/ym_file',{method:'POST',
+    /* 令牌取**实时**的（getSession 会自动续期）。ef48749 给附件那条修过这个：手机页面在
+       后台放久，内存里的 access_token 过期 → 403，症状和「你不是主办」一模一样。
+       排队之后这条路更危险 —— 一张票据可能先在队里等上好一会儿才轮到它读令牌。 */
+    const r=await upFetch(API+'/api/ym_file',{method:'POST',
       headers:{'content-type':'application/json'},
-      body:JSON.stringify({user_token:(SESSION&&SESSION.access_token)||undefined,
+      body:JSON.stringify({user_token:(await liveToken())||undefined,
         action:'upload_media',group,kind:'票据',
         filename:String(name||'票据.jpg').slice(0,120),mime_type:mime,content_base64:b64})});
     if(!r.ok)return null;
@@ -5259,7 +5273,6 @@ function postDel(){
 function pubEvent(on){if(S.readonly){render();return;}
   const e=ev();if(!e)return;
   if(!canCloud()){toast('登录后才能公开到官网');render();return;}
-  if(on&&e.demo){toast('教学示例不能公开到官网');render();return;}
   e.publicOn=!!on;save();
   if(!on){sb.from('ym_post').delete().match({author:SESSION.user.id,source_id:e.id}).select('id')
       .then(({error})=>{if(error)toast('下架失败：'+error.message);POSTS=null;render();});
@@ -5267,7 +5280,7 @@ function pubEvent(on){if(S.readonly){render();return;}
   syncEventPost(e,true);render();
 }
 function syncEventPost(e,announce){
-  if(!canCloud()||!e.publicOn||e.demo)return;
+  if(!canCloud()||!e.publicOn)return;
   sb.from('ym_post').upsert({author:SESSION.user.id,kind:'event',source_id:e.id,
     title:e.name||'活动',summary:e.theme||'',post_date:e.date||null,published:true,
     meta:{start:e.start||'',venue:e.venue||'',signup:e.signup||''}},
@@ -5464,7 +5477,7 @@ function viewReview(){
   const mline=(l,p2,a2)=>`<div class="mline"><span>${l}</span><span class="num">${yen(p2)} → ${yen(a2)}</span></div>`;
   return `<div class="main" style="max-width:640px;margin:0 auto">
     <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('sheet')">← 计划</span> · 复盘</div>
-      <div class="t">${esc(e.name)}${dtag(e)} · ${fmtDate(e.date)}</div></div></div>
+      <div class="t">${esc(e.name)} · ${fmtDate(e.date)}</div></div></div>
     <div class="rvsec matchsec"><div class="hd"><span class="lbl">牵手成功 · 这场最重要的成果</span></div>
       <div class="matchrow">
         <input type="number" min="0" class="matchin" value="${Number(e.matched)||0}" ${S.readonly?'readonly':''}
@@ -5778,7 +5791,6 @@ function publishBar(e){
 }
 function exPublishAll(){
   if(S.readonly)return;const e=ev();if(!e)return;
-  if(e.demo){toast('教学示例不会发布给志愿者');return;}
   if(!canCloud()){toast('先登录并通过批准，才能发布任务');return;}
   const list=exOpenable(e);
   if(!list.length){toast('没有可发布的 —— 只有「还没写负责人」的待办才能发布');return;}
@@ -5804,7 +5816,7 @@ function viewExec(){
   const mt=moneyTodo(e),ign=ignoredTasks(e),od=overdueTasks(e);
   return `<div class="main"><div class="extree">
     <div class="exback"><span class="bk" onclick="go('sheet')">← 计划</span> · 执行看板</div>
-    <div style="text-align:center"><span style="font-size:13px;color:var(--stock);font-weight:600">${esc(e.name)}${dtag(e)}</span></div>
+    <div style="text-align:center"><span style="font-size:13px;color:var(--stock);font-weight:600">${esc(e.name)}</span></div>
     ${od.length?`<div class="exchase">${ico('warn')}${od.length} 项已过截止还没完成 <span class="go" onclick="exRemindOverdue()">去催 →</span></div>`:''}
     ${claimBanner(e)}
     ${execTree(e,todo,doing,done)}
@@ -6254,7 +6266,7 @@ function viewDesk(){
       ${ph==='archived'?'':`<span class="dc-cap${capOf(e)&&e.participants.length>=capOf(e)?' full':''}"
         title="已报名 / 名额 —— 点开看报名情况"
         onclick="event.stopPropagation();S.evId='${e.id}';go('signup')">${ico('person')}${esc(signupText(e))}</span>`}
-      <div class="dc-t">${esc(e.name)||'未命名'}${dtag(e)}</div>
+      <div class="dc-t">${esc(e.name)||'未命名'}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}${pendCount(e)?` · <span style="color:var(--brass)">● 待确认 ${pendCount(e)}</span>`:''}</div>
       ${ph==='archived'?'':`<div class="dc-acts">
         ${ph==='current'?go2(`goExec('${e.id}')`,ico('go')+'执行看板'):''}
@@ -6301,7 +6313,7 @@ function peekCard(){
     <div class="modal-g"><div class="rvsec" style="margin:0">
       <div class="hd"><span class="lbl">${PHASE_LABEL[ph]}</span>
         <button class="btn ghost sm" onclick="S.peek=null;render()">✕</button></div>
-      <div style="font-size:16px;font-weight:700;margin:2px 0">${esc(e.name)||'未命名'}${dtag(e)}</div>
+      <div style="font-size:16px;font-weight:700;margin:2px 0">${esc(e.name)||'未命名'}</div>
       <div class="note9" style="margin:0 0 8px">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${e.venue?' · '+esc(e.venue):''}</div>
       <div style="font-size:12.5px;line-height:1.9">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}</div>
       <button class="btn" style="width:100%;margin-top:12px" onclick="S.peek=null;${ph==='hot'?`S.evId='${e.id}';S.view='review';render()`:open}">${openLbl}</button>
@@ -6326,6 +6338,8 @@ if(CAP_TOKEN){
     +'<p class="note9" style="line-height:2">组件没加载出来（网络被挡住了？）。<br>'
     +'请换个网络刷新这一页 —— 在此之前拍了也传不回去。</p></div>';
 }else{
+  // 开机时把「内存里这份 STORE 属于谁」latch 下来 —— 换人闸比的是它，不是此刻的 key（多标签页）
+  try{_storeOwner=localStorage.getItem('jjym_owner');}catch(e){}
   STORE=load();
   if(!STORE||!STORE.library){STORE=seed();save();}
   ensureY2();
