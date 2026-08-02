@@ -2341,7 +2341,22 @@ function doSignOut(){clearPendingCode();   // never carry a code across identiti
      退出登录的意思是「把上一个人留下的一切都清掉」，不只是数据。 */
   S.memberOnly=0;S.memberWhy='';S.noJoin=0;S.nameDup=false;S.joinDone=false;S.pOpen=null;
   if(_pendT){clearInterval(_pendT);_pendT=null;}
-  if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});}
+  /* 本地优先 ≠ 退出后把沙龙的真实数据留在这台浏览器里（owner 2026-08-02：「退出了仍然
+     可以看到主办工作台」）。云端同步进来的名单/账目/台本全在 localStorage —— 共用设备上
+     下一个人不但看得到，还能改；改动会在真主办下次登录后被 800ms 自动推送写回云端。
+     退出 = 这台设备回到出厂演示态；真数据在云端，下次登录自己回来。顺序有讲究：
+       1. 先把悬着的防抖推送冲上云（正常退出不丢最后一笔；离线退出丢的那一笔是
+          「共用设备安全 > 离线便利」，别改回去）；
+       2. 重置成示例后**直接写 localStorage，绝不能走 save()** —— save() 会再调度一次
+          云推送，退账完成前那 800ms 里它会拿**示例资产库把云端真库覆盖掉**。 */
+  (async()=>{
+    if(canCloud()){clearTimeout(_pushT);try{await cloudPushAll();}catch(e){}}
+    clearTimeout(_pushT);
+    STORE=seed();
+    try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){}
+    S.evId=null;S.sel='header';S.rc=null;S.mediaOpen=false;S.mediaN=null;S.view='desk';
+    if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});
+  })();}
 
 /* ---------- reuse prompts (read-time projections — the assets remember themselves) ---------- */
 // how many DISTINCT events have used this library item (by refId)
