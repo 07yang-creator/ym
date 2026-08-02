@@ -2636,13 +2636,21 @@ function rowAttach(rid,input){const r=ev().rows.find(x=>x.id===rid);if(r)attachT
    已经超过任何将要设的上限，那时 CHECK 会让 owner 下一次保存直接 500（HANDOFF 原话）。
    这次只做「不再往里加新字节」—— 存量该多大还多大，所以风险是零，也不需要那次审计。 */
 const ATTACH_MAX=4000000;                 // ≈4MB；base64 后 ~5.3M，在代理 MAX_B64=6000000 之内
+/* 令牌要取**实时**的：页面在手机后台放几小时，内存里的 SESSION.access_token 可能已经过期，
+   带着它打 /api/ym_file 就是 403 —— 症状和「不是主办」一模一样（owner 2026-08-02 手机连撞两次）。
+   getSession() 会自动续期；取不到再退回内存里的那份。 */
+async function liveToken(){
+  try{const {data}=await sb.auth.getSession();
+    if(data&&data.session&&data.session.access_token)return data.session.access_token;}catch(e){}
+  return (SESSION&&SESSION.access_token)||null;
+}
 /* 成功 → {id,url}；Drive 没接线 → 'unwired'；其它失败 → null。三态，因为这三种要走三条路。 */
 async function attachUpload(b64,mime,name,kind){
   try{
     const e=ev(),group=e?((e.name||'活动')+' · '+(e.date||'')).trim():'';
     const r=await fetch(API+'/api/ym_file',{method:'POST',
       headers:{'content-type':'application/json'},
-      body:JSON.stringify({user_token:(SESSION&&SESSION.access_token)||undefined,
+      body:JSON.stringify({user_token:(await liveToken())||undefined,
         action:'upload_media',group,kind:kind||'附件',
         filename:String(name||'附件').slice(0,120),mime_type:mime,content_base64:b64})});
     if(r.status===503)return 'unwired';
@@ -2660,7 +2668,7 @@ async function attachUpload(b64,mime,name,kind){
 function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs||!fs.length)return;
   if(!holder.files)holder.files=[];let pending=fs.length;const n=fs.length;let bad=0,denied=0;
   const finish=()=>{if(!--pending){save();render();
-    toast(bad?('已附上 '+(n-bad)+' 个，'+bad+' 个没传上去'+(denied?'（请先登录主办账号）':'')):('已附上 '+n+' 个文件'));}};
+    toast(bad?('已附上 '+(n-bad)+' 个，'+bad+' 个没传上去'+(denied?'（当前账号没有上传权限 —— 请先登录主办账号）':'')):('已附上 '+n+' 个文件'));}};
   [...fs].forEach(f=>{const fid=uid();
     /* 照片先压到 1600px 再传 —— 和票据同一条规矩（rcShoot 一直是这么做的）。
        手机照片动辄 4–8MB，不压就会撞上 ATTACH_MAX：**同一张照片「当票据」传得上去、
@@ -2729,6 +2737,7 @@ function mediaDel(id){const e=ev();if(!e||!e.media)return;
   if(!confirm('从媒体库移除这张？网盘上那份还在，要删得去 Drive 手删。'))return;
   e.media=e.media.filter(x=>x.id!==id);S.mediaN=null;save();render();}
 function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value='';return;}
+  if(!SESSION){toast('这台设备还没登录 —— 点右上角登录后再传');input.value='';return;}
   const all=[...(input.files||[])];
   const fs=all.filter(f=>/^image\//.test(f.type||''));
   if(all.length>fs.length)toast((all.length-fs.length)+' 个不是图片 —— 媒体库只收图片');
@@ -2739,7 +2748,7 @@ function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value=''
   const fin=()=>{if(--pending)return;save();render();
     const okN=n-decodeBad-svrBad-unwired-denied;
     toast(unwired?'云盘没接线，照片传不上去（媒体库不往手机里存底）':
-      denied?'传不上去 —— 没登录，或这个账号不是主办/成员。请用主办账号登录后再传':
+      denied?('传不上去 —— 当前登录的是 '+((SESSION&&SESSION.user&&SESSION.user.email)||'未知账号')+'，这个账号没有上传权限。请用主办账号登录后再传'):
       svrBad?('传好 '+okN+' 张，'+svrBad+' 张没传上去 —— 服务端/网络出错（'+svrWhy+'）。把括号里的码发给管理员'):
       decodeBad?('传好 '+okN+' 张，'+decodeBad+' 张照片读不出来 —— 请回相册重选一次再传'):
       ('传好 '+n+' 张'));};
