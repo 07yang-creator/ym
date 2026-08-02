@@ -825,7 +825,7 @@ const _hash=(location.hash||'')+'&'+(location.search||'');
 const RECOVERY_URL=/type=recovery/.test(_hash);
 const RECOVERY_ERR=(/error_description=([^&]+)/.exec(_hash)||[])[1];
 const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
-let SESSION=null,PROFILE=null,_pushT=null,_authKey=null;
+let SESSION=null,PROFILE=null,_pushT=null,_authKey=null,_cloudBase=0;
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 /* 1600px / q0.85 —— 这一档喂的是 OCR，**不要往下压**。インボイス 登録番号是 T + 13 位小字，
    per-line 消費税 率也是小字；压狠了 /api/parse 就读不出来。成员端存进 DB 行的那一路是另一档
@@ -860,7 +860,10 @@ const OCR_B64_MAX=2900000, OCR_FILE_MAX=Math.floor(OCR_B64_MAX*3/4);
 const LS_KEY='jjym_v1';
 const RES_ST=['未联系','已联系','已确认','到位'];
 let STORE=null;
-function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){
+function save(){
+  // 本机动过谁，谁才有资格被推上云 —— 见 cloudPushAll 的 mtime 闸
+  try{const e0=ev();if(e0&&!e0.demo)e0.mtime=Date.now();}catch(e2){}
+  try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){
   if(!S._quota){S._quota=1;toast('本机存储已满');}}
   if(canCloud()){clearTimeout(_pushT);_pushT=setTimeout(cloudPushAll,800);}}
 /* ---------- cloud mirror (Y4 alive; 0008_ym.sql) ---------- */
@@ -874,7 +877,13 @@ function cloudPushAll(){
   if(!canCloud())return Promise.resolve();
   // the 教学示例 tutorial event is seeded locally in every browser — never upload it as if it
   // were the salon's real data
-  const rows=STORE.events.filter(e=>!e.demo)
+  /* ⚠ mtime 闸（owner 2026-08-02「手机传的照片，再次打开就没有了」）：同步是整份文档
+     后写的赢 —— 手机把带照片的活动推上云之后，桌面上还开着的**旧页面**只要存一次盘
+     （任何编辑的 800ms 防抖），就会拿内存里那份没有照片的旧活动把云端盖掉。
+     所以每台设备只推「本机 cloudLoad 之后动过的活动」（save() 给当前活动盖 mtime 戳；
+     云上拉下来的没有新戳，闲置旧页面就不再有资格覆盖别的设备刚写的东西）。
+     两台设备**同时改同一场**仍是后写的赢 —— 那是真冲突，这里不裁。 */
+  const rows=STORE.events.filter(e=>!e.demo&&(!_cloudBase||(e.mtime||0)>=_cloudBase))
     .map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
     .concat([{owner:SESSION.user.id,kind:'library',doc_id:'lib',payload:STORE.library}]);
   return sb.from('ym_doc').upsert(rows)
@@ -1654,9 +1663,12 @@ async function cloudLoad(){
          library:mergeLibrary(lib?lib.payload:null,STORE.library),
          y2:1,y6:1,y7:1};
   ensureY2();
+  // mtime 闸的基准：这一刻之后本机动过的活动才会被推上云（cloudPushAll 的注释有全文）
+  _cloudBase=Date.now();
   if(!STORE.events.length)cloudPushAll();                 // never leave the host with an empty app
   S.evId=STORE.events[0]?STORE.events[0].id:null;S.sel='header';
-  if(localReal.length){toast('已同步（本机 '+localReal.length+' 场活动已合并上传）');cloudPushAll();}
+  if(localReal.length){localReal.forEach(e=>{e.mtime=Date.now();});   // 这批是特意要合并上传的
+    toast('已同步（本机 '+localReal.length+' 场活动已合并上传）');cloudPushAll();}
   else toast('云同步已开启');
   render();
 }
@@ -1910,7 +1922,9 @@ function ensureY2(){
 function instantiate(tpl,lib){
   lib=lib||STORE.library;
   const cp=c=>Object.assign({},c,{id:uid()});
+  // participants 必须有默认值：viewReview 直接 .filter/.reduce 它 —— 新活动一进复盘就白屏
   return {id:uid(),name:tpl?tpl.name:'新活动',theme:'',date:'',start:'',venue:'',status:'plan',
+    participants:[],
     header:{resources:(tpl?tpl.header.resources:[]).map(cp),money:(tpl?tpl.header.money:[]).map(cp)},
     rows:(tpl?tpl.rows:[]).map(r=>Object.assign({},r,{id:uid(),
       resources:r.resources.map(cp),money:r.money.map(cp)}))};
@@ -2753,32 +2767,43 @@ function mediaDel(id){const e=ev();if(!e||!e.media)return;
   e.media=e.media.filter(x=>x.id!==id);S.mediaN=null;save();render();}
 function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value='';return;}
   if(!SESSION){toast('这台设备还没登录 —— 点右上角登录后再传');input.value='';return;}
+  // 示例活动不入云（cloudPushAll 过滤 demo）—— 传在这里的照片重开页面就会消失，
+  // Drive 上还会多出一个示例目录。当面拒掉，别让真照片掉进去。
+  if(e.demo){toast('这是示例活动，不入云 —— 打码照片请传在真实的活动里');input.value='';return;}
   const all=[...(input.files||[])];
   const fs=all.filter(f=>/^image\//.test(f.type||''));
   if(all.length>fs.length)toast((all.length-fs.length)+' 个不是图片 —— 媒体库只收图片');
   if(!fs.length){input.value='';return;}
   if(!e.media)e.media=[];
-  let pending=fs.length,decodeBad=0,svrBad=0,svrWhy='',unwired=0,denied=0;const n=fs.length;
+  let decodeBad=0,svrBad=0,svrWhy='',unwired=0,denied=0;const n=fs.length;
   toast('正在传 '+n+' 张…');
-  const fin=()=>{if(--pending)return;save();render();
-    const okN=n-decodeBad-svrBad-unwired-denied;
+  /* 逐张顺序传，不并发（owner 2026-08-02：3 张并行上传，Drive 上同名目录建出两份 ——
+     GAS 每个请求各自执行，findOrCreate「找不到就建」没有锁，三个请求同时都「找不到」。
+     顺序传第一张把目录建好，后面的复用。真正的服务端锁已写进 docs/apps-script-upload.js
+     的 findOrCreate，等 owner 下次更新部署后，多设备同时上传也不会再建重。 */
+  (async()=>{
+    let ok=0;
+    for(const f of fs){
+      const b64=await new Promise(r=>shrink(f,r));
+      if(!b64){decodeBad++;continue;}                 // 坏图：算失败，别静静挂住
+      const up=await attachUpload(b64,'image/jpeg',f.name,'照片');
+      if(up==='unwired'){unwired++;continue;}
+      if(up==='denied'){denied++;continue;}
+      if(!up||up.fail){svrBad++;svrWhy=String((up&&up.fail)||'网络');continue;}
+      e.media.push({id:uid(),name:f.name,driveId:up.id,url:up.url,ts:f.lastModified||Date.now()});
+      ok++;if(n>1)toast('已传 '+ok+'/'+n+' …');
+    }
+    save();render();
     toast(unwired?'云盘没接线，照片传不上去（媒体库不往手机里存底）':
       denied?('传不上去 —— 当前登录的是 '+((SESSION&&SESSION.user&&SESSION.user.email)||'未知账号')+'，这个账号没有上传权限。请用主办账号登录后再传'):
-      svrBad?('传好 '+okN+' 张，'+svrBad+' 张没传上去 —— 服务端/网络出错（'+svrWhy+'）。把括号里的码发给管理员'):
-      decodeBad?('传好 '+okN+' 张，'+decodeBad+' 张照片读不出来 —— 请回相册重选一次再传'):
-      ('传好 '+n+' 张'));};
-  fs.forEach(f=>shrink(f,async b64=>{
-    if(!b64){decodeBad++;fin();return;}               // 坏图：算失败，别静静挂住
-    const up=await attachUpload(b64,'image/jpeg',f.name,'照片');
-    if(up==='unwired'){unwired++;fin();return;}
-    if(up==='denied'){denied++;fin();return;}
-    if(!up||up.fail){svrBad++;svrWhy=String((up&&up.fail)||'网络');fin();return;}
-    e.media.push({id:uid(),name:f.name,driveId:up.id,url:up.url,ts:f.lastModified||Date.now()});
-    fin();}));
-  /* ⚠ 清空必须放在所有读取都**启动之后**（和 attachTo 同一顺序）。iOS WebKit 在 value
-     清空后可能作废 File 底层的临时文件 —— 先清后读的写法在 iPhone 上是「张张都打不开」
-     （owner 2026-08-02 实测 0/3，两次）。 */
-  input.value='';
+      svrBad?('传好 '+ok+' 张，'+svrBad+' 张没传上去 —— 服务端/网络出错（'+svrWhy+'）。把括号里的码发给管理员'):
+      decodeBad?('传好 '+ok+' 张，'+decodeBad+' 张照片读不出来 —— 请回相册重选一次再传'):
+      ('传好 '+n+' 张'));
+    /* ⚠ 清空必须放在所有读取都**结束之后**（和 attachTo 同一顺序）。iOS WebKit 在 value
+       清空后可能作废 File 底层的临时文件 —— 先清后读的写法在 iPhone 上是「张张都打不开」
+       （owner 2026-08-02 实测 0/3，两次）。 */
+    input.value='';
+  })();
 }
 function mediaThumbFail(el){const t=el.closest('.mtile');if(t)t.classList.add('bad');
   const h=document.getElementById('mthint');if(h)h.style.display='';}
