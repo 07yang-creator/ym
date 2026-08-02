@@ -36,10 +36,30 @@ owner 要的：附件传照片有 400KB 墙、传上了也看不成 —— 复�
    而 589 条正则断言照常全绿 —— 它们只看文本在不在。套件新增：把两个 app 的整段
    `<script>` 用 `new Function` **真编译一遍**（不执行）。修浏览器验证 vs 套件的这个盲区。
 
-⚠ **Apps Script 的 KINDS 还没有「照片」**（`docs/apps-script-upload.js` 源码已加，
-**线上部署未更新**）：媒体库照片暂时回落进 `附件/` 目录 —— 能传能看，只是不分目录。
-owner 有空时：script.google.com → 该项目 → 贴入新源码 → **Edit existing deployment**
-（千万别 New deployment，会换 /exec URL）。
+🔴 **真正的根子（2026-08-02 探针实锤）：`YM_DRIVE_EXEC` 指着的 Apps Script 部署 404 了。**
+`curl 'https://www.jjconnect.tokyo/api/ym_file?probe=1'` →
+`{"q_member":200,"q_admin":200,"q_code":200,"gas":{"http":404}}` ——
+三条鉴权查询语法全通；GAS 死了。**每一次上传（票据/附件/媒体库）都在 502**，
+和这两天改的前端无关。07-27「端到端传过真文件」之后某个时点部署没了
+（New deployment 换 URL / 项目被删都会这样）。
+
+**owner 修复步骤（只有你有 script.google.com 权限）：**
+1. script.google.com → 找到上传项目（没了就新建），整个贴入 `docs/apps-script-upload.js`
+   现在的源码（已含「照片」目录）；
+2. Deploy → **Manage deployments** 里若还有活的部署：Edit(铅笔) → New version → Deploy
+   （保 URL）；**若列表是空的 → New deployment** → Web app · Execute as **Me** ·
+   Who has access **Anyone** → 复制新的 `/exec` URL；
+3. 用哪个 Google 账号部署有讲究：**脚本以部署者身份写文件夹** —— 用文件夹
+   `18L2vEdBUukj0qTY4qkNLrYz5Ty7sww3m` 的所有者账号最省事（「限制」共享就不碍事）；
+   若用别的账号，得把文件夹按**指定账号**共享（编辑权）给它；
+4. URL 变了的话：Vercel → jjcashflowdiary → Settings → Environment Variables →
+   `YM_DRIVE_EXEC` 换成新 URL（Production+Preview）→ Redeploy；
+5. 验收：`?probe=1` 的 `gas` 变成 `{"ok":true,"service":"jjcashflow-upload",…}`；
+   `?probe=write` 的 `gas_write` 回 `{"ok":true,…}`（会在 连通性测试/附件/ 留一个
+   1 字节 probe.txt，可删）—— 这一步同时就是「脚本账号写得动文件夹」的最终答案。
+
+⚠ 顺带：写探针 `?probe=write` 的暴露面 = 任何人可往 连通性测试/ 塞 1 字节可见小文件，
+与 /exec 本身同级；诊断期留着，稳定后可以拿掉。
 
 ---
 
