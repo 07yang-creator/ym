@@ -66,17 +66,27 @@ if(r.demo===undefined && NAMES.res.includes(r.name)) r.demo=true;   // 已删除
 
 ## 三、上传排队：一个活动一个目录
 
+✅ **两侧都修好了，并在真域名上验过（2026-08-03 当天）。**
+
 owner 传 2 张照片 → Drive 上两个同名活动目录，各带一个 `照片/`。根子在服务端：
 Apps Script 的 `findOrCreate` 是「找不到就建」，并发就各建一个（Drive 允许同名并存）。
-`docs/apps-script-upload.js` 里那把 `LockService` 锁**还没部署上去**（owner 08-02 重新部署时
-锁还没写）。⚠ **探针骗过了我们一次**：`?probe=1` 的 `gas.ok:true` 只说明「部署活着」，
-不说明**是哪一版** —— 全绿的同时线上那份没有锁。所以 `doGet` 现在报
-`rev` + `lock:true`（同 `/api/ym_file` 的 `"gate":"ym_ok"` 那个套路）：
-**重新部署之后探针里出现 `"rev":"2026-08-03-lock"` 才算真的换上了。** 改脚本记得抬 `REV`。所以客户端加了 `upSerial()` —— **所有**上传路径串成一条队（附件多选 ·
-媒体库 · 票据 · 从任务拍）。⚠ 附件那条路以前是 `forEach` **并行**的，这就是这次的直接原因；
-媒体库 08-02 已经改顺序了。**跨设备/跨标签页同时传仍会重建目录** —— 那一半只有服务端的锁
-能修：owner 下次更新 Apps Script 部署即可（步骤见下面 08-02 那节）。已经建出来的重复目录
-代理删不了，要去 Drive 手动合并。
+
+- **客户端**（管住「一台设备」）：`upSerial()` 把**所有**上传路径串成一条队（附件多选 ·
+  媒体库 · 票据 · 从任务拍），每个请求带 90 秒 `AbortController` 上限。
+  ⚠ 附件那条以前是 `forEach` **并行**的 —— 这就是这次的直接原因（媒体库 08-02 已改顺序）。
+- **服务端**（管住「多台设备同时传」）：`findOrCreate` 的 `LockService` 锁，
+  owner 当天重新部署上线，探针实锤：`"rev":"2026-08-03-lock","lock":true`。
+
+⚠ **探针骗过了我们一次，这条留给下一班**：`?probe=1` 的 `gas.ok:true` 只说明「那条部署活着」，
+**不说明是哪一版** —— 全绿的同时线上那份根本没有锁。而且 Apps Script 里**「保存代码」不等于
+「换掉 /exec 服务的东西」**：`/exec` 发的是一个冻结的 version，必须
+Manage deployments → 铅笔 → **New version** → Deploy（「New deployment」会换 URL，
+正是 CLAUDE.md §2 记着的老坑）。所以 `doGet` 现在报 `rev` + `lock` + `kinds`
+（同 `/api/ym_file` 的 `"gate":"ym_ok"` 套路）—— **看到 `rev` 才算真的换上了**；改脚本记得抬 `REV`。
+分辨「版本没切」还是「Vercel 指着旧 URL」：直接在浏览器打开 `/exec` —— 它报 rev 而探针不报，
+就是 `YM_DRIVE_EXEC` 指错了。
+
+已经建出来的那些重复目录**代理删不掉**（无删除能力是 owner 的裁决），要去 Drive 手动合并。
 
 ## 四、上真人志愿者之前的一轮专项复查（成员侧 + 服务端边界）
 
