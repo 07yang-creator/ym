@@ -896,12 +896,28 @@ function cloudPushAll(){
      所以每台设备只推「本机 cloudLoad 之后动过的活动」（save() 给当前活动盖 mtime 戳；
      云上拉下来的没有新戳，闲置旧页面就不再有资格覆盖别的设备刚写的东西）。
      两台设备**同时改同一场**仍是后写的赢 —— 那是真冲突，这里不裁。 */
-  const rows=STORE.events.filter(e=>!e.demo&&(!_cloudBase||(e.mtime||0)>=_cloudBase))
-    .map(e=>({owner:SESSION.user.id,kind:'event',doc_id:e.id,payload:e}))
-    .concat([{owner:SESSION.user.id,kind:'library',doc_id:'lib',payload:STORE.library}]);
-  return sb.from('ym_doc').upsert(rows)
-    .then(r=>{if(r.error)toast('云同步失败：'+r.error.message);})
-    .then(()=>pushShares());
+  /* 共编 (0027)：别人分享给我的活动要推回**原来那一行**（owner = 归属工作台），且必须
+     和自己的行分开两批 —— PostgREST 的 upsert 是一条语句，权限被收回的那一行会把整批
+     一起打回来，自己的活动从此也推不上去。payload 剥掉 _host：那是本机的路标，不是数据。 */
+  const uid=SESSION.user.id;
+  const strip=e=>{const pl=Object.assign({},e);delete pl._host;return pl;};
+  const dirty=STORE.events.filter(e=>!e.demo&&(!_cloudBase||(e.mtime||0)>=_cloudBase));
+  const rows=dirty.filter(e=>!e._host||e._host===uid)
+    .map(e=>({owner:uid,kind:'event',doc_id:e.id,payload:strip(e)}))
+    .concat([{owner:uid,kind:'library',doc_id:'lib',payload:STORE.library}]);
+  const foreign={};
+  dirty.filter(e=>e._host&&e._host!==uid).forEach(e=>{
+    (foreign[e._host]=foreign[e._host]||[]).push({owner:e._host,kind:'event',doc_id:e.id,payload:strip(e)});});
+  const jobs=[sb.from('ym_doc').upsert(rows)
+    .then(r=>{if(r.error)toast('云同步失败：'+r.error.message);})];
+  Object.keys(foreign).forEach(h=>jobs.push(
+    sb.from('ym_doc').upsert(foreign[h]).then(r=>{
+      if(!r.error)return;
+      // 多半是共编权限已被收回：把这几场的重试资格摘掉，下一次 cloudRefresh 会把副本扫走
+      foreign[h].forEach(row=>{const e=STORE.events.find(x=>x&&x.id===row.doc_id);if(e)e.mtime=0;});
+      toast('共编活动没推上去（权限可能已被收回）：'+r.error.message);
+    })));
+  return Promise.all(jobs).then(()=>pushShares());
 }
 /* ===== 活同步 —— 拉的那一半 (owner 2026-08-03「see the same thing and edit at the same time」) =====
    cloudLoad 只在登录那一刻拉一次：另一台设备（或同一账号的另一个人）之后写的东西，
@@ -923,13 +939,16 @@ async function cloudRefresh(){
   _docPulling=true;
   try{
     const uid=SESSION.user.id;
-    const {data:rows,error}=await sb.from('ym_doc').select('doc_id,payload').eq('kind','event');
+    const {data:rows,error}=await sb.from('ym_doc').select('doc_id,payload,owner').eq('kind','event');
     // 拉的过程中换了人 / 开始打字 → 这一批作废，什么都不动
     if(error||!SESSION||SESSION.user.id!==uid||typingNow())return;
     const norm=o=>{const c=Object.assign({},o);delete c.mtime;return JSON.stringify(c);};
-    let changed=0;
+    let changed=0;const seen={};
     (rows||[]).forEach(r=>{
       const inc=r.payload;if(!inc||!inc.id||inc.demo)return;
+      seen[inc.id]=1;
+      // 共编标记：口径同 cloudLoad —— 别人的行盖 _host，自己的行剥掉
+      if(r.owner&&r.owner!==uid)inc._host=r.owner;else delete inc._host;
       const i=STORE.events.findIndex(e=>e&&e.id===inc.id);
       if(i>=0&&(STORE.events[i].mtime||0)>=_cloudBase)return;   // 本机未推的编辑在先
       if(i>=0&&norm(STORE.events[i])===norm(inc))return;        // 没变
@@ -937,6 +956,13 @@ async function cloudRefresh(){
       if(i>=0)STORE.events[i]=inc;else STORE.events.push(inc);
       changed++;
     });
+    /* 共编副本的清扫：权限被收回 / 归属方删了这场 → 这份本机副本没有家了（推也推不上：
+       ym_doc 没有给共编者的 insert 策略），扫掉。**自己的**活动不这么扫 —— 离线第二台
+       设备的本地工作要保住，cloudLoad 的 localKept 是同一条规矩。脏不脏都扫：
+       没权限的编辑留着只会一直报「没推上去」。 */
+    const b4=STORE.events.length;
+    STORE.events=STORE.events.filter(e=>!(e&&e._host&&!seen[e.id]));
+    if(STORE.events.length!==b4)changed++;
     if(changed){
       try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){}
       if(S.evId&&!STORE.events.some(e=>e&&e.id===S.evId))S.evId=STORE.events[0]?STORE.events[0].id:null;
@@ -1658,7 +1684,7 @@ function ownerGate(){
        `S.rc` 是最扎眼的一条：那张卡在每一次 render 都画，上一个人拍到一半的票据会浮在
        新账号的工作台上，一按保存就把 A 的票据传进 B 的网盘、记进 B 的账。 */
     PROFILE=null;PENDING=[];CODES={};JOINREQ=null;ACCEPTED=[];_accAt=0;
-    LEDGER=null;LEDGER_ERR='';POSTS=null;ADMIN=null;capStop();
+    LEDGER=null;LEDGER_ERR='';POSTS=null;ADMIN=null;HOSTACCTS=null;capStop();
     S.rc=null;S.draft=null;S.pOpen=null;S.mediaOpen=false;S.view='desk';
   }
   _storeOwner=SESSION.user.id;
@@ -1786,12 +1812,18 @@ async function cloudLoad(){
   if(stale())return;
   if(!canCloud()){startPoll();render();return;}   // pending → watch for the admin's approval
   stopPoll();loadCodes().then(pushShares);loadPending();loadLedger(1);loadJoin();
-  const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload');
+  const {data:rows,error}=await sb.from('ym_doc').select('kind,doc_id,payload,owner');
   /* 🔒 这一句是整条链上最要命的一道：下面就要拿这批行**覆盖 STORE 并 save()**。
      挂起期间换了人的话，写下去的就是上一个账号的名单/台本。 */
   if(stale())return;
   if(error){toast('云端读取失败：'+error.message);render();return;}
-  const cloudEvs=(rows||[]).filter(r=>r.kind==='event').map(r=>r.payload).filter(Boolean);
+  /* 共编 (0027)：别人工作台分享给我的活动行也会回来（owner ≠ 我）。落地时盖 _host 标记 ——
+     推送要按它找回原来的行、删除/公开/票据按它收窄。自己的行**剥掉** _host：协办推上来的
+     payload 里带着他那份标记，不剥的话归属工作台自己会把这场当成别人的。 */
+  const cloudEvs=(rows||[]).filter(r=>r.kind==='event').map(r=>{
+    const e2=r.payload;if(!e2)return e2;
+    if(r.owner&&r.owner!==uid)e2._host=r.owner;else delete e2._host;
+    return e2;}).filter(Boolean);
   const lib=(rows||[]).find(r=>r.kind==='library');
   // MERGE, never replace. cloud wins per event id; every local event NOT in the cloud is kept
   // (a second device's offline work). demo 行由 purgeDemo 在加载时滤掉。
@@ -2481,7 +2513,7 @@ function doSignOut(){clearPendingCode();   // never carry a code across identiti
     STORE=seed();
     try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){}
     S.evId=null;S.sel='header';S.rc=null;S.mediaOpen=false;S.view='desk';
-    if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});
+    if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;HOSTACCTS=null;S.auth=false;render();});
   })();}
 
 /* ---------- reuse prompts (read-time projections — the assets remember themselves) ---------- */
@@ -2589,14 +2621,20 @@ function applyMoney(id){if(S.readonly)return;const m=STORE.library.money.find(x=
    备份 —— 名册里删了人，老活动卡上仍读得出这场当年谁办的。
    ⚠ 只进 ym_doc（主办自己的树）：buildSaveBack / syncEventPost 都是白名单，
    模板和官网都带不走这两个字段 —— staff 名字不该出现在公开面上。 */
+/* 两种引用并存 (owner 2026-08-03 裁定「主办账号共编」)：
+   · {id,name}   名册的人 —— 仅标注（要共编得有主办账号）
+   · {uid,email} 主办账号 —— 真正的共编：ym_event_share (0027) 是服务端的门，
+     payload 里这两个字段只是显示。refKey 是两种引用的统一钥匙。 */
+function refKey(r){return r?(r.uid||r.id):null;}
 function ownName(ref){if(!ref)return '';
+  if(ref.uid)return ref.email||'主办账号';
   const r=STORE.library.resources.find(x=>x.id===ref.id);return (r&&r.name)||ref.name||'';}
 function ownerRowHtml(e){
   const cos=e.coOwners||[];
   const chip=(ref,i)=>{const co=i>=0;
-    const r=STORE.library.resources.find(x=>x.id===ref.id),a=r?codeOf(r):null;
-    return `<span class="pown${co?' co':''}" title="${co?'协办':'负责人'}${S.readonly?'':' · 点击换人'}">
-      <span onclick="${S.readonly?'':`ownPickOpen('${co?'co':'owner'}')`}">${esc(ownName(ref))}${a?' · '+esc(a.code):''}</span>
+    const r=ref.uid?null:STORE.library.resources.find(x=>x.id===ref.id),a=r?codeOf(r):null;
+    return `<span class="pown${co?' co':''}" title="${co?'协办':'负责人'}${ref.uid?' · 主办账号，在 TA 自己的主办台共同编辑':''}${S.readonly?'':' · 点击换人'}">
+      <span onclick="${S.readonly?'':`ownPickOpen('${co?'co':'owner'}')`}">${ref.uid?ico('key'):''}${esc(ownName(ref))}${a?' · '+esc(a.code):''}</span>
       ${S.readonly?'':`<span class="x" title="移除" onclick="event.stopPropagation();ownDel(${i})">✕</span>`}</span>`;};
   return `<div class="ownrow" onclick="event.stopPropagation()">
     <span class="l">负责人</span>
@@ -2610,25 +2648,59 @@ function ownerRowHtml(e){
 function ownPickOpen(kind){if(S.readonly)return;S.ownPick=kind;render();}
 function ownDel(i){const e=ev();if(!e||S.readonly)return;
   if(i<0)delete e.ownerRef;else (e.coOwners||[]).splice(i,1);
-  save();render();}
+  save();shareSync(e);render();}
 function ownAssign(pid){
   const e=ev(),kind=S.ownPick;if(!e||!kind)return;
   const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
-  const ref={id:p.id,name:p.name};
-  if(kind==='owner'){e.coOwners=(e.coOwners||[]).filter(c=>c.id!==pid);e.ownerRef=ref;}
+  ownPut(e,kind,{id:p.id,name:p.name},p.name);
+}
+function ownAssignAcct(uid2,email){
+  const e=ev(),kind=S.ownPick;if(!e||!kind)return;
+  ownPut(e,kind,{uid:uid2,email:email},(email||'主办账号'));
+}
+// 共同的落位：负责人升位去重、协办去重（refKey 对两种引用一视同仁），存盘 + 分享表对齐
+function ownPut(e,kind,ref,label){
+  const k=refKey(ref);
+  if(kind==='owner'){e.coOwners=(e.coOwners||[]).filter(c=>refKey(c)!==k);e.ownerRef=ref;}
   else{e.coOwners=e.coOwners||[];
-    if(!e.coOwners.some(c=>c.id===pid)&&!(e.ownerRef&&e.ownerRef.id===pid))e.coOwners.push(ref);}
-  S.ownPick=null;save();render();
-  toast(p.name+(kind==='owner'?' 已指定为负责人':' 已加入协办'));
+    if(!e.coOwners.some(c=>refKey(c)===k)&&refKey(e.ownerRef)!==k)e.coOwners.push(ref);}
+  S.ownPick=null;save();shareSync(e);render();
+  toast(label+(kind==='owner'?' 已指定为负责人':' 已加入协办')
+    +(ref.uid?' — TA 登录自己的主办台就能看到这场':''));
+}
+/* 分享表才是服务端的门：payload 里的 负责人/协办 只是显示。每次指派/移除都把指到
+   主办账号的那部分整份对齐进 ym_event_share（RPC 自己把门：归属工作台、已在名单上的
+   人、admin 才许调）。0027 还没跑时诚实说出来，别静默。 */
+function shareSync(e){
+  if(!canCloud()||!e)return;
+  const uids=[e.ownerRef].concat(e.coOwners||[]).filter(r=>r&&r.uid).map(r=>r.uid);
+  sb.rpc('ym_event_share_sync',{p_host:e._host||SESSION.user.id,p_doc:e.id,p_members:uids})
+    .then(({error})=>{if(!error)return;
+      toast(/does not exist|find the function|schema cache/i.test(String(error.message||''))
+        ?'共编还没接线 —— 先在 SQL editor 跑 0027 迁移'
+        :'共编名单没写上：'+error.message);});
+}
+let HOSTACCTS=null;   // ym_host_accounts()：服务端只给 admin 内容，别人恒空
+function loadHostAccts(){
+  if(HOSTACCTS!==null||!canCloud()||!PROFILE||!PROFILE.is_admin)return;
+  HOSTACCTS=[];
+  sb.rpc('ym_host_accounts').then(({data})=>{HOSTACCTS=data||[];if(S.ownPick)render();});
 }
 function ownPickCard(){
   const e=ev();if(!e||!S.ownPick)return '';
-  // 选负责人时协办仍在列表里 —— 点了就是「升为负责人」（ownAssign 会把 TA 从协办摘掉）；
-  // 选协办时两边都排除（同一个人不能又负责又协办）。
-  const taken=S.ownPick==='co'
-    ?new Set([e.ownerRef&&e.ownerRef.id].concat((e.coOwners||[]).map(c=>c.id)).filter(Boolean))
-    :new Set([e.ownerRef&&e.ownerRef.id].filter(Boolean));
-  const cand=STORE.library.resources.filter(r=>catOf(r)!=='goods'&&!r.archived&&!taken.has(r.id));
+  loadHostAccts();
+  // 选负责人时已在卡上的协办仍在列表里 —— 点了就是「升为负责人」（ownPut 会把 TA 从协办
+  // 摘掉）；选协办时两边都排除（同一个人不能又负责又协办）。refKey 对两种引用一视同仁。
+  const takenK=S.ownPick==='co'
+    ?new Set([refKey(e.ownerRef)].concat((e.coOwners||[]).map(refKey)).filter(Boolean))
+    :new Set([refKey(e.ownerRef)].filter(Boolean));
+  // 主办账号（admin 才拿得到名单）—— 指了就共编，排最前
+  const accts=(HOSTACCTS||[]).filter(a=>a.user_id!==SESSION.user.id&&!takenK.has(a.user_id));
+  const acctRows=accts.map(a=>`<div class="gaterow" style="cursor:pointer"
+      onclick="ownAssignAcct('${escJs(a.user_id)}','${escJs(a.email||'')}')">
+      <span class="gn">${ico('key')} ${esc(a.email||String(a.user_id).slice(0,8))}</span>
+      <span class="num" style="font-size:11px;color:var(--muted)">主办账号 · 可共编</span></div>`).join('');
+  const cand=STORE.library.resources.filter(r=>catOf(r)!=='goods'&&!r.archived&&!takenK.has(r.id));
   // 有账号的排前面 —— 负责人要在自己手机上跟这场活动，先看能登录的
   const bd=p=>{const a=codeOf(p);return a&&a.bound_at?0:1;};
   cand.sort((a,b)=>bd(a)-bd(b));
@@ -2638,10 +2710,12 @@ function ownPickCard(){
       <span class="num" style="font-size:11px;color:var(--muted)">${a?esc(a.code)+(a.bound_at?' ✓':''):'未发码'}</span></div>`;};
   return `<div class="drawerbg" onclick="S.ownPick=null;render()"></div>
     <div class="modal-g" style="width:min(380px,calc(100vw - 28px))"><div class="rvsec" style="margin:0">
-      <div class="hd"><span class="lbl">${S.ownPick==='owner'?'指定负责人':'添加协办'} · 从用户一览选</span>
+      <div class="hd"><span class="lbl">${S.ownPick==='owner'?'指定负责人':'添加协办'}</span>
         <button class="btn ghost sm" onclick="S.ownPick=null;render()">✕</button></div>
-      ${cand.length?cand.map(row).join(''):'<p class="note9">用户一览里还没有可选的人 — 先在「用户」页登记（或发邀请码）。</p>'}
-      <p class="note9" style="margin-top:8px">✓ = 已注册账号（能登录成员页）。</p>
+      ${acctRows?`<div class="lbl" style="margin:2px 0 5px">主办账号 — 指了就在 TA 自己的主办台共同编辑这场</div>${acctRows}`:''}
+      ${cand.length?`<div class="lbl" style="margin:${acctRows?'12px':'2px'} 0 5px">名册的人 — 仅标注在卡上（要共编得有主办账号）</div>${cand.map(row).join('')}`
+        :(acctRows?'':'<p class="note9">用户一览里还没有可选的人 — 先在「用户」页登记（或发邀请码）。</p>')}
+      <p class="note9" style="margin-top:8px">✓ = 已注册成员账号（能登录成员页）。</p>
     </div></div>`;
 }
 
@@ -2672,9 +2746,9 @@ function viewSheet(){
         <div class="c ok"><div class="n num">${rc[3]}</div><div class="l">到位</div></div>
       </div></div>
     <div class="strip"><div class="hd"><span class="lbl">收支 · 计划 / 实际</span>
-      <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}票据
+      ${e._host?'':`<label class="btn ghost sm" style="cursor:pointer">${ico('cam')}票据
         <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
-          onchange="rcShoot(this,{src:'host',evId:'${escJs(e.id)}'})"></label></div>
+          onchange="rcShoot(this,{src:'host',evId:'${escJs(e.id)}'})"></label>`}</div>
       <div class="mline"><span>收入</span><span class="num">${yen(mt.inPlan)} / ${yen(mt.inActual)}</span></div>
       <div class="mline"><span>支出</span><span class="num">${yen(mt.outPlan)} / ${yen(mt.outActual)}</span></div>
       <div class="mline total"><span>差额</span>
@@ -2708,13 +2782,14 @@ function viewSheet(){
           onclick="aiPhrase('e_notice','给嘉宾的通知','${escJs(e.name||'活动')}')">${ico('ai')}</button></div></label>
     <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:flex;
       gap:9px;align-items:center;flex-wrap:wrap" onclick="event.stopPropagation()">
-      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer">
+      ${e._host?'<span class="lbl">共编活动 — 公开到官网由创建它的工作台操作（官网卡片跟着作者走，两边都发会出两张）</span>'
+      :`<label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer">
         <input type="checkbox" style="width:auto" ${e.publicOn?'checked':''}
           onchange="pubEvent(this.checked)"> 公开到官网
       </label>
       ${e.publicOn?`<input style="flex:1;min-width:130px;padding:6px 9px;font-size:12.5px"
         placeholder="对外报名状态，如：报名中 · 女生余3" value="${esc(e.signup||'')}"
-        onchange="e_upd('signup',this.value)">`:'<span class="lbl">勾选后活动卡出现在官网</span>'}
+        onchange="e_upd('signup',this.value)">`:'<span class="lbl">勾选后活动卡出现在官网</span>'}`}
     </div>
   </div>`;
   const SCH=evSchedule(e);
@@ -3296,6 +3371,8 @@ function cloneEvent(srcId){
   STORE.events.push(ne);S.evId=ne.id;S.readonly=false;S.view='sheet';S.sel='header';S.gate=null;
   save();render();toast('已照这份台本开了新一场 — 改个日期就能办');}
 function delEvent(id){const e=id?STORE.events.find(x=>x.id===id):ev();if(!e)return;
+  // 共编副本删不得：行归别人的工作台（服务端本来也没有 delete 策略，这里把话说在前面）
+  if(e._host){toast('共编活动 — 只有创建它的工作台能删除');return;}
   // only 筹备中 (plan) events can be deleted — kicked-off or finished ones are protected
   if(evPhase(e)!=='plan'){toast('已启动或已结束的活动不能删除');return;}
   if((LEDGER||[]).some(r=>r.event_id===e.id&&r.status==='posted')){toast('这场已经有记账凭证，不能删除');return;}
@@ -4807,6 +4884,11 @@ function capShoot(inp,token){
 function rcShoot(inp,ctx){
   const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
   if(!canCloud()){toast(SESSION?'等主办方账号通过审核后才能记账':'票据要登录后才能入账 —— 台账在云端');return;}
+  /* 共编的一道总闸（四个入口共用这里，别再各修各的）：票据入的是**本人**的总账，
+     共编活动的账本在归属工作台 —— 从这里入账会把一场活动的账拆到两本里，
+     归属方的复盘对账还会显示「一致」。等跨工作台的台账再放开。 */
+  if(ctx&&ctx.evId){const e2=STORE.events.find(x=>x&&x.id===ctx.evId);
+    if(e2&&e2._host){toast('共编活动的票据请由创建它的工作台入账 —— 账本在那边');return;}}
   toast('识别票据中…');    // 相机圆钮 (fab menu) 已经不存在了 —— 这里没有菜单要关
   if(f.type==='application/pdf'){
     if(f.size>OCR_FILE_MAX){toast('这个 PDF 太大了（约 2MB 以内）');return;}
@@ -5790,9 +5872,9 @@ function viewReview(){
       <p class="note9" style="margin-top:6px">记下来，下一场就有得比 — 这是判断一场活动办得好不好的第一个数字。</p></div>
     <div class="rvsec"><div class="hd"><span class="lbl">台本 · 计划 → 实际</span></div>${rows||'<div class="empty">无环节</div>'}</div>
     <div class="rvsec"><div class="hd"><span class="lbl">收支 · 预算 → 实际</span>
-      <label class="btn ghost sm" style="cursor:pointer">${ico('cam')}补一张票据
+      ${e._host?'':`<label class="btn ghost sm" style="cursor:pointer">${ico('cam')}补一张票据
         <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none"
-          onchange="rcShoot(this,{src:'host',evId:'${escJs(e.id)}'})"></label></div>
+          onchange="rcShoot(this,{src:'host',evId:'${escJs(e.id)}'})"></label>`}</div>
       ${mline('收入',mt.inPlan,mt.inActual)}${mline('支出',mt.outPlan,mt.outActual)}
       <div class="mline total"><span>差额</span><span class="num ${mt.actualNet<0?'neg':'pos'}">${yen(mt.planNet)} → ${yen(mt.actualNet)}</span></div>
       ${rcEventBlock(e)}</div>
@@ -6582,7 +6664,7 @@ function viewDesk(){
         ${go2(`S.evId='${e.id}';goDay()`,'当天')}
         ${go2(`S.evId='${e.id}';goReview()`,'复盘')}
       </div>`}
-      <div class="dc-brief">${e.ownerRef?'负责人 '+esc(ownName(e.ownerRef))+' · ':''}环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">${ico('again')}再办一场</span>`:''}</div></div>`;};
+      <div class="dc-brief">${e._host?'共办 · ':''}${e.ownerRef?'负责人 '+esc(ownName(e.ownerRef))+' · ':''}环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">${ico('again')}再办一场</span>`:''}</div></div>`;};
   const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
     (groups[k].length?groups[k].map(evCard).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);
   return `<div class="main" style="max-width:640px;margin:0 auto">

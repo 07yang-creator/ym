@@ -52,10 +52,31 @@ owner 两条：**① ljzhujudy@gmail.com 升 co-admin；② 每场活动要有 o
 桩在网络边界验过五条：新活动出现 / 脏活动不覆盖 / 干净活动更新+归零 / 二次拉零渲染 /
 打字挡住、失焦后落地。
 
-⚠ **跨账号的「负责人/协办 共编」还没做** —— 问了 owner 三选一（主办账号共编 /
-共用一个登录 / 成员页编辑），等答案再动。若选主办账号共编：ym_event_share 表 +
-ym_doc 的 select/update 共享策略（保 ym_ok）+ 客户端 _host 标记 + 推送带原 owner +
-公开到官网/票据 留在归属工作台，先对抗式复查再上。
+### 跨账号共编已上线（owner 三选一裁定：**主办账号共编**）—— `0027` 待 SQL editor 跑
+
+owner 选了「指到主办账号 → TA 在自己的主办台共同编辑」。已实现：
+- **`0027_ym_event_share.sql`（owner 待跑）**：`ym_event_share(host,doc_id,member)` +
+  `ym_doc` 的 `select/update` 共享策略（**不开 insert/delete**，全部盖 `ym_ok()`）。
+  写名单只经 `ym_event_share_sync()`（security definer，门=归属/已在名单/admin，host 永不入表）；
+  `ym_host_accounts()` 只给 admin 返回「可选主办账号」名单。末尾 do $$ 自检。
+- **两种引用并存**：`ownerRef/coOwners` 里 `{id,name}`=名册（仅标注）、`{uid,email}`=主办账号（真共编）。
+  `refKey()` 是统一钥匙（去重/升位对两者一视同仁）。指派器多一段「主办账号」（admin 才拿得到）。
+- **`_host` 是本机路标**：cloudLoad + cloudRefresh 两条拉取路，别人的行盖 `_host=owner`、
+  自己的行剥掉；`save`/`cloudPushAll` 把共编活动按归属**分批** upsert（`owner=_host`，payload 剥 `_host`），
+  一批被拒（权限收回）不拖垮自己那批，并摘掉重试资格 → 下次 cloudRefresh 扫走无家副本。
+- **归属专属动作**（四处，共编者一律挡）：删除、公开到官网、票据入账（`rcShoot` 总闸 + 两个显眼按钮各自藏）。
+  理由：账本/官网卡片跟作者走，从共编端做会把一场活动的账拆两本、官网出两张。
+- 指派即授权：`ownPut/ownDel` 都跟 `shareSync`；`0027` 没跑时 toast 明说「先跑迁移」。
+
+桩在网络边界验过：拉取标记归一（别人的盖、自己的剥）、推送分批且 payload 无 `_host`、
+删除/公开/票据三闸、指派 account→`ym_event_share_sync(p_host,p_doc,[uid])`、picker 两段、
+共编 chip 带钥匙图标、desk「共办 ·」角标、清场回登录墙。套件 +7 条（迁移 2 + 客户端 5），
+两条既有 pin（delEvent 云删、cloudPushAll 可等）跟着新形状更新，全绿。
+
+⚠ **owner 待跑**：`0025_ym_join_cap_window.sql`（更早的）+ `0027_ym_event_share.sql`。
+两个都在 SQL editor 跑；0027 跑完 `ym_event_share_sync` 才不再 toast「还没接线」。
+⚠ 下一班若继续：**台账/总账仍是 per-account**（共编活动的钱只在归属工作台记）——
+owner 要「跨工作台一本账」的话是另一件事（`ym_entry` 的 host 边界要重画），先问。
 
 ## 同日第四条：左上角 ym = 回官网首页
 
