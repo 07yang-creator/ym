@@ -446,8 +446,8 @@
   .deskcard .dc-go:hover{background:rgba(201,163,86,.12)}
   .deskcard .dc-del:hover{color:var(--alarm)}
   /* kickoff bar (planning UI) + gate */
-  .kickoff{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:11px 14px;border-radius:10px}
-  .kickoff.plan{background:linear-gradient(90deg,rgba(201,163,86,.16),rgba(201,163,86,.03));border:1px solid var(--brass-dim)}
+  .kickoff{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0 0;padding:11px 14px;border-radius:10px}
+  .kickoff.plan,.kickoff.done{background:linear-gradient(90deg,rgba(201,163,86,.16),rgba(201,163,86,.03));border:1px solid var(--brass-dim)}
   .kickoff.run{background:var(--felt-up);border:1px solid var(--line)}
   .kickoff .st{font-size:12.5px;font-weight:700;color:var(--ok);letter-spacing:.04em}
   .kickoff .rem{font-size:11px;color:var(--muted)}
@@ -2606,17 +2606,25 @@ function viewSheet(){
   const schedBar=`<div class="schedbar">
     <span>${ico('go')}台本 ${e.rows.length} 个环节${totM?' · 全长 '+Math.floor(totM/60)+'小时'+(totM%60?(totM%60)+'分':''):''}</span>
     <span class="num">${e.start?esc(e.start):'--:--'}${endM!=null?' → 预计结束 '+esc(hm(endM)):''}</span></div>`;
-  // sits directly above the 台本 rows; when running it is status + button only — no extra copy (owner)
-  const kickoff=(e&&!S.readonly)?(e.status==='run'
+  // 收尾在页尾 (owner 2026-08-03)：这颗按钮只在「开跟踪」那一刻起作用，所以排完台本才轮到它。
+  // 已结束的活动没有「开始执行」可言 —— 同一个位置变成去「复盘」的门；
+  // 旧样子（对 done 的活动仍显示「开始跟踪执行」）一按会把活动拉回 run，是个坑。
+  // running 时只剩状态＋按钮，不加多余文案 (owner)。
+  const ph=evPhase(e);
+  const kickoff=(!S.readonly)?(e.status==='run'
     ?`<div class="kickoff run"><span class="st">● 执行跟踪中</span>
         <button class="btn sm" onclick="goExec('${e.id}')">▶ 执行看板</button></div>`
+    :(ph==='hot'||ph==='archived')
+    ?`<div class="kickoff done"><button class="btn big" onclick="goReview()">${ico('eye')}复盘</button>
+        <span class="rem">活动已结束 — 看计划和实际的差距，保存回资产库</span></div>`
     :`<div class="kickoff plan"><button class="btn big" onclick="enterExec()">${ico('go')}计划好了 · 开始跟踪执行</button>
         <span class="rem">把计划变成会自己提醒你的执行看板</span></div>`):'';
   return `<div class="wrap"><div class="panel">${libPanel()}</div><div class="main${S.readonly?' ro':''}">
     ${sw}${roBanner}
     <div class="hintbar">一页台本＝三份资产：<b>台本</b>（下面的行）· <b>资源</b>（行上的牌，点牌翻状态：虚线未联系→铜边已确认→实牌到位）· <b>收支</b>（圆角牌，点填实际额）。左侧的资产库点选应用。</div>
-    ${strips}${giveStrip(e)}${hd}${kickoff}${schedBar}${rows}
+    ${strips}${giveStrip(e)}${hd}${schedBar}${rows}
     <button class="addrow" onclick="addRow()">＋ 添加环节</button>
+    ${kickoff}
   </div></div>
   <button class="fab" onclick="S.drawer=true;render()">${ico('books')}资产库</button>
   ${S.gate?gateCard():''}`;
