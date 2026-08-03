@@ -267,6 +267,9 @@
     border-bottom:1px solid var(--line);margin-bottom:14px}
   .dayhead .d{font-size:10px;color:var(--muted);letter-spacing:.18em}
   .dayhead .d .bk{color:var(--brass);cursor:pointer}
+  /* 页头导航一律是 dc-go 药丸（owner 2026-08-03 二次点名：文字链不算「同一款按钮」）——
+     dnav = 装着药丸的眉行 */
+  .dayhead .d.dnav{display:flex;align-items:center;gap:8px}
   .dayhead .t{font-size:15px;font-weight:500;margin-top:4px}
   .ratio{text-align:right}
   .ratio .n{font-family:Oswald,sans-serif;font-size:22px;line-height:1;font-variant-numeric:tabular-nums}
@@ -3632,7 +3635,7 @@ function viewDay(){
   const inner=S.dayTab==='run'?dayRun(e):S.dayTab==='rec'?dayRec(e):dayBoard(e);
   return `<div class="main" style="max-width:560px;margin:0 auto;padding-bottom:130px">
     <div class="dayhead">
-      <div><div class="d"><span class="bk" onclick="go('desk')">← 列表</span> · ${fmtDate(e.date)}${e.start?' '+esc(e.start):''}</div>
+      <div><div class="d dnav"><span class="dc-go" onclick="go('desk')">← 列表</span><span>${fmtDate(e.date)}${e.start?' '+esc(e.start):''}</span></div>
         <div class="t">${esc(e.name)}</div></div>
       <div style="display:flex;align-items:center;gap:12px"><span class="dc-go" onclick="go('sheet')">计划</span>${ratioHtml(e)}</div>
     </div>${inner}</div>
@@ -3929,7 +3932,7 @@ function signupText(e){const c=capOf(e);return e.participants.length+(c?'/'+c:''
 function viewSignup(){
   const e=ev();if(!e){S.view='desk';return viewDesk();}
   return `<div class="main" style="max-width:640px;margin:0 auto">
-    <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('desk')">← 工作台</span> · 报名情况</div>
+    <div class="dayhead"><div><div class="d dnav"><span class="dc-go" onclick="go('desk')">← 工作台</span><span>报名情况</span></div>
       <div class="t">${esc(e.name)} · ${fmtDate(e.date)}</div></div></div>
     ${signupBlock(e)}
     <p class="note9">公开到官网之后，报名会自己进来；「拟邀请」是你点名叫的人，
@@ -5205,7 +5208,7 @@ function viewLedger(){
   const rows=ledRows(),t=ledTotals(rows),fy=ledFy();
   const F=(k,l)=>`<span class="ledf ${(S.ledF||'all')===k?'on':''}" onclick="S.ledF='${k}';render()">${l}</span>`;
   return `<div class="main" style="max-width:760px;margin:0 auto">
-    <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('desk')">← 工作台</span> · 收入及开支总账</div>
+    <div class="dayhead"><div><div class="d dnav"><span class="dc-go" onclick="go('desk')">← 工作台</span><span>收入及开支总账</span></div>
       <div class="t">每一笔都来自一张票据 —— 这是<b>实际发生</b>的钱。</div></div></div>
     <div class="evsw" style="flex-wrap:wrap">
       <select onchange="S.ledFy=this.value==='all'?'all':Number(this.value);render()">
@@ -5403,8 +5406,8 @@ function postEditor(){
   const p=S.postEdit;
   const isNews=p.kind==='news';
   return `<div class="main" style="max-width:680px;margin:0 auto">
-    <div class="dayhead"><div><div class="d"><span class="bk" onclick="postClose()">← 发布列表</span>
-      · ${isNews?'新闻':'文章'}${p.published?' · 已发布':' · 草稿'}</div></div></div>
+    <div class="dayhead"><div><div class="d dnav"><span class="dc-go" onclick="postClose()">← 发布列表</span>
+      <span>${isNews?'新闻':'文章'}${p.published?' · 已发布':' · 草稿'}</span></div></div></div>
     <label class="fld" style="display:block;margin:9px 0"><span class="lbl">标题</span>
       <input id="po_title" value="${esc(p.title||'')}" placeholder="${isNews?'一句话新闻标题':'文章标题'}"></label>
     <div style="display:flex;gap:8px">
@@ -5711,7 +5714,7 @@ function viewReview(){
       <span class="c3">${r.actual?esc(r.actual):''}</span></div>`;}).join('');
   const mline=(l,p2,a2)=>`<div class="mline"><span>${l}</span><span class="num">${yen(p2)} → ${yen(a2)}</span></div>`;
   return `<div class="main" style="max-width:640px;margin:0 auto">
-    <div class="dayhead"><div><div class="d"><span class="bk" onclick="go('desk')">← 列表</span> · 复盘</div>
+    <div class="dayhead"><div><div class="d dnav"><span class="dc-go" onclick="go('desk')">← 列表</span><span>复盘</span></div>
       <div class="t">${esc(e.name)} · ${fmtDate(e.date)}</div></div>
       <span class="dc-go" onclick="go('sheet')">计划</span></div>
     <div class="rvsec matchsec"><div class="hd"><span class="lbl">牵手成功 · 这场最重要的成果</span></div>
@@ -6052,9 +6055,9 @@ function viewExec(){
   const mt=moneyTodo(e),ign=ignoredTasks(e),od=overdueTasks(e);
   return `<div class="main"><div class="extree">
     ${/* 页头导航 (owner 2026-08-03)：← 一律回「列表」（工作台）—— owner 在真机上把
-         回计划的箭头当成回列表，迷路了。跳「计划」改成右侧的 dc-go 药丸，和工作台
-         卡片上同一款；三个阶段页（执行看板/当天/复盘）一个口径。 */''}
-    <div class="exback"><span class="bk" onclick="go('desk')">← 列表</span><span>· 执行看板</span>
+         回计划的箭头当成回列表，迷路了。owner 同日二次点名：左右两个导航要「同一款按钮」
+         （dc-go 药丸，工作台卡片同款），文字链不算数。所有页头一个口径。 */''}
+    <div class="exback"><span class="dc-go" onclick="go('desk')">← 列表</span><span>执行看板</span>
       <span class="dc-go" style="margin-left:auto" onclick="go('sheet')">计划</span></div>
     <div style="text-align:center"><span style="font-size:13px;color:var(--stock);font-weight:600">${esc(e.name)}</span></div>
     ${od.length?`<div class="exchase">${ico('warn')}${od.length} 项已过截止还没完成 <span class="go" onclick="exRemindOverdue()">去催 →</span></div>`:''}
