@@ -98,10 +98,37 @@ empirical 验**（复查 agent 同样卡在这），是静态分析 + 对着真�
 owner 跑 0027 时末尾 do $$ 自检会验触发器建上没有。客户端 M2 门在浏览器验过（归属见 ✕、
 非 admin 共编者账号牌无 ✕、admin 有）。PoC 在 scratchpad/poc.sql。
 
-⚠ **owner 待跑**：`0025_ym_join_cap_window.sql`（更早的）+ **重写后的** `0027_ym_event_share.sql`。
-两个都在 SQL editor 跑；0027 跑完 `ym_event_share_sync` 才不再 toast「还没接线」。
-**若你在复查之前已经 apply 过旧 0027**：重新跑一遍这份（幂等：drop policy if exists +
-create or replace + create table if not exists），它会补上触发器和收紧的策略。
+### 迁移落地状态（2026-08-03 用 PostgREST 探针**实测**，不是听报告）
+
+owner 报「025, 027 applied」。**实测：0027 没有落地。**
+
+| | 实测 | 判读 |
+|---|---|---|
+| `ym_doc`（对照，早就有） | `GET /rest/v1/ym_doc` → **200 []** | 探针本身通，schema cache 正常 |
+| `ym_code_list()`（对照，0 参数、对 anon revoke） | **401 / 42501 permission denied** | **存在**的函数长这样 |
+| `ym_join_cap_ok(p_host)`（0024） | **401 / 42501** | 0024 在 |
+| `ym_host_accounts()`（0027，0 参数、签名正确） | **404 / PGRST202** | **不存在** |
+| `ym_event_share_sync(p_host,p_doc,p_members)`（0027，具名参数正确） | **404 / PGRST202** | **不存在** |
+| `ym_event_share`（0027 建的表） | **404 / PGRST205**，hint「Perhaps you meant 'public.ym_share'」 | **表没建** |
+
+⚠ **探针的坑，先记下来**：不带参数或参数名写错时，**存在的函数也回 404 PGRST202**
+（第一轮我就是这么误判的：拿 `{}` 打 `ym_join_apply` 也 404）。**只有拿对签名、并且和
+一个「存在但对 anon 无权」的函数对照，404 才说明「真的没有」** —— `ym_code_list()`
+就是那个对照（同样 0 参数、同样 revoke from anon，回 401 而不是 404）。
+判据同「gas.ok:true 只说明部署活着」「环境变量有值 ≠ 钥匙有权限」：**探针要能区分
+「没有」和「没权限」，否则它只会让你安心。**
+
+**owner 要做的**：在 SQL editor 里先确认一句 —— `select to_regclass('public.ym_event_share');`
+回 `null` 就是没建。然后**重跑一遍 `0027_ym_event_share.sql` 并盯着输出**：
+多半是上次某一句报错、后面整段没执行（编辑器不一定把整个脚本包成事务）。
+成功的标志是末尾那句 `notice: 0027 生效：… + 夺行防护 + …`；自检会在触发器没建上时
+直接 raise。跑完再打一次上面那个 `ym_host_accounts` 探针，**401 才算真上线**（404 = 还没有）。
+（`ym_event_share_sync` 没上线时，指派主办账号会 toast「共编还没接线 —— 先跑 0027 迁移」，
+这条提示是对的，不用改。）
+
+- `0025_ym_join_cap_window.sql`：**远端验不了**（它只是重写 `ym_join_apply` 的函数体，
+  外面看不出差别）。owner 报已跑，且它末尾自带 do $$ 自检（0024 不在就会 raise）—— 采信。
+- `0026_ym_coadmin.sql`：✅ 已生效（owner 截图里 ljzhujudy 已批准、「管理」tab 已出现）。
 ⚠ 下一班若继续：**台账/总账仍是 per-account**（共编活动的钱只在归属工作台记）——
 owner 要「跨工作台一本账」的话是另一件事（`ym_entry` 的 host 边界要重画），先问。
 
