@@ -100,7 +100,27 @@ owner 跑 0027 时末尾 do $$ 自检会验触发器建上没有。客户端 M2 
 
 ### 迁移落地状态（2026-08-03 用 PostgREST 探针**实测**，不是听报告）
 
-owner 报「025, 027 applied」。**实测：0027 没有落地。**
+**最终：0024–0027 全部落地。⚠ 新增 `0028_ym_share_grants.sql` 待跑（见本节末）。**
+
+第一次报「applied」时实测**没进去**（下表是当时的证据，留档 —— 说明「跑过了」不等于
+「进去了」）；owner 重跑后再测，三个对象都在：
+`ym_event_share` 表 **200**、`ym_host_accounts()` **200**、
+`ym_event_share_sync(具名参数)` **400 P0001 'not an organizer'**（= 函数存在、且它自己
+第一道门对匿名调用者生效）。
+
+🔴 **但这一轮探针又抓到一条**：上面两个函数**匿名就能执行到函数体**（一个回 200、
+一个回自己的 P0001），而对照 `ym_code_list()` 回 **401 42501**。根因 ——
+**Supabase 对 public schema 配了 default privileges，新建函数自动 grant execute 给 anon**；
+`revoke all ... from public` 收的是 PUBLIC 伪角色那份，**收不掉显式授给 anon 的那份**。
+0015 的写法（`from public, anon`）是对的，0027 只写了 public。
+**没有真泄漏**（host_accounts 的 admin 判定对 null uid 回 0 行；share_sync 第一句就 raise），
+但「只授权给 authenticated」这层本该在而不在 —— 两层里少一层。
+→ **`0028_ym_share_grants.sql`**：对 anon 收回两个函数的 EXECUTE，自检用
+`has_function_privilege` 双向验（anon 不能、authenticated 能），**并顺带确认 0027 的
+H1 夺行触发器 `ym_doc_keys_immutable` 真在库里**（探针够不着 pg_trigger，只能在库里问）。
+0027 已 apply，**不回头改它**。
+
+<details><summary>第一次报 applied 时的实测证据（留档）</summary>
 
 | | 实测 | 判读 |
 |---|---|---|
@@ -118,13 +138,21 @@ owner 报「025, 027 applied」。**实测：0027 没有落地。**
 判据同「gas.ok:true 只说明部署活着」「环境变量有值 ≠ 钥匙有权限」：**探针要能区分
 「没有」和「没权限」，否则它只会让你安心。**
 
-**owner 要做的**：在 SQL editor 里先确认一句 —— `select to_regclass('public.ym_event_share');`
-回 `null` 就是没建。然后**重跑一遍 `0027_ym_event_share.sql` 并盯着输出**：
-多半是上次某一句报错、后面整段没执行（编辑器不一定把整个脚本包成事务）。
-成功的标志是末尾那句 `notice: 0027 生效：… + 夺行防护 + …`；自检会在触发器没建上时
-直接 raise。跑完再打一次上面那个 `ym_host_accounts` 探针，**401 才算真上线**（404 = 还没有）。
-（`ym_event_share_sync` 没上线时，指派主办账号会 toast「共编还没接线 —— 先跑 0027 迁移」，
-这条提示是对的，不用改。）
+当时的处置：`select to_regclass('public.ym_event_share');` 回 null 即没建 → 重跑并盯末尾
+`notice: 0027 生效…`（编辑器不一定把整个脚本包成事务，中途报错后面整段就不执行）。
+owner 重跑后已解决。
+
+</details>
+
+**owner 现在要做的**：SQL editor 跑 `0028_ym_share_grants.sql`，看到
+`notice: 0028 生效：anon 已收回两个函数的 EXECUTE；0027 的夺行触发器与共享策略都在。` 即可。
+跑完复验一句 —— 下面这条应当从 200 变成 **401**：
+
+```
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  'https://ugkopxmeqsbtjeimultz.supabase.co/rest/v1/rpc/ym_host_accounts' \
+  -H 'apikey: <publishable key>' -H 'content-type: application/json' -d '{}'
+```
 
 - `0025_ym_join_cap_window.sql`：**远端验不了**（它只是重写 `ym_join_apply` 的函数体，
   外面看不出差别）。owner 报已跑，且它末尾自带 do $$ 自检（0024 不在就会 raise）—— 采信。
