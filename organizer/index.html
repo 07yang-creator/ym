@@ -4098,8 +4098,16 @@ function recSendText(said){
   fetch(API+'/api/voice',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({text:said,roster:ymRoster(),
       user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
-  .then(r=>r.json()).then(res=>{S.recPhase='idle';S.draft=res;render();})
-  .catch(e2=>{S.recPhase='idle';toast('识别失败：'+e2.message);render();});
+  .then(r=>r.json()).then(res=>{
+    S.recPhase='idle';
+    /* 转写是在本机做的，所以**话一定听到了**；模型只负责「这句话要做什么」。
+       两件事分开说，别再让人以为是麦克风或识别坏了（owner 2026-08-03 就是被这句话误导的）。
+       而且这句话不能丢：模型不可用时，把听到的原话摆在卡片上，主办照着自己点一下就行。 */
+    S.draft=Object.assign({},res,{transcript:res.transcript||said,
+      say:res.unavailable?('听清了 —— 但这句话要交给模型判断「你想做什么」，而模型现在不可用。'
+        +'先照着下面这句自己点一下；要恢复请看设置里的额度。'):res.say});
+    render();})
+  .catch(e2=>{S.recPhase='idle';toast('没送出去：'+e2.message+' —— 听到的是「'+said+'」');render();});
 }
 function recStartMR(){
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
