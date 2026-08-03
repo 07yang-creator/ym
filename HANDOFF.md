@@ -73,8 +73,35 @@ owner 选了「指到主办账号 → TA 在自己的主办台共同编辑」。
 共编 chip 带钥匙图标、desk「共办 ·」角标、清场回登录墙。套件 +7 条（迁移 2 + 客户端 5），
 两条既有 pin（delEvent 云删、cloudPushAll 可等）跟着新形状更新，全绿。
 
-⚠ **owner 待跑**：`0025_ym_join_cap_window.sql`（更早的）+ `0027_ym_event_share.sql`。
+### 🔴 上线前对抗式复查抓到 1 个 HIGH（夺行）+ 5 条已一并修进 0027 —— 判据留档
+
+上线后立刻跑了一轮 RLS 越权复查（房规：每次实质改动前后都要）。**抓到一条 HIGH，
+0027 已按它重写**（文件原地改，因为还没 apply —— 不留一个可单独 apply 的漏洞版本）：
+
+- 🔴 **H1 夺行**：RLS 多条 permissive 策略，**USING 和 WITH CHECK 各自 OR**，不要求同一条
+  两半都过。ym_doc 上除本文件两条，还有 0008 的 `ym_doc_all`（FOR ALL，with check=owner=auth.uid()）。
+  于是共编者能 `update ym_doc set owner=自己 where owner=原主办…` —— USING 过 shared_upd、
+  WITH CHECK 过 ym_doc_all —— **把整行夺走，原主办永久被踢、无 UI 可恢复**。
+  修：`ym_doc_keys_immutable` BEFORE UPDATE 触发器钉死 owner/kind/doc_id（WITH CHECK 看不到
+  OLD，只有触发器能比）。**没重写 0008 的 ym_doc_touch**（那个 updated_at 触发器另有用途）。
+  正常 upsert 一列都不改这三个，不受影响。**判据：RLS 里 `for all` 的 with check 会漏进
+  别的策略的 update —— 加共享 update 策略时，先数一遍这张表还有哪些 permissive with check。**
+- M2 只有归属/admin 能**移除**共编（sharee 只能加，防踢人换锁）；客户端对应把账号牌的 ✕ 藏掉
+- M1 只加 **approved** 的 ym_member（挡潜伏授权：志愿者账号今天无害，被批成主办就凭空得权）
+- M3 两个 definer 函数 + 触发器函数都带 `pg_temp`；L4 分享表 DML 对 authenticated 收回（唯一入口=RPC）
+- L2 `array_remove(...,null)` 防收回权限静默 no-op；L1 member_sel 也盖 ym_ok()（让「全部盖」成真话）
+- H2（**owner 知情即可，有意保留**）：admin 插一行 share 就能读/改任意主办的活动 payload。
+  admin=平台运营（07.yang+ljzhujudy），坏授权/夺行善后要靠它；0027 之前 ym_doc 是 owner-only。
+
+⚠ 环境里没有 postgres server（只有 libpq 客户端 + initdb，无 Docker），**这轮 RLS 没能在真库
+empirical 验**（复查 agent 同样卡在这），是静态分析 + 对着真文件核对 + 标准触发器模式。
+owner 跑 0027 时末尾 do $$ 自检会验触发器建上没有。客户端 M2 门在浏览器验过（归属见 ✕、
+非 admin 共编者账号牌无 ✕、admin 有）。PoC 在 scratchpad/poc.sql。
+
+⚠ **owner 待跑**：`0025_ym_join_cap_window.sql`（更早的）+ **重写后的** `0027_ym_event_share.sql`。
 两个都在 SQL editor 跑；0027 跑完 `ym_event_share_sync` 才不再 toast「还没接线」。
+**若你在复查之前已经 apply 过旧 0027**：重新跑一遍这份（幂等：drop policy if exists +
+create or replace + create table if not exists），它会补上触发器和收紧的策略。
 ⚠ 下一班若继续：**台账/总账仍是 per-account**（共编活动的钱只在归属工作台记）——
 owner 要「跨工作台一本账」的话是另一件事（`ym_entry` 的 host 边界要重画），先问。
 

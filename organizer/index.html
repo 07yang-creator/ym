@@ -2631,11 +2631,17 @@ function ownName(ref){if(!ref)return '';
   const r=STORE.library.resources.find(x=>x.id===ref.id);return (r&&r.name)||ref.name||'';}
 function ownerRowHtml(e){
   const cos=e.coOwners||[];
+  /* 谁能收回共编授权：只有**归属工作台**（我不是共编副本 = !e._host）或 admin。
+     M2（复查）：共编者只能加、不能踢人 —— 服务端 ym_event_share_sync 已经把这道门，
+     这里对应地把账号牌上的 ✕ 藏掉，别显示一个按了没用（服务端会拒）的移除。
+     名册牌（纯标注、无分享行）谁都能改，照旧带 ✕。 */
+  const canRevoke=!e._host||!!(PROFILE&&PROFILE.is_admin);
   const chip=(ref,i)=>{const co=i>=0;
     const r=ref.uid?null:STORE.library.resources.find(x=>x.id===ref.id),a=r?codeOf(r):null;
+    const delOk=!S.readonly&&(!ref.uid||canRevoke);
     return `<span class="pown${co?' co':''}" title="${co?'协办':'负责人'}${ref.uid?' · 主办账号，在 TA 自己的主办台共同编辑':''}${S.readonly?'':' · 点击换人'}">
       <span onclick="${S.readonly?'':`ownPickOpen('${co?'co':'owner'}')`}">${ref.uid?ico('key'):''}${esc(ownName(ref))}${a?' · '+esc(a.code):''}</span>
-      ${S.readonly?'':`<span class="x" title="移除" onclick="event.stopPropagation();ownDel(${i})">✕</span>`}</span>`;};
+      ${delOk?`<span class="x" title="移除" onclick="event.stopPropagation();ownDel(${i})">✕</span>`:''}</span>`;};
   return `<div class="ownrow" onclick="event.stopPropagation()">
     <span class="l">负责人</span>
     ${e.ownerRef?chip(e.ownerRef,-1):(S.readonly?'<span class="l">未指定</span>'
