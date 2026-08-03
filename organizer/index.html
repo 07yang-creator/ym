@@ -385,28 +385,26 @@
   .rvrow .gap.late{color:var(--alarm)}
   .rvrow .gap.early,.rvrow .gap.ontime{color:var(--ok)}
   .rvrow .gap.miss{color:var(--muted)}
-  /* ===== 复盘媒体库 —— 打码后的活动照片；缩略图来自 Drive，本页不存字节 ===== */
-  .mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px}
-  @media(min-width:520px){.mgrid{grid-template-columns:repeat(4,1fr)}}
-  .mtile{position:relative;aspect-ratio:1/1;border:1px solid var(--line);border-radius:4px;
-    overflow:hidden;background:var(--felt);cursor:pointer}
-  .mtile img{width:100%;height:100%;object-fit:cover;display:block}
-  .mtile .bn{display:none}
-  .mtile.bad{display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:5px;padding:6px;text-align:center}
-  .mtile.bad img{display:none}
-  .mtile.bad .bn{display:block;font-size:10px;color:var(--stock-dim);word-break:break-all;
-    max-height:3.2em;overflow:hidden}
-  .mtile .x{position:absolute;top:3px;right:3px;z-index:2;width:20px;height:20px;border-radius:50%;
-    background:rgba(8,12,10,.6);color:var(--stock-dim);display:flex;align-items:center;
-    justify-content:center;font-size:10px}
-  /* 灯箱在 .modal-g 外面做兄弟节点 —— modal-g 带 transform，fixed 子孙会被它收编（同 rfab 那条 iOS 坑） */
-  .mlight{position:fixed;inset:0;z-index:52;background:rgba(8,12,10,.93);display:flex;
-    flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:14px}
-  .mlight img{max-width:100%;max-height:70vh;object-fit:contain;border-radius:4px}
-  .mlight .mcap{font-size:11px;color:var(--stock-dim);max-width:90vw;overflow:hidden;
-    text-overflow:ellipsis;white-space:nowrap}
-  .mlight .mnav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+  /* ===== 复盘媒体库 —— 打码后的活动照片。owner 2026-08-03：「要的是能滚着看的相册，
+     不是缩略图列表」。所以整屏一栏、照片按原比例铺满宽度、直接往下滚 ——
+     没有九宫格、没有点开再看一层、也没有任何指向网盘的链接（owner：没要那个）。
+     字节不在本页：src 指向 Drive 的缩略图服务，这里只存引用。 ===== */
+  .mfull{position:fixed;inset:0;z-index:52;background:var(--felt);display:flex;flex-direction:column}
+  .mfull .mhd{display:flex;align-items:center;gap:10px;padding:12px 14px;
+    border-bottom:1px solid var(--line);background:var(--felt)}
+  .mroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 20px}
+  .mroll .in{max-width:640px;margin:0 auto}    /* 电脑上别把照片拉成一整屏宽 */
+  .mshot{position:relative;border:1px solid var(--line);border-radius:6px;overflow:hidden;
+    background:#0e1512;margin-bottom:12px}
+  .mshot img{width:100%;height:auto;display:block}
+  .mshot .bn{display:none}
+  .mshot.bad{padding:18px 12px;text-align:center}
+  .mshot.bad img{display:none}
+  .mshot.bad .bn{display:block;font-size:11px;color:var(--stock-dim);word-break:break-all}
+  .mshot .x{position:absolute;top:6px;right:6px;z-index:2;width:26px;height:26px;border-radius:50%;
+    background:rgba(8,12,10,.55);color:var(--stock-dim);display:flex;align-items:center;
+    justify-content:center;font-size:11px;cursor:pointer}
+  .mfoot{padding:10px 12px;border-top:1px solid var(--line);background:var(--felt)}
   .exports{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
   .sbitem{display:flex;gap:9px;align-items:center;width:100%;text-align:left;padding:9px 11px;
     border:1px dashed var(--line);border-radius:4px;margin-bottom:6px;color:var(--stock-dim);font-size:12.5px}
@@ -1583,7 +1581,7 @@ function ownerGate(){
        新账号的工作台上，一按保存就把 A 的票据传进 B 的网盘、记进 B 的账。 */
     PROFILE=null;PENDING=[];CODES={};JOINREQ=null;ACCEPTED=[];_accAt=0;
     LEDGER=null;LEDGER_ERR='';POSTS=null;ADMIN=null;capStop();
-    S.rc=null;S.draft=null;S.pOpen=null;S.mediaOpen=false;S.mediaN=null;S.view='desk';
+    S.rc=null;S.draft=null;S.pOpen=null;S.mediaOpen=false;S.view='desk';
   }
   _storeOwner=SESSION.user.id;
   try{localStorage.setItem('jjym_owner',SESSION.user.id);}catch(e){}
@@ -2124,7 +2122,7 @@ function render(){
     window.ymSanitize.into($('po_body'),S.postEdit.body_html||'');
   if(S.exTask)positionExDlg();   // anchor the floating task detail next to its node
 }
-function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;S.mediaOpen=false;S.mediaN=null;if(v!=='sheet')S.readonly=false;
+function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;S.mediaOpen=false;if(v!=='sheet')S.readonly=false;
   if(v==='people')loadAccepted();          // 本人申报的数字来自 accepted 行，不在轮询里
   if(v==='ledger'){loadAccepted();loadLedger();}   // 自费脚注 + 行，都要有数据
   if(v==='signup')loadPending();                   // 待确认的报名（join）要立刻显示，别等 60 秒
@@ -2401,7 +2399,7 @@ function doSignOut(){clearPendingCode();   // never carry a code across identiti
     clearTimeout(_pushT);
     STORE=seed();
     try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){}
-    S.evId=null;S.sel='header';S.rc=null;S.mediaOpen=false;S.mediaN=null;S.view='desk';
+    S.evId=null;S.sel='header';S.rc=null;S.mediaOpen=false;S.view='desk';
     if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;S.auth=false;render();});
   })();}
 
@@ -2802,27 +2800,45 @@ function openFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);const f=r&&(r.f
    Drive 的 <活动 · 日期>/照片/，payload 里只留 {id,name,driveId,url,ts} 引用 ——
    和 attachTo 同一条底线「不往 ym_doc.payload 加新字节」；不同的是这里没有 data: 退路：
    Drive 没接线就当面拒收，新面不背老包袱。
-   缩略图直接指 drive.google.com/thumbnail —— 浏览器登着有权限的 Google 账号、或 owner 把
-   根目录设成「知道链接的人可查看」时才显示得出来；显示不出来就降级成文件名格子，
-   「在网盘打开」照常可用，并露一行提示把两条出路说清。 */
+   图直接指 drive.google.com/thumbnail —— 浏览器登着有权限的 Google 账号、或根目录设成
+   「知道链接的人可查看」时才显示得出来；显示不出来就降级成文件名，并露一行提示。
+   ⚠ 2026-08-03 owner 两条：① 要的是**能滚着看的相册**，不是缩略图列表（所以整屏一栏、
+   原比例、直接滚，灯箱和九宫格都撤了）；② **不要指向网盘的链接**（「在网盘打开」「下载」
+   都撤了，driveThumb 是仅剩的取图出口）。 */
 function mediaList(e){return ((e&&e.media)||[]).slice().sort((a,b)=>(a.ts||0)-(b.ts||0));}
-// Drive 文件 id 只该有 [A-Za-z0-9_-]；先洗再拼，这两个函数是仅有的取图出口
+// Drive 文件 id 只该有 [A-Za-z0-9_-]；先洗再拼。这是仅有的取图出口
 function driveThumb(id,w){const c=String(id||'').replace(/[^\w-]/g,'');
   return c?('https://drive.google.com/thumbnail?id='+c+'&sz=w'+(w||400)):'';}
-function driveDown(id){const c=String(id||'').replace(/[^\w-]/g,'');
-  return c?('https://drive.google.com/uc?export=download&id='+c):'';}
-function mediaOpen(){S.mediaOpen=true;S.mediaN=null;render();}
-function mediaClose(){S.mediaOpen=false;S.mediaN=null;render();}
-function mediaShow(i){S.mediaN=i;render();}
-function mediaStep(d){const n=mediaList(ev()).length;if(!n)return;
-  S.mediaN=(((S.mediaN||0)+d)%n+n)%n;render();}
-function mediaOpenDrive(i){const m=mediaList(ev())[i];if(m)openAtt({url:m.url,name:m.name});}
-function mediaDownload(i){const m=mediaList(ev())[i];if(!m)return;const u=driveDown(m.driveId);
-  if(u)window.open(u,'_blank','noopener');else openAtt({url:m.url,name:m.name});}
-// 移除只摘引用 —— Drive 上那份留着（代理故意没有删除能力，和附件同一处置）
-function mediaDel(id){const e=ev();if(!e||!e.media)return;
-  if(!confirm('从媒体库移除这张？网盘上那份还在，要删得去 Drive 手删。'))return;
-  e.media=e.media.filter(x=>x.id!==id);S.mediaN=null;save();render();}
+function mediaOpen(){S.mediaOpen=true;render();}
+function mediaClose(){S.mediaOpen=false;render();}
+/* 移除 = 连云端那份一起丢进回收站（owner 2026-08-03：「deletion may delete the photo from
+   drive too」—— 在那之前只摘条目、要主办自己去网盘手删）。三道限制在服务端和 Apps Script
+   那边（只碰 ym 目录树 / 只进回收站 / 要密钥），这里只负责两件事：
+     · **先删字节、成功了才摘条目** —— 反过来的话，删失败就留下一张谁也够不着的孤儿照片；
+     · 删不掉就**留着条目并说清楚**，别让屏幕显示「已经没了」而网盘里还在。 */
+async function mediaDel(id){const e=ev();if(!e||!e.media)return;
+  const m=(e.media||[]).find(x=>x.id===id);if(!m)return;
+  if(!confirm('删除这张照片？\n云端那份会一起丢进网盘的回收站（30 天内还能还原）。'))return;
+  if(m.driveId){
+    const r=await upSerial(()=>mediaTrash(m.driveId));
+    if(r==='unwired'){toast('云端删除还没接线 —— 先没动。请让管理员配好 YM_DRIVE_SECRET');return;}
+    if(r==='denied'){toast('这个账号不能删云端的照片 —— 请用主办账号');return;}
+    if(r!==true){toast('云端没删成（'+r+'）—— 这条先留着，等会儿再试');return;}
+  }
+  e.media=e.media.filter(x=>x.id!==id);save();render();toast('已删除（网盘回收站里还能找回）');}
+async function mediaTrash(driveId){
+  try{
+    const r=await upFetch(API+'/api/ym_file',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({user_token:(await liveToken())||undefined,
+        action:'trash_media',file_id:String(driveId||'')})});
+    if(r.status===503)return 'unwired';
+    if(r.status===401||r.status===403)return 'denied';
+    if(!r.ok)return 'HTTP '+r.status;
+    const j=await r.json();
+    return j&&j.ok?true:'回包不对';
+  }catch(e){return '网络';}
+}
 function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value='';return;}
   if(!SESSION){toast('这台设备还没登录 —— 点右上角登录后再传');input.value='';return;}
   const all=[...(input.files||[])];
@@ -2860,39 +2876,34 @@ function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value=''
     input.value='';
   })();
 }
-function mediaThumbFail(el){const t=el.closest('.mtile');if(t)t.classList.add('bad');
+function mediaThumbFail(el){const t=el.closest('.mshot');if(t)t.classList.add('bad');
   const h=document.getElementById('mthint');if(h)h.style.display='';}
-function mediaLightFail(el){el.style.display='none';
-  const h=document.getElementById('mlfail');if(h)h.style.display='';}
 function mediaSheet(e){
   const ms=mediaList(e),n=ms.length;
-  const grid=n?`<div class="mgrid">${ms.map((m,i)=>`<div class="mtile" onclick="mediaShow(${i})">
-      <img src="${esc(driveThumb(m.driveId,400))}" alt="" loading="lazy" onerror="mediaThumbFail(this)">
+  /* 一栏到底、按原比例、直接滚（owner 2026-08-03：「要的是能滚着看的相册，不是缩略图列表」）。
+     没有九宫格、没有「点开再看一层」的灯箱 —— 滚动本身就是浏览方式，少一层状态。
+     取图用 w1200：手机上是 2~3 倍像素密度，比原来的 400 清楚得多，又不至于把流量吃光。 */
+  const roll=n?`<div class="in">${ms.map(m=>`<div class="mshot">
+      <img src="${esc(driveThumb(m.driveId,1200))}" alt="${esc(m.name||'')}" loading="lazy"
+        onerror="mediaThumbFail(this)">
       <span class="bn">${esc(m.name||'照片')}</span>
-      ${!S.readonly?`<span class="x" onclick="event.stopPropagation();mediaDel('${escJs(m.id)}')">✕</span>`:''}
+      ${!S.readonly?`<span class="x" onclick="mediaDel('${escJs(m.id)}')" title="移除">✕</span>`:''}
     </div>`).join('')}</div>`
     :'<div class="empty">还没有照片 —— 打码处理后再上传，传上去的就是处理过的那份。</div>';
-  const m=S.mediaN!=null?ms[S.mediaN]:null;
-  const light=m?`<div class="mlight" onclick="S.mediaN=null;render()">
-      <img src="${esc(driveThumb(m.driveId,1600))}" alt="${esc(m.name||'')}"
-        onclick="event.stopPropagation()" onerror="mediaLightFail(this)">
-      <div id="mlfail" style="display:none;font-size:12px;color:var(--stock-dim)">这张缩略图打不开 —— 用下面的「在网盘打开」看原图</div>
-      <div class="mcap">${esc(m.name||'照片')} · ${S.mediaN+1}/${n}</div>
-      <div class="mnav" onclick="event.stopPropagation()">
-        <button class="btn ghost sm" onclick="mediaStep(-1)">←</button>
-        <button class="btn ghost sm" onclick="mediaDownload(${S.mediaN})">${ico('down')}下载</button>
-        <button class="btn ghost sm" onclick="mediaOpenDrive(${S.mediaN})">${ico('link')}在网盘打开</button>
-        <button class="btn ghost sm" onclick="mediaStep(1)">→</button>
-      </div></div>`:'';
-  return `<div class="drawerbg" onclick="mediaClose()"></div>
-    <div class="modal-g"><div class="rvsec" style="margin:0">
-      <div class="hd"><span class="lbl">媒体库 · ${n} 张</span>
-        <span class="bk" style="cursor:pointer" onclick="mediaClose()">✕ 关闭</span></div>
-      ${grid}
-      <p class="note9" id="mthint" style="display:none;margin-top:8px">缩略图显示不出来 —— 这台浏览器没登录网盘那个 Google 账号。登录一次，或把网盘根目录设为「知道链接的人可查看」（照片都已打码）；不影响上传和「在网盘打开」。</p>
-      ${!S.readonly?`<div class="rowfiles" style="margin-top:10px"><label class="fileadd">${ico('up')}传照片（可多选 · 先打码再传）<input type="file" accept="image/*" multiple style="display:none" onchange="mediaAdd(this)"></label></div>`:''}
-      <p class="note9" style="margin-top:6px">照片存在主办的网盘（活动 · 日期/照片/）；「移除」只摘这里的条目，网盘那份要去 Drive 手删。</p>
-    </div></div>${light}`;
+  return `<div class="mfull">
+    <div class="mhd"><span class="lbl">媒体库 · ${n} 张</span><span class="sp" style="flex:1"></span>
+      <span class="bk" style="cursor:pointer" onclick="mediaClose()">✕ 关闭</span></div>
+    <div class="mroll">${roll}
+      <p class="note9" id="mthint" style="display:none;max-width:640px;margin:8px auto 0">
+        照片显示不出来 —— 这台浏览器没登录存照片的那个 Google 账号。登录一次就能看；不影响上传。</p>
+      ${n&&!S.readonly?`<p class="note9" style="max-width:640px;margin:10px auto 0">
+        ✕ 删除会连云端那份一起丢进回收站（30 天内还能还原）。</p>`:''}
+    </div>
+    ${!S.readonly?`<div class="mfoot">
+      <label class="fileadd">${ico('up')}传照片（可多选 · 先打码再传）
+        <input type="file" accept="image/*" multiple style="display:none" onchange="mediaAdd(this)"></label>
+    </div>`:''}
+  </div>`;
 }
 function addRow(){const e=ev();e.rows.push({id:uid(),time:'',seg:'',owner:'',resources:[],money:[]});
   S.sel=e.rows[e.rows.length-1].id;save();render();}
