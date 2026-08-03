@@ -1,3 +1,37 @@
+# ym 交接 — 2026-08-03 晚（一本欠费的账，差点把三个 AI 功能一起拖死）
+
+owner 在复盘页按话筒，弹出：`HTTP 429 @gemini-2.5-flash-lite { "error": { "code": 429,
+"message": "Your prepayment credits are depleted..." } }`，**先换了一把新的 API key，还是同样报错**。
+
+**诊断：这不是密钥问题，是账单问题。** 429 + "prepayment credits are depleted" =
+Google AI Studio 那个**项目**的预付额度用光了。同一个项目再签一把新密钥，额度还是 0 ——
+所以「换了 key 仍然报错」完全符合预期，不是配错了。（另一半可能性同样要排除：
+**Vercel 改了环境变量不 Redeploy，跑着的函数还拿着旧钥匙** —— 这个仓库为
+`SUPABASE_SERVICE_KEY` 踩过一模一样的坑。）
+
+**真正吓人的是波及面**：`provider()` 的写法是「只要 `GEMINI_API_KEY` 存在就走 Gemini」，
+`ANTHROPIC_API_KEY` 只在 Gemini 密钥**不存在**时才轮得到。于是一本欠费的账同时打死：
+票据 OCR · 名单截图 · 报名表识别 · ✨AI 补写 · 语音 —— **而同一个 Vercel 上 Claude 的密钥
+好好地放着，一次都没被用过**。
+
+| 改动 | |
+|---|---|
+| `api/parse.py` · `api/phrase.py` | Gemini 回**硬错**（非 404：429 额度 / 402 欠费 / 403 停用）时，**有 Claude 密钥就改走 Claude**。内部标记 `_retry` 不会漏进回给前端的 payload |
+| `api/voice.py` | **没有**这条退路 —— Claude 不收音频。所以只能把话说到位：明说是账单、明说「换同一个项目的新密钥不会有用」、明说去哪儿充值、并告诉主办 OCR 和补写已经自动改用 Claude |
+| 三个端点的 GET | 加 `gemini_key_fp` / `claude_key_fp` = **sha256 前 8 位**。改完密钥 Redeploy 之后再打一次，**指纹变了才算真上线**。不用前缀/后四位那种做法 —— 那会泄露真材料 |
+
+验证方式是**真跑**，不是读代码：把 `urllib.request.urlopen` 换成会回 owner 那条 429 的桩，
+`call_ai` 实际走完 → 收到 `source: ai-claude` 和解析出来的商店名；把 Claude 密钥拿掉再跑一次 →
+诚实退回 mock 且 note 里带着 429。套件 **610 全绿**（新增 4 条钉着退路、单一 `call_ai` 定义、
+语音那句话、以及三个端点都报指纹）。
+
+**owner 这边要做的**：给那个 Google 项目充值，或者换一个有额度的项目的密钥 → 更新 Vercel 的
+`GEMINI_API_KEY` → **Redeploy** → `curl -s https://www.jjconnect.tokyo/api/voice` 看
+`gemini_key_fp` 变了没有。⚠ 只要 `ANTHROPIC_API_KEY` 是好的，**票据 OCR 和 AI 补写现在已经
+不受影响了**；只有语音必须等 Gemini 恢复。
+
+---
+
 # ym 交接 — 2026-08-03 下午（复盘相册改成「滚着看」· 删除真的删）
 
 owner 两条：**①「要的是能滚着看的相册，不是缩略图列表」**（08-02 那句「滚着看」我做成了
