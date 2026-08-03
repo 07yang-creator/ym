@@ -3,7 +3,7 @@
 owner 两条：**① ljzhujudy@gmail.com 升 co-admin；② 每场活动要有 owner** —— admin 建活动、
 指定 owner（从现有用户里选），owner 可以再加 co-owner。
 
-## ① co-admin：`0026_ym_coadmin.sql` 已写好 —— **owner 待办：SQL editor 跑一次**
+## ① co-admin：`0026_ym_coadmin.sql` ✅ **owner 已应用（2026-08-03 当天确认）**
 
 - `profile.is_admin = true`（by email）+ `whitelist('ljzhujudy@gmail.com','admin')`（重注册也保住）。
 - ⚠ 迁移里**必须停一下 `trg_profile_upd`**：SQL editor 里 `auth.uid()` 是 null → `is_admin()`
@@ -24,6 +24,16 @@ owner 两条：**① ljzhujudy@gmail.com 升 co-admin；② 每场活动要有 o
 - 选负责人时协办**仍在列表里** = 点了就升为负责人（ownAssign 自动从协办摘掉）；
   再办一场把负责人/协办带过去（和人力牌同口径）。工作台卡片 brief 显示「负责人 ×××」。
 - 老活动（云上的 payload 没这两个字段）照常渲染成「＋ 指定负责人」，不炸（都 `||[]` 访问）。
+
+## 同日追加（owner 看了真机后的两条）
+
+- **页头导航**：owner 把执行看板的「← 计划」当成回列表，迷路了。三个阶段页
+  （执行看板 / 当天 / 复盘）统一成：`← 列表`（回工作台）＋右侧 `计划` 药丸（dc-go，
+  和工作台卡片同款 —— 为此把 `.dc-go` 从 `.deskcard` 作用域里解出来了）。
+  「到处一个样式，用户才记得住哪些是导航」是 owner 的原话（意译）。
+- **管理页备忘**：邀请码对新管理员（ljzhujudy 刚上）是陌生概念 —— 生成表单下面
+  写了整条注册流程（生成→发人→主办登录页粘码注册→即时开通；无码=待批准；
+  成员码不走这里）。措辞对过 authWall 真实的门（先填后按）。
 
 ## ② 的第二阶段 —— **owner 已裁（2026-08-03）：暂时只在主办台维护，成员侧不做**
 
