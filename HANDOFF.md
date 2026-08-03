@@ -1,3 +1,48 @@
+# ym 交接 — 2026-08-03 深夜（口述改走浏览器；429 的真相是「按模型」不是「没钱」）
+
+## 一、429 的诊断，我错了一轮，记下判据
+
+owner 按话筒 → `HTTP 429 @gemini-2.5-flash-lite {"error":{"code":429,"message":
+"Your prepayment credits are depleted."}}`。我按字面读成「账号没钱」，让 owner 去换密钥、
+查余额、看账单页 —— **全是白折腾**。真相是 owner 自己发现的：
+
+> **同一个项目、同一把密钥，Rakusalab 的 `gemini-2.5-flash` 一直正常，
+> 而 ym 的 `gemini-2.5-flash-lite` 回 429。**
+
+⇒ 这类拒绝是**按模型**算的，不是整个账号。判据留给下一班：**报错信息里的名词
+（"credits"、"quota"）不等于故障层级**。同一把钥匙换个模型能过，就说明它不是账号级的。
+先穷举同层的候选，再往上归因。
+
+修法（三个端点一致）：`SOFT_FAIL = (404, 429, 402, 403)` 一律**接着试下一个候选模型**；
+候选表去掉已下架的 `gemini-2.0-*`（Rakusalab 实测 404），`2.5-flash` 排在 lite 之后第一顺位；
+**只有每一个候选都被拒**，才说得出「这是账单问题」那句话。parse 的 Claude 退路挪到最后一环
+（先穷举 Gemini 模型，再换厂商）。
+
+## 二、口述改走浏览器的 Web Speech（owner 从 Rakusalab 带回来的做法）
+
+> owner：「in Rakusalab we find a more efficient strategy, we use webvoice for inputing
+> and gemini flash for beautification. it is faster.」
+
+老路：`MediaRecorder → base64 → /api/voice → Gemini → 回文字`。慢（录完才上传、上传完才等模型）、
+吃额度、而且 Gemini 一被拒口述就整个用不了 —— 08-03 当天就是这样。
+新路：**浏览器自己转写**（`SpeechRecognition`），边说边出字，一次 API 都不打。
+润色仍然走 `/api/phrase`（✨AI 补写）—— 转写不是模型该干的活，润色才是。
+
+- `SR` 为空（主要是 Firefox）**原样退回老路**，`dicSend` 整段没动 —— 别把人锁死。
+- **追加不覆盖**：`base` 是开录那一刻已有的内容，每次 `onresult` 用 `base+定稿+临时段`
+  重写，所以说到一半改口屏幕跟着改，而主办打好的字永远不会被冲掉。
+- `input` 和 `change` **两个事件都发**：这个 app 里有的格子绑 `onchange`、有的绑 `oninput`，
+  少发一个就存不上。
+- 失败要说人话：`not-allowed` → 「浏览器没给麦克风权限」；`no-speech` → 「没听到声音」。
+- 验证用桩按真实顺序发 `interim → final → end`：中途读到「已经打好的字 王芳到」，
+  结束读到「已经打好的字 王芳到位了」，两个事件都到，`/api/voice` **0 次调用**。
+
+⚠ **还没动的一半**：浮动话筒（按住说话 → AI 猜意图：签到/翻状态/评价/记账）仍然走
+音频 → `/api/voice`。要让它也免额度，得给 `/api/voice` 加一条「收文字、只判意图」的入口，
+前端用 Web Speech 转好再送。**没做，别以为做了。**
+
+---
+
 # ym 交接 — 2026-08-03 晚（一本欠费的账，差点把三个 AI 功能一起拖死）
 
 owner 在复盘页按话筒，弹出：`HTTP 429 @gemini-2.5-flash-lite { "error": { "code": 429,

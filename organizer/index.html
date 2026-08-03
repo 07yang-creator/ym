@@ -4089,7 +4089,17 @@ function recSend(){
    只转写、不判断意图，因此不需要活动上下文，任何窗口都能用。
    ⚠ 和浮动话筒是两套状态：那个是「说一句话 → AI 猜你要做什么」，这个是「把我说的写进这一格」。
    混用一个 REC 会互相打断，所以这里自己拿一份 MediaRecorder。 */
-let DIC={mr:null,chunks:[],id:null,stream:null};
+/* ⚡ 2026-08-03：口述改走**浏览器自己的语音识别**（Web Speech），owner 从 Rakusalab 带回来的
+   做法 —— 「webvoice 输入 + gemini flash 润色，更快」。对比老路（MediaRecorder → base64 →
+   /api/voice → Gemini → 回文字）：
+     · 快：边说边出字（interimResults），不用等录完再上传再等模型；
+     · 免费：一次 API 都不打，也就不吃额度 —— 今天 Gemini 被拒的时候口述照样能用；
+     · 稳：少了「录音上传」「模型可用」两个会坏的环节。
+   不支持 Web Speech 的浏览器（主要是 Firefox）**原样退回老路**，一个字没动 ——
+   那条路今天仍然是唯一能在 Firefox 上口述的方式。
+   ⚠ 润色（✨AI 补写）还是走 /api/phrase，那才是模型该干的活；转写不是。 */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let DIC={mr:null,chunks:[],id:null,stream:null,sr:null};
 function micBtn(inputId,label){
   const on=DIC.id===inputId;
   return `<button class="micbtn${on?' rec':''}" title="${on?'松开 / 再点一次结束':'按住或点一下，说完再点一次'}"
@@ -4099,6 +4109,7 @@ function micBtn(inputId,label){
 function dicToggle(id){
   if(DIC.id===id){dicStop();return;}
   if(DIC.id){dicStop();return;}                 // 一次只录一格
+  if(SR){dicSR(id);return;}                     // 浏览器自己能转写 —— 首选这条
   if(!navigator.mediaDevices||!window.MediaRecorder){toast('这个浏览器不支持录音');return;}
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     DIC.stream=stream;DIC.chunks=[];DIC.id=id;
@@ -4111,7 +4122,50 @@ function dicToggle(id){
     toast('说吧 —— 说完再点一次话筒');
   }).catch(err=>toast('无法使用麦克风：'+err.message));
 }
+/* Web Speech 那条路。边说边把字写进这一格：`base` 是开录那一刻已经有的内容，
+   每次 onresult 都用 base + 已定稿 + 临时段 重写 value —— 所以说到一半改口，
+   屏幕上跟着改，而主办之前打好的字**永远不会被冲掉**（追加，不是覆盖）。 */
+function dicSR(id){
+  const el=$(id);if(!el){toast('找不到这一格');return;}
+  let rec;try{rec=new SR();}catch(e){toast('这个浏览器不支持语音输入');return;}
+  DIC.id=id;DIC.sr=rec;
+  rec.lang='zh-CN';rec.interimResults=true;rec.continuous=false;rec.maxAlternatives=1;
+  const base=String(el.value||'').replace(/\s+$/,'');
+  const btn=document.querySelector('.micbtn[onclick*="'+id+'"]');
+  if(btn)btn.classList.add('rec');
+  let heard=false;
+  rec.onresult=e2=>{
+    let fin='',inter='';
+    for(let i=0;i<e2.results.length;i++){const r=e2.results[i];
+      if(r.isFinal)fin+=r[0].transcript;else inter+=r[0].transcript;}
+    if(fin||inter)heard=true;
+    el.value=(base?base+' ':'')+fin+inter;
+  };
+  rec.onerror=e2=>{
+    const why=e2&&e2.error;
+    dicSRend(btn);
+    if(why==='not-allowed'||why==='service-not-allowed')toast('浏览器没给麦克风权限 —— 地址栏里允许一次');
+    else if(why==='no-speech')toast('没听到声音 —— 再点一次话筒说');
+    else if(why)toast('语音输入出错：'+why);
+  };
+  rec.onend=()=>{
+    dicSRend(btn);
+    // 两个事件都发：这个 app 里有的格子绑 onchange、有的绑 oninput，少发一个就存不上
+    el.dispatchEvent(new Event('input',{bubbles:true}));
+    el.dispatchEvent(new Event('change',{bubbles:true}));
+    el.focus();
+    if(heard)toast('已写入');
+  };
+  try{rec.start();toast('说吧 —— 说完再点一次话筒');}
+  catch(e){dicSRend(btn);toast('麦克风打不开，请再试一次');}
+}
+function dicSRend(btn){
+  DIC.sr=null;DIC.id=null;
+  const b=btn||document.querySelector('.micbtn.rec');
+  if(b){b.classList.remove('rec');b.classList.remove('busy');}
+}
 function dicStop(){
+  if(DIC.sr){try{DIC.sr.stop();}catch(e){dicSRend();}return;}
   if(!DIC.mr)return;
   const b=document.querySelector('.micbtn.rec');if(b){b.classList.remove('rec');b.classList.add('busy');}
   try{DIC.mr.stop();}catch(e){DIC.id=null;DIC.mr=null;}
