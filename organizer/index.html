@@ -2676,7 +2676,13 @@ function aiPhrase(el,kind,ctx,longForm){
       user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
   .then(r=>r.json()).then(res=>{done();
     if(res&&res.text&&res.text!==t){el.value=res.text;el.dispatchEvent(new Event('change'));toast('已补写 — 可以再改');}
-    else toast((res&&res.note)||'没有需要补的');})
+    else{
+      const note=String((res&&res.note)||'');
+      // 额度/账单类的拒绝：说人话，并且讲清「你的字一个都没动」
+      if(/429|credits|quota|RESOURCE_EXHAUSTED/i.test(note))
+        toast('补写用的模型现在不可用（被拒了）—— 你写的字一个都没动，可以照常保存');
+      else toast(note.slice(0,80)||'没有需要补的');
+    }})
   .catch(e=>{done();toast('补写失败：'+e.message);});
 }
 function rowAttach(rid,input){const r=ev().rows.find(x=>x.id===rid);if(r)attachTo(r,input);}
@@ -4104,8 +4110,11 @@ function recSendText(said){
        两件事分开说，别再让人以为是麦克风或识别坏了（owner 2026-08-03 就是被这句话误导的）。
        而且这句话不能丢：模型不可用时，把听到的原话摆在卡片上，主办照着自己点一下就行。 */
     S.draft=Object.assign({},res,{transcript:res.transcript||said,
-      say:res.unavailable?('听清了 —— 但这句话要交给模型判断「你想做什么」，而模型现在不可用。'
-        +'先照着下面这句自己点一下；要恢复请看设置里的额度。'):res.say});
+      /* 「听清了」这句必须留（owner 2026-08-03 被「语音识别用不了」误导过，去查了没坏的那一层）。
+         但**不能把服务端那句盖掉** —— 那是唯一说得出「怎么恢复」的话（充值 / 换 key / Redeploy）。
+         所以是追加，不是替换。也删掉了我自己编的「看设置里的额度」：app 里没有那个界面。 */
+      say:res.unavailable?('听清了 —— 但这句话要交给模型判断「你想做什么」，那一步现在用不了。'
+        +'先照着下面这句自己点一下。\n'+String(res.say||'')):res.say});
     render();})
   .catch(e2=>{S.recPhase='idle';toast('没送出去：'+e2.message+' —— 听到的是「'+said+'」');render();});
 }
@@ -4301,7 +4310,10 @@ function draftCard(e){
   }
   return `<div class="stockcard"><div class="draftline">${esc(d.say||'没听懂')}</div>
     ${d.transcript?`<div class="transcript9">听到：${esc(d.transcript)}</div>`:''}
-    <div class="scbtns"><button class="alt" onclick="S.draft=null;render()">重录</button></div></div>`;
+    <div class="scbtns">
+      ${d.transcript?`<button onclick="draftToField()">写进刚才那一格</button>
+        <button class="alt" onclick="draftCopy()">复制</button>`:''}
+      <button class="alt" onclick="S.draft=null;render()">重录</button></div></div>`;
 }
 function simpleDraft(html,exec,transcript){
   return `<div class="stockcard"><div class="draftline">${html}</div>
@@ -5628,9 +5640,9 @@ function viewReview(){
         <button class="btn ghost sm" onclick="mediaOpen()">${ico('image')}媒体库${mediaList(e).length?` · ${mediaList(e).length}`:''}</button>
         ${!S.readonly?`<button class="aibtn for-rv_summary" title="AI 补写（先写几个关键词）"
           onclick="aiPhrase('rv_summary','复盘小结','${escJs(e.name)}',true)">${ico('ai')}</button>`:''}</span></div>
-      <textarea id="rv_summary" class="rvsum" rows="4" ${S.readonly?'readonly':''}
+      <span class="fldmic"><textarea id="rv_summary" class="rvsum" rows="4" ${S.readonly?'readonly':''}
         placeholder="写几个关键词就行，例如：女生到得早 · 快问快答最热 · 茶歇偏少 —— 再点星标补成一段。"
-        onchange="e_upd('summary',this.value)">${esc(e.summary||'')}</textarea>
+        onchange="e_upd('summary',this.value)">${esc(e.summary||'')}</textarea>${S.readonly?'':micBtn('rv_summary','复盘小结')}</span>
       <div class="rowfiles" style="margin-top:8px">
         ${(e.files||[]).map(f=>`<span class="filechip" onclick="openEvFile('${f.id}')">${ico('clip')}${esc(f.name)}${!S.readonly?`<span class="x" onclick="event.stopPropagation();delEvFile('${f.id}')">✕</span>`:''}</span>`).join('')}
         ${!S.readonly?`<label class="fileadd">＋附件（可多选）<input type="file" multiple style="display:none" onchange="evAttach(this)"></label>`:''}</div>
@@ -6447,6 +6459,32 @@ function peekCard(){
 }
 function openArchived(id){S.evId=id;S.readonly=true;go('sheet');}
 
+/* 记住最后一个被点进去的输入框：浮动话筒听清了、但意图判断用不了的时候，
+   那句话不能就这么扔掉 —— 至少要能一键写进主办刚才在打的那一格（owner 2026-08-03：
+   「if heard, why not write into blanket first?」）。 */
+let _lastField='';
+document.addEventListener('focusin',ev2=>{
+  const t=ev2.target;
+  if(t&&t.id&&(t.tagName==='TEXTAREA'||(t.tagName==='INPUT'&&/^(text|search|)$/i.test(t.type||''))))
+    _lastField=t.id;
+},true);
+function draftToField(){
+  const said=(S.draft&&S.draft.transcript)||'';
+  const el=_lastField?document.getElementById(_lastField):null;
+  if(!said)return;
+  if(!el){toast('先点一下要写的那一格，再按话筒');return;}
+  el.value=el.value&&el.value.trim()?el.value.replace(/\s+$/,'')+' '+said:said;
+  el.dispatchEvent(new Event('input',{bubbles:true}));
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+  S.draft=null;render();el.focus();toast('已写进去了');
+}
+function draftCopy(){
+  const said=(S.draft&&S.draft.transcript)||'';if(!said)return;
+  const done=()=>toast('已复制 —— 粘到任何一格里');
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(said).then(done,()=>done());
+  else{const ta=document.createElement('textarea');ta.value=said;document.body.appendChild(ta);
+    ta.select();try{document.execCommand('copy');}catch(e){}ta.remove();done();}
+}
 /* ================= boot ================= */
 /* 手机侧的拍照页：?cap=<token> 就是全部凭据（0005 的设计 —— 手机对表零权限，
    只能通过 cap_submit 这一个匿名函数把结果塞回那个 token 对应的会话）。
