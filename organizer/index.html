@@ -3476,6 +3476,7 @@ function guestHistoryHtml(libId){
     </div>`).join('')}</div>`;
 }
 function libEditSave(){
+  if(!S.libEdit)return;            // 卡片已经关掉了（连点/回车赶在重绘之后）—— 什么都不做
   const {kind,id}=S.libEdit;
   const rec=STORE.library[libColl(kind)].find(x=>x.id===id);if(!rec)return;
   const nameKey=kind==='ideas'?'seg':'name';
@@ -3505,6 +3506,7 @@ function libAddCard(){
     </div></div>`;
 }
 function libAddSave(){
+  if(!S.libAdd)return;             // 同上：没有打开的新建卡就没有要保存的东西
   const kind=S.libAdd.kind;
   const nameKey=kind==='ideas'?'seg':'name';
   const rec={id:uid()};
