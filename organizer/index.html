@@ -903,6 +903,53 @@ function cloudPushAll(){
     .then(r=>{if(r.error)toast('云同步失败：'+r.error.message);})
     .then(()=>pushShares());
 }
+/* ===== 活同步 —— 拉的那一半 (owner 2026-08-03「see the same thing and edit at the same time」) =====
+   cloudLoad 只在登录那一刻拉一次：另一台设备（或同一账号的另一个人）之后写的东西，
+   本机要到下次重新登录才看得见 —— 「同看同编」先要补上这半边。
+   · 回到前台 / 窗口聚焦 / 前台每 25 秒 → 重读 ym_doc 的活动行，**逐场合并**；
+   · mtime 闸同一把尺：本机 cloudLoad 之后动过（还没推完）的活动不被覆盖 ——
+     本机未推的编辑赢；推上去之后照旧「后写的赢」（真冲突不裁，口径没变）；
+   · 接受云端版本时把 mtime 归零：payload 里的 mtime 是**写它那台设备**的本机戳，
+     带着它落地，我们自己的推送闸会把这场当成「本机动过」，从此每 800ms 往回推；
+   · 比内容时也剥掉 mtime —— 不然「接受时归了零」和「云上带着戳」永远不相等，
+     每 25 秒都会「变了」一次，render 空转；
+   · 正在打字（焦点在输入框）时整个跳过 —— 重画会吃字，这个 app 为此付过学费；
+   · 只合并 events，不碰 library：mergeLibrary 有种子陷阱（见它的注释），高频跑风险不对称。 */
+let _docPulling=false,_docPullT=null;
+function typingNow(){const el=document.activeElement;
+  return !!(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable));}
+async function cloudRefresh(){
+  if(_docPulling||!canCloud()||typingNow())return;
+  _docPulling=true;
+  try{
+    const uid=SESSION.user.id;
+    const {data:rows,error}=await sb.from('ym_doc').select('doc_id,payload').eq('kind','event');
+    // 拉的过程中换了人 / 开始打字 → 这一批作废，什么都不动
+    if(error||!SESSION||SESSION.user.id!==uid||typingNow())return;
+    const norm=o=>{const c=Object.assign({},o);delete c.mtime;return JSON.stringify(c);};
+    let changed=0;
+    (rows||[]).forEach(r=>{
+      const inc=r.payload;if(!inc||!inc.id||inc.demo)return;
+      const i=STORE.events.findIndex(e=>e&&e.id===inc.id);
+      if(i>=0&&(STORE.events[i].mtime||0)>=_cloudBase)return;   // 本机未推的编辑在先
+      if(i>=0&&norm(STORE.events[i])===norm(inc))return;        // 没变
+      inc.mtime=0;
+      if(i>=0)STORE.events[i]=inc;else STORE.events.push(inc);
+      changed++;
+    });
+    if(changed){
+      try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){}
+      if(S.evId&&!STORE.events.some(e=>e&&e.id===S.evId))S.evId=STORE.events[0]?STORE.events[0].id:null;
+      render();
+    }
+  }finally{_docPulling=false;}
+}
+function docPullStart(){
+  if(_docPullT)return;
+  _docPullT=setInterval(()=>{if(document.visibilityState==='visible')cloudRefresh();},25000);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')cloudRefresh();});
+  window.addEventListener('focus',cloudRefresh);
+}
 /* 任务 chips carry a FREE-TEXT 负责人 (c.role) and no refId, so until now every 要做的事 was
    invisible to the person who has to do it. Match by name — but deliberately DO NOT stamp refId
    onto a 任务 chip: refId is read by volSection/applyRes/guestHistory, and re-semantifying it
@@ -1762,6 +1809,7 @@ async function cloudLoad(){
   if(localReal.length){localReal.forEach(e=>{e.mtime=Date.now();});   // 这批是特意要合并上传的
     toast('已同步（本机 '+localReal.length+' 场活动已合并上传）');cloudPushAll();}
   else toast('云同步已开启');
+  docPullStart();   // 活同步（拉）：从这一刻起，别的设备/别的人写的东西不用重新登录也看得见
   render();
 }
 // union by id; cloud entries win, local-only entries survive
