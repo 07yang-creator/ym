@@ -4456,23 +4456,40 @@ function recStartSR(){
   const b=$('recbtn');if(b)b.classList.add('rec');
   const mf=$('micfab');if(mf)mf.classList.add('rec');
 }
+/* 会改数据的四支：照旧「AI 只提议，人确认」（约定 #4），一张卡都不能省。
+   除此之外的（没听懂 / 模型不可用 / 就是想记一句话）走直写。 */
+const DRAFT_ACTIONS=['eval_note','check_in','flip_status','add_cost'];
+/* owner 2026-08-03：「write directly into blanket is better」——
+   听清了但没有可执行的意图时，以前是先弹一张卡、再让人点「写进刚才那一格」。
+   现在直接写进主办刚才在打的那一格，卡片不出现。
+   ⚠ 顺序：先 render()（把录音条收掉）**再**写 —— 反过来的话，那次 render 会拿模型里的
+   旧值把刚写进去的字重画掉。写完不再 render，光标就留在那一格末尾，可以接着改。
+   ⚠ 找不到那一格（没点过输入框 / 那一格已经不在页面上）就还是弹卡片 ——
+   听到的话不能扔（这条是 08-03 立的规矩）。 */
+function applyVoiceDraft(d){
+  S.recPhase='idle';
+  const said=String((d&&d.transcript)||'').trim();
+  if(d&&DRAFT_ACTIONS.indexOf(d.action)<0&&said&&lastFieldEl()){
+    S.draft=null;render();
+    if(draftWrite(said)){toast('已写进刚才那一格 —— 不对就直接改');return;}
+  }
+  S.draft=d;render();
+}
 /* 只把文字发过去判意图 —— 一个字节音频都不上传 */
 function recSendText(said){
   fetch(API+'/api/voice',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({text:said,roster:ymRoster(),
       user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
   .then(r=>r.json()).then(res=>{
-    S.recPhase='idle';
     /* 转写是在本机做的，所以**话一定听到了**；模型只负责「这句话要做什么」。
        两件事分开说，别再让人以为是麦克风或识别坏了（owner 2026-08-03 就是被这句话误导的）。
-       而且这句话不能丢：模型不可用时，把听到的原话摆在卡片上，主办照着自己点一下就行。 */
-    S.draft=Object.assign({},res,{transcript:res.transcript||said,
+       而且这句话不能丢：模型不可用时也先写进那一格，写不进去才把原话摆在卡片上。 */
+    applyVoiceDraft(Object.assign({},res,{transcript:res.transcript||said,
       /* 「听清了」这句必须留（owner 2026-08-03 被「语音识别用不了」误导过，去查了没坏的那一层）。
          但**不能把服务端那句盖掉** —— 那是唯一说得出「怎么恢复」的话（充值 / 换 key / Redeploy）。
          所以是追加，不是替换。也删掉了我自己编的「看设置里的额度」：app 里没有那个界面。 */
       say:res.unavailable?('听清了 —— 但这句话要交给模型判断「你想做什么」，那一步现在用不了。'
-        +'先照着下面这句自己点一下。\n'+String(res.say||'')):res.say});
-    render();})
+        +'先照着下面这句自己点一下。\n'+String(res.say||'')):res.say}));})
   .catch(e2=>{S.recPhase='idle';toast('没送出去：'+e2.message+' —— 听到的是「'+said+'」');render();});
 }
 function recStartMR(){
@@ -4504,7 +4521,7 @@ function recSend(){
   fr.onload=()=>{
     fetch(API+'/api/voice',{method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({audio_b64:String(fr.result).split(',')[1],media_type:type.split(';')[0],roster:ymRoster()})})
-    .then(r=>r.json()).then(res=>{S.recPhase='idle';S.draft=res;render();})
+    .then(r=>r.json()).then(res=>{applyVoiceDraft(res);})   // 老录音路也走直写，别只修一道门
     .catch(e2=>{S.recPhase='idle';toast('识别失败：'+e2.message);render();});
   };
   fr.readAsDataURL(blob);
@@ -6870,23 +6887,51 @@ function peekCard(){
 function openArchived(id){S.evId=id;S.readonly=true;go('sheet');}
 
 /* 记住最后一个被点进去的输入框：浮动话筒听清了、但意图判断用不了的时候，
-   那句话不能就这么扔掉 —— 至少要能一键写进主办刚才在打的那一格（owner 2026-08-03：
-   「if heard, why not write into blanket first?」）。 */
-let _lastField='';
+   那句话不能就这么扔掉 —— 直接写进主办刚才在打的那一格（owner 2026-08-03：
+   「if heard, why not write into blanket first?」→ 后来又一句「write directly into
+   blanket is better」，所以现在**不再先弹卡片让人点一下**，见 applyVoiceDraft）。
+
+   ⚠ 只记 id 是不够的，而且**恰恰漏掉最常用的那些格**：台本行上的 环节 / 负责人 / 说明
+   都没有 id（`<input class="segi">`…），主办在计划页对着话筒说话时，要写的正是它们。
+   所以这里记两样：
+     · 元素本身 —— 没重绘的话直接就是它；
+     · 一个「重绘后还找得回来」的定位（有 id 用 id；否则用 行的 data-rid + 首个 class）。
+   两样都留，是因为写入前后会 render() 一次（要把录音条收掉），元素引用那时已经作废。 */
+let _lastFieldRef=null,_lastFieldLoc=null;
 document.addEventListener('focusin',ev2=>{
   const t=ev2.target;
-  if(t&&t.id&&(t.tagName==='TEXTAREA'||(t.tagName==='INPUT'&&/^(text|search|)$/i.test(t.type||''))))
-    _lastField=t.id;
+  if(!t||!(t.tagName==='TEXTAREA'||(t.tagName==='INPUT'&&/^(text|search|)$/i.test(t.type||''))))return;
+  _lastFieldRef=t;
+  const cls=String(t.className||'').split(/\s+/)[0];
+  const card=t.closest&&t.closest('[data-rid]');
+  _lastFieldLoc=t.id?{id:t.id}:(card&&cls?{rid:card.getAttribute('data-rid'),cls}:null);
 },true);
-function draftToField(){
-  const said=(S.draft&&S.draft.transcript)||'';
-  const el=_lastField?document.getElementById(_lastField):null;
-  if(!said)return;
-  if(!el){toast('先点一下要写的那一格，再按话筒');return;}
+function lastFieldEl(){
+  if(_lastFieldRef&&document.contains(_lastFieldRef)&&!_lastFieldRef.disabled&&!_lastFieldRef.readOnly)
+    return _lastFieldRef;
+  const L=_lastFieldLoc;if(!L)return null;
+  const q=v=>window.CSS&&CSS.escape?CSS.escape(v):v;
+  if(L.id)return document.getElementById(L.id);
+  const card=document.querySelector('[data-rid="'+q(L.rid)+'"]');
+  return card?card.querySelector('.'+q(L.cls)):null;
+}
+// 追加而不是覆盖 —— 主办已经打好的字永远不被冲掉（和文本框旁那个话筒同一条规矩）
+function draftWrite(said){
+  const el=lastFieldEl();if(!el||!said)return false;
   el.value=el.value&&el.value.trim()?el.value.replace(/\s+$/,'')+' '+said:said;
   el.dispatchEvent(new Event('input',{bubbles:true}));
   el.dispatchEvent(new Event('change',{bubbles:true}));
-  S.draft=null;render();el.focus();toast('已写进去了');
+  el.focus();
+  try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}
+  return true;
+}
+function draftToField(){
+  const said=(S.draft&&S.draft.transcript)||'';
+  if(!said)return;
+  const ok=lastFieldEl();
+  if(!ok){toast('先点一下要写的那一格，再按话筒');return;}
+  S.draft=null;render();
+  if(draftWrite(said))toast('已写进去了');
 }
 function draftCopy(){
   const said=(S.draft&&S.draft.transcript)||'';if(!said)return;

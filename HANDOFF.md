@@ -38,6 +38,31 @@ owner 两条：**① ljzhujudy@gmail.com 升 co-admin；② 每场活动要有 o
   写了整条注册流程（生成→发人→主办登录页粘码注册→即时开通；无码=待批准；
   成员码不走这里）。措辞对过 authWall 真实的门（先填后按）。
 
+## 同日第八条：口述**直接写进那一格**（不再先弹卡片）
+
+owner：「write directly into blanket is better」（同日早些时候那句「if heard, why not write
+into blanket first?」的下一步）。以前听清了但判不出意图 → 弹一张卡 → 还要点一下
+「写进刚才那一格」。现在直接写进去，卡片不出现。
+
+- `applyVoiceDraft(d)` 是两条录音路（浏览器转写 `recSendText` + 老 MediaRecorder `recSend`）
+  的**共同出口** —— 只修一条等于没修，这条规矩这个月第 N 次。
+- **会改数据的四支照旧要人确认**（`DRAFT_ACTIONS`：eval_note / check_in / flip_status /
+  add_cost，约定 #4「AI 只提议，人确认」）。直写只发生在「没有可执行意图」那一支 ——
+  往格子里写字本来就是可编辑、可撤的。
+- ⚠ **顺序：先 `render()` 收掉录音条，再写字。** 反过来的话，那次 render 会拿模型里的旧值
+  把刚写进去的字重画掉。写完**不再 render**，光标就留在那一格末尾，可以接着改。
+- 🔴 **定位不能只认 id** —— 这是这次真正的坑：台本行上的 环节 / 负责人 / 说明
+  （`.segi/.owni/.descsi`）**都没有 id**，而主办在计划页对着话筒说话时要写的正是它们。
+  旧的 `_lastField` 只记 `t.id`，所以在最常用的场景里根本定位不到。
+  现在记两样：元素本身（没重绘就是它）+ `(data-rid, 首个 class)` 兜底（重绘后还找得回来）。
+- 找不到那一格（没点过输入框 / 那一格已经不在页面上）→ **还是弹卡片**，
+  「听到的话不能扔」那条没变；写入仍是**追加不覆盖**。
+
+⚠ 验证环境的一条坑，留给下一班：**浏览器面板里 `el.focus()` 不会触发 `focusin`**
+（窗口没有系统焦点时浏览器会抑制焦点事件），所以用 `.focus()` 测这类「记住上一个格子」
+的逻辑会假阴性。要 `el.dispatchEvent(new FocusEvent('focusin',{bubbles:true}))`
+—— 真人点一下是会发的。
+
 ## 同日第七条：名册第四类「主办」+ 资料卡能改类别
 
 owner：「tiffany and judy are hosts, not volunteer, they should have their own category.」
