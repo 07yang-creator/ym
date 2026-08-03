@@ -445,6 +445,16 @@
     border-radius:20px;padding:4px 11px;cursor:pointer;white-space:nowrap}
   .deskcard .dc-go:hover{background:rgba(201,163,86,.12)}
   .deskcard .dc-del:hover{color:var(--alarm)}
+  /* 活动负责人 / 协办 (owner 2026-08-03) — 活动级的「这一场谁负责」，从用户一览选人 */
+  .ownrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:12px}
+  .ownrow .l{color:var(--muted);font-size:11px}
+  .pown{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--brass-dim);
+    color:var(--brass);border-radius:16px;padding:3px 10px;cursor:pointer;font-size:12px}
+  .pown.co{border-color:var(--line);color:var(--stock-dim)}
+  .pown .x{cursor:pointer;opacity:.6}
+  .pown .x:hover{color:var(--alarm);opacity:1}
+  .pown.add{border-style:dashed;color:var(--muted)}
+  .pown.add:hover{border-color:var(--brass);color:var(--brass)}
   /* kickoff bar (planning UI) + gate */
   .kickoff{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0 0;padding:11px 14px;border-radius:10px}
   .kickoff.plan,.kickoff.done{background:linear-gradient(90deg,rgba(201,163,86,.16),rgba(201,163,86,.03));border:1px solid var(--brass-dim)}
@@ -1927,7 +1937,7 @@ function instantiate(tpl,lib){
   const cp=c=>Object.assign({},c,{id:uid()});
   // participants 必须有默认值：viewReview 直接 .filter/.reduce 它 —— 新活动一进复盘就白屏
   return {id:uid(),name:tpl?tpl.name:'新活动',theme:'',date:'',start:'',venue:'',status:'plan',
-    participants:[],
+    participants:[],coOwners:[],
     header:{resources:(tpl?tpl.header.resources:[]).map(cp),money:(tpl?tpl.header.money:[]).map(cp)},
     rows:(tpl?tpl.rows:[]).map(r=>Object.assign({},r,{id:uid(),
       resources:r.resources.map(cp),money:r.money.map(cp)}))};
@@ -2114,6 +2124,7 @@ function render(){
     ${S.libEdit?libEditCard():''}
     ${S.libAdd?libAddCard():''}
     ${S.showImport?importListCard():''}
+    ${S.ownPick?ownPickCard():''}
     ${peopleDatalist()}
     ${S.drawer?`<div class="drawerbg" onclick="S.drawer=false;render()"></div>
       <div class="drawer">${libPanel()}</div>`:''}`;
@@ -2122,7 +2133,7 @@ function render(){
     window.ymSanitize.into($('po_body'),S.postEdit.body_html||'');
   if(S.exTask)positionExDlg();   // anchor the floating task detail next to its node
 }
-function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;S.mediaOpen=false;if(v!=='sheet')S.readonly=false;
+function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;S.mediaOpen=false;S.ownPick=null;if(v!=='sheet')S.readonly=false;
   if(v==='people')loadAccepted();          // 本人申报的数字来自 accepted 行，不在轮询里
   if(v==='ledger'){loadAccepted();loadLedger();}   // 自费脚注 + 行，都要有数据
   if(v==='signup')loadPending();                   // 待确认的报名（join）要立刻显示，别等 60 秒
@@ -2501,6 +2512,69 @@ function applyMoney(id){if(S.readonly)return;const m=STORE.library.money.find(x=
   tgt.money.push({id:uid(),refId:m.id,name:m.name,kind:m.kind,plan:m.amount,unit:m.unit,actual:null});
   S.drawer=false;save();render();toast(m.name+' 已挂上');}
 
+/* ===== 活动负责人 / 协办 (owner 2026-08-03) =====
+   活动级的「这一场谁负责」：建活动的人（今天两位 admin，将来任何主办）从**用户一览**里
+   选人指定，负责人可以再拉协办 —— 不是自由文本。环节行上的 owner 是每一段的负责人，
+   那是另一层，没动。引用存 {id,name}：id 指向名册（资料卡/服务记录那份），name 是显示
+   备份 —— 名册里删了人，老活动卡上仍读得出这场当年谁办的。
+   ⚠ 只进 ym_doc（主办自己的树）：buildSaveBack / syncEventPost 都是白名单，
+   模板和官网都带不走这两个字段 —— staff 名字不该出现在公开面上。 */
+function ownName(ref){if(!ref)return '';
+  const r=STORE.library.resources.find(x=>x.id===ref.id);return (r&&r.name)||ref.name||'';}
+function ownerRowHtml(e){
+  const cos=e.coOwners||[];
+  const chip=(ref,i)=>{const co=i>=0;
+    const r=STORE.library.resources.find(x=>x.id===ref.id),a=r?codeOf(r):null;
+    return `<span class="pown${co?' co':''}" title="${co?'协办':'负责人'}${S.readonly?'':' · 点击换人'}">
+      <span onclick="${S.readonly?'':`ownPickOpen('${co?'co':'owner'}')`}">${esc(ownName(ref))}${a?' · '+esc(a.code):''}</span>
+      ${S.readonly?'':`<span class="x" title="移除" onclick="event.stopPropagation();ownDel(${i})">✕</span>`}</span>`;};
+  return `<div class="ownrow" onclick="event.stopPropagation()">
+    <span class="l">负责人</span>
+    ${e.ownerRef?chip(e.ownerRef,-1):(S.readonly?'<span class="l">未指定</span>'
+      :`<span class="pown add" onclick="ownPickOpen('owner')">＋ 指定负责人</span>`)}
+    ${(cos.length||(!S.readonly&&e.ownerRef))?'<span class="l" style="margin-left:8px">协办</span>':''}
+    ${cos.map((c,i)=>chip(c,i)).join('')}
+    ${(!S.readonly&&e.ownerRef)?`<span class="pown add" title="添加协办" onclick="ownPickOpen('co')">＋</span>`:''}
+  </div>`;
+}
+function ownPickOpen(kind){if(S.readonly)return;S.ownPick=kind;render();}
+function ownDel(i){const e=ev();if(!e||S.readonly)return;
+  if(i<0)delete e.ownerRef;else (e.coOwners||[]).splice(i,1);
+  save();render();}
+function ownAssign(pid){
+  const e=ev(),kind=S.ownPick;if(!e||!kind)return;
+  const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
+  const ref={id:p.id,name:p.name};
+  if(kind==='owner'){e.coOwners=(e.coOwners||[]).filter(c=>c.id!==pid);e.ownerRef=ref;}
+  else{e.coOwners=e.coOwners||[];
+    if(!e.coOwners.some(c=>c.id===pid)&&!(e.ownerRef&&e.ownerRef.id===pid))e.coOwners.push(ref);}
+  S.ownPick=null;save();render();
+  toast(p.name+(kind==='owner'?' 已指定为负责人':' 已加入协办'));
+}
+function ownPickCard(){
+  const e=ev();if(!e||!S.ownPick)return '';
+  // 选负责人时协办仍在列表里 —— 点了就是「升为负责人」（ownAssign 会把 TA 从协办摘掉）；
+  // 选协办时两边都排除（同一个人不能又负责又协办）。
+  const taken=S.ownPick==='co'
+    ?new Set([e.ownerRef&&e.ownerRef.id].concat((e.coOwners||[]).map(c=>c.id)).filter(Boolean))
+    :new Set([e.ownerRef&&e.ownerRef.id].filter(Boolean));
+  const cand=STORE.library.resources.filter(r=>catOf(r)!=='goods'&&!r.archived&&!taken.has(r.id));
+  // 有账号的排前面 —— 负责人要在自己手机上跟这场活动，先看能登录的
+  const bd=p=>{const a=codeOf(p);return a&&a.bound_at?0:1;};
+  cand.sort((a,b)=>bd(a)-bd(b));
+  const row=p=>{const a=codeOf(p);
+    return `<div class="gaterow" style="cursor:pointer" onclick="ownAssign('${escJs(p.id)}')">
+      <span class="gn">${ico('person')} ${esc(p.name)}${p.role?' · '+esc(p.role):''}</span>
+      <span class="num" style="font-size:11px;color:var(--muted)">${a?esc(a.code)+(a.bound_at?' ✓':''):'未发码'}</span></div>`;};
+  return `<div class="drawerbg" onclick="S.ownPick=null;render()"></div>
+    <div class="modal-g" style="width:min(380px,calc(100vw - 28px))"><div class="rvsec" style="margin:0">
+      <div class="hd"><span class="lbl">${S.ownPick==='owner'?'指定负责人':'添加协办'} · 从用户一览选</span>
+        <button class="btn ghost sm" onclick="S.ownPick=null;render()">✕</button></div>
+      ${cand.length?cand.map(row).join(''):'<p class="note9">用户一览里还没有可选的人 — 先在「用户」页登记（或发邀请码）。</p>'}
+      <p class="note9" style="margin-top:8px">✓ = 已注册账号（能登录成员页）。</p>
+    </div></div>`;
+}
+
 /* ---------- sheet view ---------- */
 function viewSheet(){
   const e=ev();
@@ -2553,6 +2627,7 @@ function viewSheet(){
         title="定员 —— 报名数按这个显示成 15/30"
         onclick="event.stopPropagation();selRow('header')" onchange="e_upd('cap',parseInt(this.value.replace(/[^\\d]/g,''),10)||undefined);render()"></div>
     ${(()=>{const vh=venueHistory(e);return vh?`<div class="reusehint" onclick="event.stopPropagation();venueHistDetail()">${ico('house')}这个场地办过 ${vh.count} 场${vh.lastCost?' · 上次场租 '+yen(vh.lastCost):''} · 点看日期</div>`:'';})()}
+    ${ownerRowHtml(e)}
     <div class="chips">${chipsHtml(e.header,'header')}</div>
     <div class="lbl" style="margin-top:8px">活动全场 — 点选此卡后，从资产库挂「全场」资源/收支</div>
     <label class="dfld" style="margin-top:10px" onclick="event.stopPropagation()">
@@ -3140,7 +3215,10 @@ function cloneEvent(srcId){
   const cpM=c=>({id:uid(),refId:c.refId,name:c.name,kind:c.kind,plan:c.plan,unit:c.unit,actual:null});
   const live=arr=>(arr||[]).filter(c=>!c.ignored);          // 搁置'd items don't carry over
   const noTask=arr=>(arr||[]).filter(c=>(c.type||'人')!=='任务');   // header one-off chores don't carry over
+  // 负责人/协办跟着走：再办一场多半还是同一班人（和人力牌 cpR 保留 refId 同一口径）
   const ne={id:uid(),name:src.name,theme:src.theme||'',date:'',start:src.start||'',venue:src.venue||'',status:'plan',
+    ownerRef:src.ownerRef?Object.assign({},src.ownerRef):undefined,
+    coOwners:(src.coOwners||[]).map(c=>Object.assign({},c)),
     header:{resources:noTask(live(src.header.resources)).map(cpR),money:(src.header.money||[]).map(cpM)},
     rows:(src.rows||[]).map(r=>({id:uid(),time:r.time,seg:r.seg,dur:r.dur,owner:r.owner,desc:r.desc,
       resources:live(r.resources).map(cpR),money:(r.money||[]).map(cpM)})),   // rows KEEP their 要做的事 (jobs)
@@ -6421,7 +6499,7 @@ function viewDesk(){
         ${go2(`S.evId='${e.id}';goDay()`,'当天')}
         ${go2(`S.evId='${e.id}';goReview()`,'复盘')}
       </div>`}
-      <div class="dc-brief">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">${ico('again')}再办一场</span>`:''}</div></div>`;};
+      <div class="dc-brief">${e.ownerRef?'负责人 '+esc(ownName(e.ownerRef))+' · ':''}环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">${ico('again')}再办一场</span>`:''}</div></div>`;};
   const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
     (groups[k].length?groups[k].map(evCard).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);
   return `<div class="main" style="max-width:640px;margin:0 auto">

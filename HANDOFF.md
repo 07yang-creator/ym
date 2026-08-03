@@ -1,3 +1,39 @@
+# ym 交接 — 2026-08-03（co-admin + 活动负责人/协办 第一阶段）
+
+owner 两条：**① ljzhujudy@gmail.com 升 co-admin；② 每场活动要有 owner** —— admin 建活动、
+指定 owner（从现有用户里选），owner 可以再加 co-owner。
+
+## ① co-admin：`0026_ym_coadmin.sql` 已写好 —— **owner 待办：SQL editor 跑一次**
+
+- `profile.is_admin = true`（by email）+ `whitelist('ljzhujudy@gmail.com','admin')`（重注册也保住）。
+- ⚠ 迁移里**必须停一下 `trg_profile_upd`**：SQL editor 里 `auth.uid()` 是 null → `is_admin()`
+  恒假 → 那个触发器把 is_admin **静默改回去**（UPDATE 报成功、值没变，0020 记过的坑）。
+  整段一个事务，末尾 do $$ 自检：查出来不是 true 就整体回滚 raise。
+- 作用面是**整个平台**（profile 是 jjcashflow 共用的）：管理 tab、发主办码、批主办申请、
+  ym_entry/ym_invite/ym_join_request 的 admin 策略、caller_ok（Drive）。owner 点名要的。
+- ⚠ **0025_ym_join_cap_window.sql 仍然没跑**（上一班的待办，别丢）。
+
+## ② 活动负责人/协办 —— 第一阶段（主办台侧）已上线
+
+- 活动卡（计划页）新增一行：负责人 `[Tiffany · V0001 ✕]` 协办 `[王芳 ✕][＋]` ——
+  **从用户一览选人**（`ownPickCard`，goods/已归档/已在卡上的不出现，有账号的排前面），
+  不是自由文本；环节行上的 `r.owner` 是另一层，没动。
+- 数据：`e.ownerRef={id,name}` + `e.coOwners[{id,name}]`（id 指名册，name 是显示备份 ——
+  人删了老卡仍读得出）。只进 ym_doc：**buildSaveBack / syncEventPost 两个白名单没扩** ——
+  模板和官网带不走 staff 名字（套件钉死）。
+- 选负责人时协办**仍在列表里** = 点了就升为负责人（ownAssign 自动从协办摘掉）；
+  再办一场把负责人/协办带过去（和人力牌同口径）。工作台卡片 brief 显示「负责人 ×××」。
+- 老活动（云上的 payload 没这两个字段）照常渲染成「＋ 指定负责人」，不炸（都 `||[]` 访问）。
+
+## ② 的第二阶段（**等 owner 裁决，别自作主张开工**）
+
+「owner may add co-owner」真正的含义要 owner 定：负责人**在自己的成员页**上看到/操作
+自己负责的活动（看整棵执行树？只加协办？），还是暂时只在主办台里由 admin 代为维护。
+成员侧任何新写入路径都要走 交付/抢单 那套（投影 + definer RPC，别碰 ym_doc 的
+「志愿者读写都进不去」），且照例先对抗式复查再上。
+
+---
+
 # ym 交接 — 2026-08-03 深夜（口述改走浏览器；429 的真相是「按模型」不是「没钱」）
 
 ## 一、429 的诊断，我错了一轮，记下判据
