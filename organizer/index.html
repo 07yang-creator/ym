@@ -963,6 +963,7 @@ async function cloudRefresh(){
     const b4=STORE.events.length;
     STORE.events=STORE.events.filter(e=>!(e&&e._host&&!seen[e.id]));
     if(STORE.events.length!==b4)changed++;
+    trashPull();   // 管理员盖的 restored_at 也在这个节拍上落地（0029）
     if(changed){
       try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){}
       if(S.evId&&!STORE.events.some(e=>e&&e.id===S.evId))S.evId=STORE.events[0]?STORE.events[0].id:null;
@@ -1383,6 +1384,7 @@ function viewPeople(){
     <input id="pq" value="${esc(q)}" placeholder="搜姓名或编号（如 V0014）"
       style="margin:10px 0" oninput="S.pq=this.value;renderPeopleOnly()">
     ${body||'<div class="empty">没有匹配的人。</div>'}
+    ${trashBlock()}
     ${S.pOpen?peopleDetail():''}</div>`;
 }
 // 输入框里打字不能整页重画（会丢焦点）—— 只换列表那块
@@ -1457,7 +1459,9 @@ function peopleDetail(){
       ${evs||'<div class="note9">还没有记录。</div>'}
       <div class="df" style="margin-top:12px">
         <button class="btn ghost sm" style="flex:1" onclick="S.pOpen=null;libEditOpen('${escJs(cat)}','${escJs(p.id)}')">打开资料卡</button>
-        ${cat!=='goods'?`<button class="btn ghost sm" onclick="S.pOpen=null;grantOpen('${escJs(p.id)}')">${ico('key')}账号</button>`:''}</div>
+        ${cat!=='goods'?`<button class="btn ghost sm" onclick="S.pOpen=null;grantOpen('${escJs(p.id)}')">${ico('key')}账号</button>`:''}
+        ${/* 移除放在资料卡这一层（要先点开这个人），不是列表上一个一碰就中的 ✕ */''}
+        <span class="lnkdel" onclick="personRemove('${escJs(p.id)}')">移除</span></div>
     </div>`;
 }
 // 从一览里改某场活动的表现 —— volLog 是按活动存的，所以要指定 eventId
@@ -1465,6 +1469,77 @@ function volLogFor(evId,pid,k,v){
   const e=STORE.events.find(x=>x.id===evId);if(!e)return;
   e.volLog=e.volLog||{};e.volLog[pid]=e.volLog[pid]||{};
   e.volLog[pid][k]=String(v||'').trim();save();}
+/* ===== 移除成员 = 可恢复的软删除 (owner 2026-08-03) =====
+   分工按 owner 的原话：**主办移除、管理员 30 天内恢复**。主办这边没有「撤销」——
+   那道复核就是这个功能的意义（否则它只是个回收站）。
+   实现的关键一手：移除 = 把整条记录从 `library.resources` **挪进** `library.trash`。
+   记录**离开了那个数组**，于是名册 / 指派器 / 资产库 / 重名检测 / 台本挂牌……
+   每一个读者自动就看不见它了 —— 不用去审计「还有哪里忘了加过滤」。
+   （这个 app 为「一个功能两道门，只修一道等于没修」付过至少五次学费，这里从结构上避开。）
+   服务端 ym_trash 只存 名字/编号/时间，**不存名册记录本身** —— 记录始终在主办自己的
+   ym_doc 里，平台不因为这个功能多存一份成员资料（0014 §7）。 */
+const TRASH_DAYS=30;
+function trashList(){const L=STORE.library;if(!L.trash)L.trash=[];return L.trash;}
+function trashAge(t){const at=(t&&t._del&&t._del.at)||0;const d=Date.parse(at);
+  return isNaN(d)?TRASH_DAYS+1:(Date.now()-d)/86400000;}
+function personRemove(pid){
+  const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
+  const a=codeOf(p);
+  ask({title:'移除 '+esc(p.name)+'？',
+    note:(a?'TA 有成员账号（'+a.code+'）—— 移除会同时停用 TA 的访问，编号不回收。':'')
+      +'记录会从名册里消失（已经挂在活动台本上的不受影响）。'
+      +'30 天内可以请管理员恢复，过了就真的没有了。',
+    fields:[],ok:'移除',fn:async()=>{
+      if(a&&canCloud()){const r=await sb.rpc('ym_revoke_code',{p_code:a.code,p_off:true});
+        if(r.error){toast('停用账号失败，没有移除：'+r.error.message);return;}}
+      STORE.library.resources=STORE.library.resources.filter(x=>x.id!==pid);
+      trashList().push(Object.assign({},p,{_del:{at:new Date().toISOString(),code:a?a.code:''}}));
+      save();
+      if(canCloud()){
+        const {error}=await sb.from('ym_trash').insert({host:SESSION.user.id,item_id:pid,
+          label:p.name||'',code:a?a.code:null});
+        if(error)toast(/does not exist|schema cache|PGRST205/i.test(String(error.message||''))
+          ?'已在本机移除 —— 但「管理员恢复」要先跑 0029 迁移才有'
+          :'已移除，但没能登记到云端（管理员将看不到这条）：'+error.message);
+      }
+      await loadCodes();S.pOpen=null;render();
+      toast(p.name+' 已移除 —— 30 天内可由管理员恢复');}});
+}
+/* 管理员盖了 restored_at → 由**主办自己的客户端**把记录挪回去（管理员写不了别人的 ym_doc）。
+   顺带做 30 天到期的本机清除：那一刻才是真正不可恢复。 */
+async function trashPull(){
+  if(!canCloud())return;
+  const {data,error}=await sb.from('ym_trash').select('item_id,restored_at').eq('host',SESSION.user.id);
+  if(error)return;                                   // 0029 没跑 / 网络 —— 静默，不打扰
+  let changed=0;
+  (data||[]).forEach(row=>{
+    if(!row.restored_at)return;
+    const i=trashList().findIndex(t=>t&&t.id===row.item_id);
+    if(i<0)return;
+    const rec=trashList()[i],code=rec._del&&rec._del.code;
+    delete rec._del;
+    STORE.library.resources.push(rec);trashList().splice(i,1);changed++;
+    if(code)sb.rpc('ym_revoke_code',{p_code:code,p_off:false}).then(()=>loadCodes());
+    sb.from('ym_trash').delete().match({host:SESSION.user.id,item_id:row.item_id}).then(()=>{});
+    toast(rec.name+' 已由管理员恢复');
+  });
+  const n0=trashList().length;
+  STORE.library.trash=trashList().filter(t=>trashAge(t)<=TRASH_DAYS);
+  if(STORE.library.trash.length!==n0)changed++;
+  if(changed){save();render();}
+}
+function trashBlock(){
+  const t=trashList().filter(x=>x&&trashAge(x)<=TRASH_DAYS);
+  if(!t.length)return '';
+  const row=x=>`<div class="prow" style="opacity:.6;cursor:default">
+    <span class="pn">${esc(x.name)}</span>
+    <span class="pc num">${x._del&&x._del.code?esc(x._del.code):''}</span>
+    <span class="pm">已移除 ${esc(String((x._del&&x._del.at)||'').slice(0,10))}</span>
+    <span class="pst">还剩 ${Math.max(0,Math.ceil(TRASH_DAYS-trashAge(x)))} 天</span></div>`;
+  return `<div class="sec">已移除 <span class="muted" style="font-size:11px">${t.length}</span></div>
+    <div class="ptable">${t.map(row).join('')}</div>
+    <p class="note9">要恢复请找管理员（移除后 30 天内）。到期后本机会真正删除，那时谁也找不回。</p>`;
+}
 /* ---------- 用户编码 + 邀请码 (0015) ----------
    The 16-char 邀请码 lives ONLY in _grant, for the one paint that shows it. It is NEVER written to
    a 名册 record: cloudPushAll() uploads STORE.library verbatim into ym_doc.payload, so a stored
@@ -1853,7 +1928,9 @@ function mergeLibrary(cloud,local){
   if(!cloud)return local;
   if(!local)return cloud;
   const out=JSON.parse(JSON.stringify(cloud));
-  ['templates','ideas','resources','money'].forEach(k=>{
+  // 'trash' 也要合并：被移除的人整条在这里躺 30 天（0029）。漏了它，换台设备一 cloudLoad
+  // 就把待恢复的记录冲掉 —— 管理员盖了 restored_at，主办这边却已经没得可恢复了。
+  ['templates','ideas','resources','money','trash'].forEach(k=>{
     out[k]=out[k]||[];
     const seen={};out[k].forEach(x=>{if(x&&x.id)seen[x.id]=1;});
     const key=x=>String((x&&(x.name||x.seg))||'').trim()+'|'+String((x&&x.kind)||'');
@@ -3544,11 +3621,12 @@ function libDel(k,id){const L=STORE.library;
         L[k]=L[k].filter(x=>x.id!==id);save();render();toast('模板已删除');}});
     return;
   }
-  ask({title:a?('删除 '+esc(rec.name)+'？'):'从资产库删除？',
-    note:a?('TA 有成员账号（'+a.code+'）—— 删除会同时停用 TA 的访问。编号不会被回收。')
-          :'已挂到活动上的不受影响。',
+  /* 人一律走「移除」那道门（0029：可恢复的软删除）。资产库的 ✕ 和 用户 页的「移除」
+     必须是同一条路 —— 否则从 ✕ 删掉的人管理员永远恢复不了，正是「一个功能两道门」。
+     物资/其他条目不涉及成员账号，照旧硬删。 */
+  if(k==='resources'&&catOf(rec)!=='goods'){personRemove(id);return;}
+  ask({title:'从资产库删除？',note:'已挂到活动上的不受影响。',
     fields:[],ok:'删除',fn:async()=>{
-      if(a&&canCloud())await sb.rpc('ym_revoke_code',{p_code:a.code,p_off:true});
       L[k]=L[k].filter(x=>x.id!==id);
       save();await loadCodes();render();}});}
 /* ---- item detail editor — full information fields per 缘满沙龙 V1.0 ---- */
@@ -5695,11 +5773,15 @@ function adminLoad(){
   Promise.all([
     sb.from('ym_member').select('user_id,email,role,status,created_at').order('created_at',{ascending:false}),
     sb.from('ym_invite').select('*').order('created_at',{ascending:false}),
-    sb.from('ym_code').select('code,role,paid,host,member,revoked,bound_at')
-  ]).then(([p,c,k])=>{
+    sb.from('ym_code').select('code,role,paid,host,member,revoked,bound_at'),
+    // 0029：被主办移除、等管理员恢复的成员记录。0029 没跑时这条会 error —— 容错读，
+    // 别让整屏变空（0019 那次 42703 的教训：少一列不能拖垮整个管理页）
+    sb.from('ym_trash').select('host,item_id,label,code,deleted_at,restored_at')
+  ]).then(([p,c,k,t])=>{
     if(p.error)toast('读取用户失败：'+p.error.message);
     if(c.error)toast('读取邀请码失败：'+c.error.message);
-    ADMIN={people:p.data||[],codes:c.data||[],mcodes:k.error?[]:(k.data||[])};render();
+    ADMIN={people:p.data||[],codes:c.data||[],mcodes:k.error?[]:(k.data||[]),
+           trash:t&&!t.error?(t.data||[]):[],trashOff:!!(t&&t.error)};render();
   });
 }
 // 这个 uid 名下有哪些成员编码（＝TA 是别的主办的志愿者/嘉宾/捐赠者）
@@ -5765,6 +5847,7 @@ function viewAdmin(){
     <div class="sec">全部主办账号 ${others.length}</div>
     <div class="rvsec">${others.map(pRow).join('')||'<div class="note9">空</div>'}</div>
     ${adminMembersBlock()}
+    ${adminTrashBlock()}
     <p class="note9">管理员不能在这里被创建或撤销 — is_admin 只能在数据库里改（0012 的硬规则）。</p>
   </div>`;
 }
@@ -5789,6 +5872,36 @@ function adminMembersBlock(){
     <div class="rvsec">${groups}
       <p class="note9">成员的注册申请<b>不进这一屏</b> —— 它们直接落到对应主办的「用户」页
         （owner 2026-07-28）。这里只回答归属。</p></div>`;
+}
+/* 0029：主办移除成员 → 这里是**唯一**能恢复的地方（owner 定的分工：主办移除、管理员恢复）。
+   这一屏只显示 名字/编号/哪个主办/什么时候 —— 名册记录本身没有上传，恢复动作也只是
+   盖一个 restored_at，真正把记录挪回去的是那个主办自己的客户端。 */
+function adminTrashBlock(){
+  if(ADMIN&&ADMIN.trashOff)return `<div class="sec">已移除的成员</div>
+    <div class="rvsec"><div class="note9">这块要先在 Supabase 里应用 0029_ym_trash.sql 才会工作。</div></div>`;
+  const rows=((ADMIN&&ADMIN.trash)||[]).filter(r=>r&&!r.restored_at
+    &&(Date.now()-Date.parse(r.deleted_at))/86400000<=TRASH_DAYS);
+  if(!rows.length)return `<div class="sec">已移除的成员</div>
+    <div class="rvsec"><div class="note9">没有待恢复的记录。</div></div>`;
+  const row=r=>{const left=Math.max(0,Math.ceil(TRASH_DAYS-(Date.now()-Date.parse(r.deleted_at))/86400000));
+    return `<div class="rvrow" style="flex-wrap:wrap;gap:8px">
+      <span class="c2">${esc(r.label||'（无名）')}
+        <span class="lbl"> ${r.code?esc(r.code)+' · ':''}主办：${esc(adminHostName(r.host))} ·
+          ${esc(String(r.deleted_at||'').slice(0,10))} 移除 · 还剩 ${left} 天</span></span>
+      <span style="flex:none"><button class="btn ghost sm"
+        onclick="adminTrashRestore('${escJs(r.host)}','${escJs(r.item_id)}')">恢复</button></span></div>`;};
+  return `<div class="sec">已移除的成员 — 30 天内可恢复 ${rows.length}</div>
+    <div class="rvsec">${rows.map(row).join('')}
+      <p class="note9">恢复后，该主办下次同步（打开/切回主办台）就会看到这个人回到名册，
+        账号访问也一并恢复。超过 30 天的不再显示 —— 那时对方本机已经真正删除了。</p></div>`;
+}
+function adminTrashRestore(host,item){
+  sb.rpc('ym_trash_restore',{p_host:host,p_item:item}).then(({data,error})=>{
+    if(error){toast('恢复失败：'+error.message);return;}
+    toast(data==='ok'?'已标记恢复 —— 该主办下次同步就会看到'
+      :data==='expired'?'超过 30 天了，不能再恢复'
+      :data==='already'?'这条已经恢复过了':'没有找到这条记录');
+    ADMIN=null;render();});
 }
 /* 把一个别人家的成员批成主办方，是这一屏能犯的最贵的错（TA 立刻能铸码、能写 ym_doc、
    能把帖子发到公开首页）。所以这一步要多问一句 —— 并且给出真正该做的那件事。 */

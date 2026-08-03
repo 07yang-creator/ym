@@ -38,6 +38,31 @@ owner 两条：**① ljzhujudy@gmail.com 升 co-admin；② 每场活动要有 o
   写了整条注册流程（生成→发人→主办登录页粘码注册→即时开通；无码=待批准；
   成员码不走这里）。措辞对过 authWall 真实的门（先填后按）。
 
+## 同日第六条：移除成员 = 可恢复的软删除（`0029` **owner 待跑**）
+
+owner：「host may remove his users. can be restored by admin in 30 days.」
+分工照原话：**主办移除、管理员恢复**，主办这边**故意没有「撤销」**（否则就只是个回收站，
+没有那道复核）。
+
+- **结构性的一手**：移除 = 把整条记录从 `library.resources` **挪进** `library.trash`。
+  记录离开了那个数组，于是 名册 / 指派器 / 资产库 / 重名检测 / 台本挂牌 **每一个读者
+  自动看不见它** —— 不用去审计「还有哪里忘了加过滤」。真跑逐个验过（peoList / nameIndex /
+  ownPickCard / libPanel 都只剩另一个人）。这是对「一个功能两道门」的结构性规避。
+- **两道门合一**：资产库的 ✕ 删人也转交 `personRemove` —— 否则从 ✕ 删掉的人管理员恢复不了。
+- **服务端 `ym_trash` 不存名册记录本身**，只有 名字/编号/时间。记录始终在主办自己的
+  `ym_doc` 里；管理员恢复只是盖一个 `restored_at`，**真正把记录挪回去的是主办自己的客户端**
+  （`trashPull`，挂在 cloudRefresh 的节拍上），顺带 `ym_revoke_code(p_off:false)` 恢复访问。
+  这样管理员不需要、也没有写别人 `ym_doc` 的权限。
+- **30 天**：客户端超过 30 天把本机那条真正丢掉（那一刻才不可恢复）；RPC 也拒绝过期恢复。
+- 迁移里没有 update 策略（恢复只走 definer RPC，避开 0027 H1 那类 permissive 互凑面）；
+  插入触发器强制 `restored_at=null` + 服务端 `deleted_at`（否则主办能自带时间戳绕过 30 天）。
+- ⚠ **一处 owner 可以否决的取舍**：`ym_trash` 存了 `label`（名字），因为管理员要能分辨
+  「恢复哪一条」。这和 0014 §7「平台不做身份汇总」擦边 —— 不要的话就只留 code，
+  代价是没有编号的记录管理员无法分辨。
+
+⚠ **owner 待跑**：`0029_ym_trash.sql`。没跑之前：移除在本机照常生效（人会消失、账号会停用），
+但管理页那块会说「要先应用 0029」，且**管理员无法恢复**。
+
 ## 同日第五条：活同步（拉）—— owner 要「负责人和协办 see the same thing and edit at the same time」
 
 第一步先补上**任何**架构都缺的那半边：cloudLoad 只在登录那一刻拉一次，之后别的设备
