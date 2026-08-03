@@ -38,6 +38,24 @@ owner 两条：**① ljzhujudy@gmail.com 升 co-admin；② 每场活动要有 o
   写了整条注册流程（生成→发人→主办登录页粘码注册→即时开通；无码=待批准；
   成员码不走这里）。措辞对过 authWall 真实的门（先填后按）。
 
+## 同日第七条：名册第四类「主办」+ 资料卡能改类别
+
+owner：「tiffany and judy are hosts, not volunteer, they should have their own category.」
+
+- `PEO_CATS` 加 `['host','主办']`（资产库分页、用户页分组、＋主办、`LIB_FIELDS.host`
+  五个字段：姓名/职务/联系方式/**主办账号邮箱**/备注 —— 邮箱是为了和 0027 共编那段的
+  「主办账号」对得上人）。用户页分组顺序把 主办 放在最前。
+- **主办这一类不发成员邀请码**：行上显示「主办账号」而不是按钮，`grantOpen` 也直接拒绝
+  并指路「找管理员发 YM- 主办邀请码」。两条路都堵 —— 资料卡里的「账号」按钮是同一道门的
+  第二条路，只藏按钮等于没修（成员码本来也铸不出 H：0015 的 RPC + 触发器双重拒绝）。
+- **资料卡新增「类别」下拉 `personSetCat`** —— 这条是关键：Tiffany/Judy 已经存在，
+  没有它就只能删了重建，**编号和服务记录会一起没**。改类别只动 `rec.cat`，
+  **记录还是同一条**（`refId` 不变），所以台本上挂着的牌、服务记录全都跟着走 ——
+  真跑验过：改完 `chip.refId` 仍然解析得到那条记录。
+  换类别前先 `libReadInto` 把正在编辑的字段存回去（换完卡片会重画成另一组字段）。
+  已有编号的人改类别**只提醒不阻止**（owner 的规矩）：编号的身份是铸码那一刻定死的
+  （0015：code 是 ym_share/ym_submit 的 FK 目标），类别只是名册这边的分组。
+
 ## 同日第六条：移除成员 = 可恢复的软删除（`0029` **owner 待跑**）
 
 owner：「host may remove his users. can be restored by admin in 30 days.」

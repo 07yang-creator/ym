@@ -1361,7 +1361,7 @@ function viewPeople(){
   const q=String(S.pq||'').trim();
   const hit=p=>{if(!q)return true;const a=codeOf(p);
     return String(p.name||'').indexOf(q)>=0||(a&&a.code.toUpperCase().indexOf(q.toUpperCase())>=0);};
-  const GRP=[['volunteer','志愿者 / 有偿'],['guest','嘉宾'],['donor','捐赠人']];
+  const GRP=[['host','主办 / 管理人员'],['volunteer','志愿者 / 有偿'],['guest','嘉宾'],['donor','捐赠人']];
   const body=GRP.map(([cat,label])=>{
     const list=all.filter(p=>catOf(p)===cat&&hit(p));
     if(!list.length)return '';
@@ -1376,6 +1376,7 @@ function viewPeople(){
          「账号」按钮，等于没有门。libAddSave 存完自然会开发码窗口（owner 07-28 的裁决），
          所以「登记 → 发码」在这一页一气呵成。 */''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0">
+      <button class="btn ghost sm" onclick="libAddOpen('host')">＋ 主办</button>
       <button class="btn ghost sm" onclick="libAddOpen('volunteer')">＋ 志愿者</button>
       <button class="btn ghost sm" onclick="libAddOpen('guest')">＋ 嘉宾</button>
       <button class="btn ghost sm" onclick="libAddOpen('donor')">＋ 捐赠人</button>
@@ -1398,7 +1399,9 @@ function peopleRow(p,cat){
   const a=codeOf(p),st=codeState(p);
   const t=a?selfTally(a.code):{n:0,hours:0,cost:0};
   const hist=cat==='guest'?guestHistory(p.id):null;
-  const meta=cat==='guest'
+  const meta=cat==='host'
+    ? esc(p.role||'主办 / 管理人员')+(p.acctEmail?' · '+esc(p.acctEmail):'')
+    : cat==='guest'
     ? `参加 ${hist.length} 场${hist.reduce((s,h)=>s+h.evals.length,0)?' · 评价 '+hist.reduce((s,h)=>s+h.evals.length,0)+' 条':''}`
     : cat==='donor' ? esc(p.dtype||'个人')
     : `${esc(p.role||'')}${t.n?' · 完成 '+t.n+' 件 · '+(t.hours%1?t.hours.toFixed(1):t.hours)+'h':''}${t.cost?' · 自费 '+yen(t.cost):''}`;
@@ -1410,7 +1413,10 @@ function peopleRow(p,cat){
     <span class="pn">${esc(p.name)}</span>
     ${/* 「未发码」不再是死文字 —— 它就是发码的门 (owner 2026-08-03)。有码的照旧显示编号，
          重发/收回走资料卡的「账号」。 */''}
-    <span class="pc num">${a?esc(a.code):`<button class="btn ghost sm" style="font-size:10.5px;padding:3px 9px"
+    ${/* 主办不领成员邀请码（他们用管理员发的 YM- 码注册主办账号）—— 这一类不出现发码按钮 */''}
+    <span class="pc num">${a?esc(a.code)
+      :cat==='host'?'<span class="lbl" style="font-size:10px">主办账号</span>'
+      :`<button class="btn ghost sm" style="font-size:10.5px;padding:3px 9px"
       onclick="event.stopPropagation();grantOpen('${escJs(p.id)}')">${ico('key')}发邀请码</button>`}</span>
     ${a&&a.role==='V'?`<span class="prank">${esc(a.rank||'C')}</span>`:'<span class="prank sp"></span>'}
     <span class="pm">${meta}</span>
@@ -1575,6 +1581,10 @@ function codeState(p){
 function grantOpen(pid){
   const p=STORE.library.resources.find(x=>x.id===pid);if(!p)return;
   if(catOf(p)==='goods'){toast('物资不能有账号');return;}
+  /* 主办不走成员邀请码这条路（两张表两个身份，0012/0015）：成员码只能铸成 V/P/D/O，
+     铸 H 会被 ym_mint_code 和触发器双重拒绝。藏掉按钮不算把门 —— 资料卡里的「账号」
+     按钮是同一道门的第二条路，所以判断放在这里。 */
+  if(catOf(p)==='host'){toast('主办账号不用成员邀请码 —— 请管理员在「管理」页发一个 YM- 主办邀请码给 TA');return;}
   if(!canCloud()){toast('先登录并通过批准，才能给成员开账号');return;}
   const a=codeOf(p);
   _grant={pid,role:a?roleKey(a):issuableRoles(catOf(p))[0][0],invite:'',busy:false,err:''};
@@ -3631,6 +3641,11 @@ function libDel(k,id){const L=STORE.library;
       save();await loadCodes();render();}});}
 /* ---- item detail editor — full information fields per 缘满沙龙 V1.0 ---- */
 const LIB_FIELDS={
+  // 主办 / 管理人员 (owner 2026-08-03)。字段刻意少：这一类是「自己人」的名牌，
+  // 不是要给主办建一份人事档案。acctEmail 是 TA 登录主办台用的邮箱 —— 指派共编
+  // （0027 的「主办账号」那一段）时按它对得上人。
+  host:[['name','姓名'],['role','职务 / 分工'],['contact','联系方式'],
+    ['acctEmail','主办账号邮箱（TA 登录用的）'],['note','备注','ta']],
   // 志愿者名册 (V1.0)
   volunteer:[['name','姓名'],['gender','性别','sel',['','男','女']],['age','年龄'],
     ['role','角色 / 擅长工作'],['contact','联系方式'],['avail','可服务时间'],
@@ -3671,7 +3686,12 @@ const LIB_FIELDS={
 function libColl(kind){return kind==='money'?'money':kind==='ideas'?'ideas':kind==='templates'?'templates':'resources';}
 // 人员 = three registries per 缘满沙龙 V1.0 (owner 2026-07-20). One store, one `cat` field,
 // so rundown chips keep resolving by refId and nothing existing has to be rewritten.
-const PEO_CATS=[['volunteer','志愿者'],['guest','嘉宾'],['donor','捐赠人']];
+/* 第四类 主办 (owner 2026-08-03：「tiffany and judy are hosts, not volunteer」)。
+   主办 = 办活动的自己人（主理 / 搭档 / 管理人员），和志愿者是两回事：
+   **他们不领成员邀请码** —— 主办账号是管理员发的 YM-xxxx 码注册的（0012/两张表两个身份），
+   所以这一类的行上不出现「发邀请码」，也不许开发码窗口。 */
+const PEO_CATS=[['host','主办'],['volunteer','志愿者'],['guest','嘉宾'],['donor','捐赠人']];
+const PEO_KINDS=PEO_CATS.map(x=>x[0]);
 function peoLabel(c){const f=PEO_CATS.find(x=>x[0]===c);return f?f[1]:c;}
 function peoList(cat){return STORE.library.resources.filter(r=>(r.cat||(r.type==='物'?'goods':'volunteer'))===cat);}
 function catOf(r){return r.cat||(r.type==='物'?'goods':'volunteer');}
@@ -3775,6 +3795,10 @@ function libEditCard(){
     <div class="modal-g"><div class="rvsec" style="margin:0;max-height:80vh;overflow:auto">
       <div class="hd"><span class="lbl">资料卡 — 按 V1.0 需求字段</span>
         <button class="btn ghost sm" onclick="S.libEdit=null;render()">✕</button></div>
+      ${PEO_KINDS.indexOf(kind)>=0?`<label class="dfld" style="margin-bottom:10px">
+        <span class="l">类别 — 改了就换一组字段（Tiffany / Judy 这种「其实是主办」在这里改）</span>
+        <select onchange="personSetCat('${escJs(id)}',this.value)">${PEO_CATS.map(([k,l])=>
+          `<option value="${k}" ${kind===k?'selected':''}>${l}</option>`).join('')}</select></label>`:''}
       ${fields}
       ${kind==='volunteer'?rankRow(rec):''}
       ${kind==='guest'?guestHistoryHtml(id):''}
@@ -3798,6 +3822,22 @@ function guestHistoryHtml(libId){
         ${v2.strengths?'优点：'+esc(v2.strengths):''}${v2.improvements?' ／ 建议：'+esc(v2.improvements):''}${v2.follow_up?' ／ 跟进：'+esc(v2.follow_up):''}</div>`).join('')}
     </div>`).join('')}</div>`;
 }
+/* 改类别 = 只动 rec.cat，记录还是那一条（refId 不变），所以台本上挂着的牌、服务记录、
+   编号全都跟着走，不会断。⚠ 先把已填的字段存回去再换 —— 换完卡片重画成另一组字段，
+   没存的输入就没了。
+   已经有成员编号的人改类别：**只提醒，不阻止**（owner 的规矩）—— 编号的角色是铸码那一刻
+   定死的（0015：code 是 ym_share/ym_submit 的 FK 目标，改不得），类别只是名册这边的分组。 */
+function personSetCat(id,cat){
+  const rec=STORE.library.resources.find(x=>x.id===id);if(!rec)return;
+  const from=catOf(rec);if(from===cat)return;
+  if(S.libEdit&&S.libEdit.id===id)libReadInto(from,'le_',rec);   // 别丢掉正在编辑的字段
+  rec.cat=cat;rec.type='人';
+  const a=codeOf(rec);
+  S.libEdit={kind:cat,id};save();render();
+  const lbl=(PEO_CATS.find(x=>x[0]===cat)||[,cat])[1];
+  toast(a?('已改成「'+lbl+'」—— 注意 TA 的编号 '+a.code+' 仍是发码时定的身份，编号不会跟着改')
+        :('已改成「'+lbl+'」'));
+}
 function libEditSave(){
   if(!S.libEdit)return;            // 卡片已经关掉了（连点/回车赶在重绘之后）—— 什么都不做
   const {kind,id}=S.libEdit;
@@ -3809,7 +3849,7 @@ function libEditSave(){
   S.libEdit=null;save();render();toast(dn||'资料卡已保存');
 }
 /* ---- 新建：和资料卡同一套字段，不再是两个输入框的演示表单 (owner 2026-07-27) ---- */
-const LIB_ADD_LBL={volunteer:'新志愿者 / 工作人员',guest:'新嘉宾',donor:'新捐赠人',
+const LIB_ADD_LBL={host:'新主办 / 管理人员',volunteer:'新志愿者 / 工作人员',guest:'新嘉宾',donor:'新捐赠人',
   goods:'新物资 / 场地',money:'新收支项',ideas:'新灵感（环节）'};
 function libAddOpen(kind){S.libAdd={kind};render();}
 function libAddCard(){
