@@ -1293,7 +1293,18 @@ function viewPeople(){
     return `<div class="sec">${label} <span class="muted" style="font-size:11px">${list.length}</span></div>
       <div class="ptable">${list.map(p=>peopleRow(p,cat)).join('')}</div>`;}).join('');
   return `<div class="main" style="max-width:720px;margin:0 auto">
-    <div class="hintbar">用户一览 — 按人看，不按类别看。点一行展开 TA 的服务记录和表现。</div>
+    <div class="hintbar">用户一览 — 按人看，不按类别看。点一行展开 TA 的服务记录和表现。<br>
+      成员怎么进来：下面登记进名册 → 点行上的「发邀请码」→ TA 拿码去 ym.jjconnect.tokyo
+      「成员登录」注册（邮箱密码 TA 自己填）→ 自动绑到你名下，行上出现编号。</div>
+    ${/* 邀请入口就长在人的页面上（owner 2026-08-03：「主办没有一条像样的路能请人进来」）——
+         以前登记新人只能去资产库，行上的「未发码」又是死文字，发码窗口全靠资料卡里那颗
+         「账号」按钮，等于没有门。libAddSave 存完自然会开发码窗口（owner 07-28 的裁决），
+         所以「登记 → 发码」在这一页一气呵成。 */''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0">
+      <button class="btn ghost sm" onclick="libAddOpen('volunteer')">＋ 志愿者</button>
+      <button class="btn ghost sm" onclick="libAddOpen('guest')">＋ 嘉宾</button>
+      <button class="btn ghost sm" onclick="libAddOpen('donor')">＋ 捐赠人</button>
+    </div>
     ${joinBlock()}${freshBlock()}
     <input id="pq" value="${esc(q)}" placeholder="搜姓名或编号（如 V0014）"
       style="margin:10px 0" oninput="S.pq=this.value;renderPeopleOnly()">
@@ -1321,7 +1332,10 @@ function peopleRow(p,cat){
   return `<div class="prow${S.pOpen===p.id?' on':''}" onclick="S.pOpen=S.pOpen===
       '${escJs(p.id)}'?null:'${escJs(p.id)}';loadAccepted();render()">
     <span class="pn">${esc(p.name)}</span>
-    <span class="pc num">${a?esc(a.code):'<span class="muted" style="font-size:10px">未发码</span>'}</span>
+    ${/* 「未发码」不再是死文字 —— 它就是发码的门 (owner 2026-08-03)。有码的照旧显示编号，
+         重发/收回走资料卡的「账号」。 */''}
+    <span class="pc num">${a?esc(a.code):`<button class="btn ghost sm" style="font-size:10.5px;padding:3px 9px"
+      onclick="event.stopPropagation();grantOpen('${escJs(p.id)}')">${ico('key')}发邀请码</button>`}</span>
     ${a&&a.role==='V'?`<span class="prank">${esc(a.rank||'C')}</span>`:'<span class="prank sp"></span>'}
     <span class="pm">${meta}</span>
     ${isNew?'<span class="pnew">新注册</span>':''}
