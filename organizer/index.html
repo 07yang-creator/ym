@@ -4022,7 +4022,7 @@ function dayRun(e){
 function tapRun(id){const r=ev().rows.find(x=>x.id===id);if(!r)return;
   r.actual=r.actual?null:nowHM();save();render();}
 /* ---- 记录 rec (voice → confirm; 未确认不入档) ---- */
-let REC={mr:null,chunks:[],timer:null,secs:0};
+let REC={mr:null,chunks:[],timer:null,secs:0,sr:null,said:''};
 function ymRoster(){const e=ev();
   return {mode:'ym',today:todayStr(),
     participants:e.participants.map(p=>({id:p.id,n:p.gender+p.n,name:p.name})),
@@ -4050,8 +4050,58 @@ function dayRec(e){
       <button class="btn ghost sm" ${!S.recWho?'disabled':''} onclick="manualEval()">✍️ 手动填写</button></div>
     <p class="note9" style="text-align:center">屏幕不会亮红点，对方看见的只有一条线。<br>说号码最稳：例「女7，沟通积极，建议多主动」。也可以说签到、翻状态、记收支。</p>`;
 }
+/* 浮动话筒（说一句话 → AI 猜你要做什么：签到 / 翻状态 / 评价 / 记账）。
+   ⚡ 2026-08-03：也改走浏览器转写。以前是「录音 → 上传 → 语音模型 → 意图」，
+   现在是「浏览器转写 → 只把**文字**发给模型判意图」——
+     · 省掉最贵也最容易坏的一段（音频上传 + 收音频的模型）；
+     · 08-03 那次三个候选模型全被拒，正是卡在那一层；文字请求便宜得多；
+     · 转写在本机，说完立刻就有字。
+   不支持 Web Speech 的浏览器**原样退回录音那条路**（recStartMR），一个字没动。 */
 function recStart(){
   if(S.recPhase==='rec')return;   // works from the 记录 tab (with 号牌 selected) or the mic fab anywhere
+  if(SR){recStartSR();return;}
+  recStartMR();
+}
+/* 浏览器转写版：边说边把字显示在录音条上，松手就把文字送去判意图 */
+function recStartSR(){
+  let rec;try{rec=new SR();}catch(e){recStartMR();return;}
+  REC.sr=rec;REC.said='';REC.secs=0;S.recPhase='rec';
+  rec.lang='zh-CN';rec.interimResults=true;rec.continuous=false;rec.maxAlternatives=1;
+  rec.onresult=e2=>{
+    let fin='',inter='';
+    for(let i=0;i<e2.results.length;i++){const r=e2.results[i];
+      if(r.isFinal)fin+=r[0].transcript;else inter+=r[0].transcript;}
+    REC.said=(fin||inter||'').trim();
+    const el=$('recsec');if(el)el.textContent=(REC.said||'听着…').slice(0,24);
+  };
+  rec.onerror=e2=>{
+    const why=e2&&e2.error;REC.sr=null;S.recPhase='idle';render();
+    if(why==='not-allowed'||why==='service-not-allowed')toast('浏览器没给麦克风权限 —— 地址栏里允许一次');
+    else if(why==='no-speech')toast('没听到声音 —— 再按一次说');
+    else if(why)toast('语音输入出错：'+why);
+  };
+  rec.onend=()=>{
+    REC.sr=null;
+    const said=(REC.said||'').trim();
+    if(!said){S.recPhase='idle';render();toast('没听清 —— 再按一次说');return;}
+    S.recPhase='think';render();
+    if(!(S.view==='day'&&S.dayTab==='rec'))toast('整理中…');
+    recSendText(said);
+  };
+  render();
+  try{rec.start();}catch(e){REC.sr=null;S.recPhase='idle';render();recStartMR();}
+  const b=$('recbtn');if(b)b.classList.add('rec');
+  const mf=$('micfab');if(mf)mf.classList.add('rec');
+}
+/* 只把文字发过去判意图 —— 一个字节音频都不上传 */
+function recSendText(said){
+  fetch(API+'/api/voice',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({text:said,roster:ymRoster(),
+      user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
+  .then(r=>r.json()).then(res=>{S.recPhase='idle';S.draft=res;render();})
+  .catch(e2=>{S.recPhase='idle';toast('识别失败：'+e2.message);render();});
+}
+function recStartMR(){
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     REC.chunks=[];REC.mr=new MediaRecorder(stream);REC.secs=0;
     REC.mr.ondataavailable=ev2=>REC.chunks.push(ev2.data);
@@ -4067,6 +4117,7 @@ function recStart(){
 }
 function recStop(){
   if(S.recPhase!=='rec')return;
+  if(REC.sr){try{REC.sr.stop();}catch(e){REC.sr=null;S.recPhase='idle';render();}return;}
   clearInterval(REC.timer);S.recPhase='think';
   try{REC.mr.stop();}catch(e2){S.recPhase='idle';}
   render();
