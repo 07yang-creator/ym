@@ -78,8 +78,9 @@ owner：「host may remove his users. can be restored by admin in 30 days.」
   「恢复哪一条」。这和 0014 §7「平台不做身份汇总」擦边 —— 不要的话就只留 code，
   代价是没有编号的记录管理员无法分辨。
 
-⚠ **owner 待跑**：`0029_ym_trash.sql`。没跑之前：移除在本机照常生效（人会消失、账号会停用），
-但管理页那块会说「要先应用 0029」，且**管理员无法恢复**。
+✅ **`0029` 已应用并实测复验（2026-08-03）**：`ym_trash` 表 200、`ym_trash_restore` 对 anon
+**401 42501**（这次一开始就按 0028 的教训点名 `from public, anon`，没有再漏）。
+自检没 raise ⇒ 插入守卫触发器在、且 `ym_trash` 上没有任何 update 策略。
 
 ## 同日第五条：活同步（拉）—— owner 要「负责人和协办 see the same thing and edit at the same time」
 
