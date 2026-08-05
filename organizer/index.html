@@ -408,6 +408,21 @@
   .mshot .x{position:absolute;top:6px;right:6px;z-index:2;width:26px;height:26px;border-radius:50%;
     background:rgba(8,12,10,.55);color:var(--stock-dim);display:flex;align-items:center;
     justify-content:center;font-size:11px;cursor:pointer}
+  /* 「从网盘找回」列出来的孤儿照片。形状仍然是 .mshot —— 一栏、原比例、直接滚，
+     owner 2026-08-03 那条相册观感不因为多了这个功能而变。只有边框换成铜色：
+     它们还**没有**进相册，和上面那些一眼要分得开。 */
+  .mshot.mnew{border-color:var(--brass)}
+  /* 「相册里已经有一张同名的」。现实里绝大多数孤儿是**当时重传前的那一批**（主办以为
+     失败又传了一次，网盘里于是躺着两份），一键挂回就会让每张变成两条一模一样的条目。
+     不隐藏也不替主办决定：边框换成告警色 + 信息行上把话说明白，一键挂回默认绕开它们。 */
+  .mshot.mdup{border-color:var(--alarm)}
+  .msinfo .dup{color:var(--alarm)}
+  .mshot .keep{position:absolute;top:6px;right:6px;z-index:2;height:26px;padding:0 11px;border-radius:13px;
+    background:rgba(8,12,10,.55);color:var(--brass);display:flex;align-items:center;
+    justify-content:center;font-size:11px;cursor:pointer}
+  /* 文件名和时间写在图**外面**：缩略图取不出来（这台浏览器没登录那个 Google 账号）时，
+     整块图会塌成一行文件名，那时这一行就是主办唯一能据以判断「是不是那几张」的东西。 */
+  .msinfo{font-size:11px;color:var(--stock-dim);margin:2px 0 10px}
   .mfoot{padding:10px 12px;border-top:1px solid var(--line);background:var(--felt)}
   .exports{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
   .sbitem{display:flex;gap:9px;align-items:center;width:100%;text-align:left;padding:9px 11px;
@@ -1781,7 +1796,7 @@ function ownerGate(){
        新账号的工作台上，一按保存就把 A 的票据传进 B 的网盘、记进 B 的账。 */
     PROFILE=null;PENDING=[];CODES={};JOINREQ=null;ACCEPTED=[];_accAt=0;
     LEDGER=null;LEDGER_ERR='';POSTS=null;ADMIN=null;HOSTACCTS=null;capStop();
-    S.rc=null;S.draft=null;S.pOpen=null;S.mediaOpen=false;S.view='desk';
+    S.rc=null;S.draft=null;S.pOpen=null;S.mediaOpen=false;S.mediaScan=null;S.view='desk';
   }
   _storeOwner=SESSION.user.id;
   try{localStorage.setItem('jjym_owner',SESSION.user.id);}catch(e){}
@@ -2332,7 +2347,7 @@ function render(){
     window.ymSanitize.into($('po_body'),S.postEdit.body_html||'');
   if(S.exTask)positionExDlg();   // anchor the floating task detail next to its node
 }
-function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;S.mediaOpen=false;S.ownPick=null;if(v!=='sheet')S.readonly=false;
+function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;S.mediaOpen=false;S.mediaScan=null;S.ownPick=null;if(v!=='sheet')S.readonly=false;
   if(v==='people')loadAccepted();          // 本人申报的数字来自 accepted 行，不在轮询里
   if(v==='ledger'){loadAccepted();loadLedger();}   // 自费脚注 + 行，都要有数据
   if(v==='signup')loadPending();                   // 待确认的报名（join）要立刻显示，别等 60 秒
@@ -2610,7 +2625,7 @@ function doSignOut(){clearPendingCode();   // never carry a code across identiti
     clearTimeout(_pushT);
     STORE=seed();
     try{localStorage.setItem(LS_KEY,JSON.stringify(STORE));}catch(e){}
-    S.evId=null;S.sel='header';S.rc=null;S.mediaOpen=false;S.view='desk';
+    S.evId=null;S.sel='header';S.rc=null;S.mediaOpen=false;S.mediaScan=null;S.view='desk';
     if(sb)sb.auth.signOut().then(()=>{PROFILE=null;ADMIN=null;POSTS=null;HOSTACCTS=null;S.auth=false;render();});
   })();}
 
@@ -2834,8 +2849,14 @@ function viewSheet(){
     <button class="btn ghost sm" onclick="newEvent()">＋ 新活动</button>
     ${e&&!S.readonly&&evPhase(e)==='plan'?`<span class="icx" title="删除这场活动（仅筹备中可删）" onclick="delEvent()">✕</span>`:''}
   </div>`;
+  /* ⚠ 别把这条横幅读成「归档活动的入口已经齐了」—— 它只解锁**这一页**（台本）。
+     照片和「从网盘找回」住在复盘屏里，而只读态下媒体库的 .mfoot 整块不画，那颗按钮
+     根本不存在。归档活动要找回照片，走列表页那张卡上的「复盘 · 照片」（openReview，
+     它会把只读关掉）；从这一页走的话，得先「退出只读编辑」，页尾才会长出「复盘」。
+     第二句照片指路是**给主办的**，不是注释里说说 —— 上面那句话在屏幕上必须看得见。 */
   const roBanner=S.readonly?`<div class="hintbar" style="border:1px solid var(--brass-dim);border-radius:5px;padding:9px 11px">
-    ${ico('lock')}只读回看（已归档活动）· <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读编辑</span></div>`:'';
+    ${ico('lock')}只读回看（已归档活动）· <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读编辑</span>
+    <br>照片和「从网盘找回」不在这一页，在「复盘」里 —— 列表页这张卡上就有一颗「复盘 · 照片」。</div>`:'';
   if(!e)return `<div class="wrap"><div class="panel">${libPanel()}</div>
     <div class="main">${sw}<div class="empty">还没有活动。<br>点「＋ 新活动」，或从左侧资产库点一个模板开始。</div></div></div>
     <button class="fab" onclick="S.drawer=true;render()">${ico('books')}资产库</button>`;
@@ -3069,10 +3090,15 @@ function upFetch(url,opt){
   const t=setTimeout(()=>{try{ac.abort();}catch(e){}},UP_TIMEOUT);
   return fetch(url,Object.assign({},opt,{signal:ac.signal})).finally(()=>clearTimeout(t));
 }
+/* 活动 → 网盘目录名。**只有这一处**：上传按它建目录、找回按它查目录，
+   两边差一个字就永远查不到（而查不到的表现是「网盘里没有这个目录」，看上去像照片没了）。
+   日期为空时它是「八月茶会 ·」—— 那也是网盘上真实的样子，所以照抄，
+   不许在找回那一侧「顺手修一下」把尾巴上的空格/圆点抹掉。 */
+function evGroup(e){return e?((e.name||'活动')+' · '+(e.date||'')).trim():'';}
 async function attachUpload(b64,mime,name,kind){return upSerial(()=>attachUploadDo(b64,mime,name,kind));}
 async function attachUploadDo(b64,mime,name,kind){
   try{
-    const e=ev(),group=e?((e.name||'活动')+' · '+(e.date||'')).trim():'';
+    const e=ev(),group=evGroup(e);
     const r=await upFetch(API+'/api/ym_file',{method:'POST',
       headers:{'content-type':'application/json'},
       body:JSON.stringify({user_token:(await liveToken())||undefined,
@@ -3156,7 +3182,10 @@ function mediaList(e){return ((e&&e.media)||[]).slice().sort((a,b)=>(a.ts||0)-(b
 function driveThumb(id,w){const c=String(id||'').replace(/[^\w-]/g,'');
   return c?('https://drive.google.com/thumbnail?id='+c+'&sz=w'+(w||400)):'';}
 function mediaOpen(){S.mediaOpen=true;render();}
-function mediaClose(){S.mediaOpen=false;render();}
+/* S.mediaScan 和 S.mediaOpen 同生共死（另外三处：go / 退账 / 换账号）。它是纯 UI 态，
+   **绝不写进 STORE 或活动 payload** —— 写进去就会被 cloudPushAll 推上 ym_doc，
+   一台设备的一次扫描结果从此长在所有人的活动里。 */
+function mediaClose(){S.mediaOpen=false;S.mediaScan=null;render();}
 /* 移除 = 连云端那份一起丢进回收站（owner 2026-08-03：「deletion may delete the photo from
    drive too」—— 在那之前只摘条目、要主办自己去网盘手删）。三道限制在服务端和 Apps Script
    那边（只碰 ym 目录树 / 只进回收站 / 要密钥），这里只负责两件事：
@@ -3164,11 +3193,40 @@ function mediaClose(){S.mediaOpen=false;render();}
      · 删不掉就**留着条目并说清楚**，别让屏幕显示「已经没了」而网盘里还在。 */
 async function mediaDel(id){const e=ev();if(!e||!e.media)return;
   const m=(e.media||[]).find(x=>x.id===id);if(!m)return;
+  /* group 在 await 之前先取成**字符串**：规矩 11 禁的是跨 await 攥着活动对象，
+     字符串是那一刻的快照，cloudRefresh 换掉对象也带不走它。 */
+  const group=evGroup(e);
   if(!confirm('删除这张照片？\n云端那份会一起丢进网盘的回收站（30 天内还能还原）。'))return;
   if(m.driveId){
-    const r=await upSerial(()=>mediaTrash(m.driveId));
+    const r=await upSerial(()=>mediaTrash(m.driveId,group));
     if(r==='unwired'){toast('云端删除还没接线 —— 先没动。请让管理员配好 YM_DRIVE_SECRET');return;}
-    if(r==='denied'){toast('这个账号不能删云端的照片 —— 请用主办账号');return;}
+    /* 401 ≠ 403。401 = 这台设备没登录 / token 过期，「请重新登录」只有在这里才是对的话。 */
+    if(r==='noauth'){toast('这台设备的登录已经过期（401）—— 请重新登录后再删，这张先留着');return;}
+    /* 403 的两种**合法**来路，代理已经在 body 的 reason 里分好了，做的事完全不同：
+         · no_cloud_events   = 云端一场活动都还没有 —— 上传这条路对 host 没有 group 闸，
+           照片能落进一个**还没推上云**的活动目录（新建活动 + 800ms 防抖 / 离线 /
+           上次推送报错），随后删却被同一把闸拒掉。等同步落地就好，不必碰账号；
+         · not_in_your_events = 名单在、这个名字不在里面（改过名/日期、还没推上去也这样）。
+       以前这两句和「不是主办」压成同一句「请用主办账号登录」，主办于是退出重登、换账号，
+       而唯一该做的只是等几秒。 */
+    if(r==='nocloud'){toast('这场活动还没同步到云端（403）—— 等几秒同步完再点一次，这张先留着');return;}
+    if(r==='notyours'){toast('这个名字不在你的活动里（403）—— 活动改过名字或日期？改完要等这台设备把它同步上云端（几秒）再删，这张先留着');return;}
+    if(r==='denied'){toast('这个账号不能删云端的照片（403）—— 请用主办账号登录');return;}
+    /* 改过名字/日期的那条路**落在这里**，不落在 denied（08-05 复查纠正的方向错，见 mediaTrash
+       头上那段）：代理那道闸比的是云端同一份当前 payload，新名字必然命中；对不上的是网盘上
+       那个**上传当时**建的老目录，拒绝发生在再下一层。以前它落进最后那支通用 502，屏幕说
+       「等会儿再试」—— 而这条永远不会自己好，再点一百次都是同一句，条目也永远摘不掉。
+       ⚠ 口径和「从网盘找回」那侧的 group_found:false 一致（把名字/日期改回上传那一版），
+          同一个根因不许有第二种说法。 */
+    if(r==='notingroup'){toast('这张照片不在这场活动的网盘目录里（502 · not in group）—— 活动改过名字或日期？网盘上的目录还是「上传当时」那个名字。把名字/日期改回上传那一版再删一次，这张先留着');return;}
+    /* 旧页面：这一次请求根本没带上可用的 group。下一步是刷新，不是「等会儿再试」——
+       把「没更新」说成「临时故障」正是 07-28 那类误诊。 */
+    if(r==='stalepage'){toast('页面是旧的，请刷新一次再删（400 · group required）—— 这张先留着');return;}
+    /* 坏掉的是**读归属名单**这一层，不是权限、也不是配置：说出是哪一层，主办才不会去换账号。 */
+    if(r==='ownership'){toast('归属名单暂时读不到（502 · Supabase），稍后再试 —— 不是你的账号有问题，这张先留着');return;}
+    if(r==='mismatch'){toast('两侧密钥不是同一串（502 · 请核对 Apps Script 的 SHARED_SECRET 与 Vercel 的 YM_DRIVE_SECRET）—— 这张先留着');return;}
+    if(typeof r==='string'&&r.slice(0,6)==='stale:'){
+      toast('网盘脚本还是旧版（线上 '+r.slice(6)+'），里面还没有「移除」这个动作 —— 请管理员用「Edit existing deployment」更新现有部署');return;}
     if(r!==true){toast('云端没删成（'+r+'）—— 这条先留着，等会儿再试');return;}
   }
   /* 和 mediaAdd 同一条规矩（规矩 11）：await 之后按 id 重新找回活动。写进被换掉的那个对象
@@ -3176,15 +3234,57 @@ async function mediaDel(id){const e=ev();if(!e||!e.media)return;
   const cur=STORE.events.find(x=>x&&x.id===e.id)||e;
   cur.media=(cur.media||[]).filter(x=>x.id!==id);cur.mtime=Date.now();
   save();render();toast('已删除（网盘回收站里还能找回）');}
-async function mediaTrash(driveId){
+/* group 走的是**和上传/找回完全相同的口径**（evGroup）。少送这一个字段，删除的作用域
+   就还是整棵 ym 目录树：代理拿它对一遍 host_groups(uid)，Apps Script 再把「这个文件在不在
+   ROOT 底下」收窄成「在不在 ROOT/<group>/ 底下」（insideRoot 留着当皮带）。
+   ⚠ 送的是活动**现在**的名字，网盘上的目录却是**上传当时**那个名字：改过名/日期就对不上。
+   ⚠ 但它**不表现成 403**（08-05 复查纠正的方向错，那句解释以前挂在 denied 上，而改名根本
+      走不到 denied）：代理那道闸拿去比对的 host_groups 读的是云端**同一份当前 payload**，
+      改完名一推上去，送去的新名字必然命中 → 放行。对不上的是网盘上那个老目录，所以拒绝
+      发生在再下一层 —— Apps Script 的 insideGroup 回 {ok:false,error:'not in group'}，
+      代理裹成 502。落进通用 502 就是屏幕上那句「等会儿再试」，而这条永远不会自己好。
+      所以它有自己的码（notingroup），改名那句解释挂在**它**身上。
+   ⚠ 'group required' 有两条来路，说的是同一件事（这次请求没带上可用的 group）：代理的 400
+      （旧页面根本没送这个字段）、GAS 的同名错串（clean() 之后成了空）。同归一个码
+      （stalepage）—— 刷新页面是唯一做得到的下一步。 */
+async function mediaTrash(driveId,group){
   try{
     const r=await upFetch(API+'/api/ym_file',{method:'POST',
       headers:{'content-type':'application/json'},
       body:JSON.stringify({user_token:(await liveToken())||undefined,
-        action:'trash_media',file_id:String(driveId||'')})});
+        action:'trash_media',file_id:String(driveId||''),group:String(group||'')})});
     if(r.status===503)return 'unwired';
-    if(r.status===401||r.status===403)return 'denied';
-    if(!r.ok)return 'HTTP '+r.status;
+    // 401 = 没登录 / token 过期。它和 403 以前共用一个码，于是「请重新登录」这句被贴到了
+    // 一堆和登录无关的 403 上；分开之后，这句话只在它真正对的那一档出现。
+    if(r.status===401)return 'noauth';
+    /* 403 的 body 是代理**专门造出来给人看**的：{"error":"not your group",
+       "reason":"no_cloud_events"|"not_in_your_events","cloud_groups":N}，它自己的注释写着
+       「facilitator：把事实摊开，这两种情况要做的动作完全不同」。以前这里一个字都没读，
+       整段被压成一句「请用主办账号登录」—— 而最常见的那条来路根本不是账号不对，
+       是这场活动还没推上云端（新建 + 800ms 防抖 / 离线 / 上次推送报错），等几秒就好。 */
+    if(r.status===403){let j=null;try{j=await r.json();}catch(e3){}
+      const rs=String((j&&j.reason)||'');
+      if(rs==='no_cloud_events')return 'nocloud';
+      if(rs==='not_in_your_events')return 'notyours';
+      return 'denied';}                 // 认不出理由 = 真的不给做，保留原来那句
+    /* 501 = 网盘脚本是旧版（部署没更新），不是「没配置」也不是「没权限」—— 和 list 那边
+       同一档：owner 要做的事完全不同（去 Apps Script「编辑现有部署」），所以它有自己的码，
+       并且把线上那一版的 gas_rev 带出来，主办才说得出「线上是哪一版」。 */
+    if(r.status===501){let j=null;try{j=await r.json();}catch(e3){}
+      return 'stale:'+((j&&j.gas_rev)||'旧版');}
+    /* 502 最要紧的一句诊断在 body 的 detail 里（'secret mismatch' = 两侧密钥不是同一串）。
+       只报状态码的话，密钥不匹配 / GAS 回登录页 / 超时在屏幕上是同一句「HTTP 502」。
+       ⚠ error 和 detail 要**分开读**：ownership 那一支的 detail 是一句英文长句
+       （'ownership check unavailable (supabase)'），拿 detail 去比对认不出它。 */
+    if(!r.ok){let j=null;try{j=await r.json();}catch(e3){}
+      const er=String((j&&j.error)||'');
+      const det=String((j&&(j.detail||j.error))||'');
+      if(er==='group required'||det==='group required')return 'stalepage';
+      if(er==='ownership')return 'ownership';
+      if(det==='secret mismatch')return 'mismatch';
+      // 这一支是「改过名字/日期」的真身：文件在 ROOT 底下，但不在**这一场**的目录底下
+      if(det==='not in group')return 'notingroup';
+      return 'HTTP '+r.status+(det?' · '+det:'');}
     const j=await r.json();
     return j&&j.ok?true:'回包不对';
   }catch(e){return '网络';}
@@ -3251,21 +3351,352 @@ function mediaSheet(e){
       <span class="bn">${esc(m.name||'照片')}</span>
       ${!S.readonly?`<span class="x" onclick="mediaDel('${escJs(m.id)}')" title="移除">✕</span>`:''}
     </div>`).join('')}</div>`
-    :'<div class="empty">还没有照片 —— 打码处理后再上传，传上去的就是处理过的那份。</div>';
+    /* 空相册这一句是**反着写**的：相册空着，恰恰是最该去网盘看一眼的时候（08-05 那个竞态
+       的症状就是「toast 说传好了、相册是空的」）。所以不止说「还没有照片」，还要把下一步
+       指出来 —— 不给下一步的空态，读起来就是「这个功能坏了」。
+       ⚠ 但这句话是**每个主办、每场新活动**都会看见的常驻文案，不是变更日志：内部日期和
+       「竞态」这类词只留在注释里，屏幕上说主办自己的话（手机传到一半被切走）。 */
+    :`<div class="empty">还没有照片 —— 打码处理后再上传，传上去的就是处理过的那份。<br>
+        记得传过、这里却是空的？点下面的「从网盘找回」看一眼网盘 ——<br>
+        照片有时候人已经到了网盘、这个相册里却没记上一笔（手机传到一半被切走就会这样）。</div>`;
   return `<div class="mfull">
     <div class="mhd"><span class="lbl">媒体库 · ${n} 张</span><span class="sp" style="flex:1"></span>
       <span class="bk" style="cursor:pointer" onclick="mediaClose()">✕ 关闭</span></div>
-    <div class="mroll">${roll}
+    ${/* 找回结果排在照片**前面**：它是一件待办（要不要挂回），不是内容。
+         evId 闸在这里再判一次 —— 换了活动绝不能看见上一场的扫描结果。 */''}
+    <div class="mroll">${S.mediaScan&&S.mediaScan.evId===e.id?mediaScanPanel(e):''}${roll}
+      ${/* 只读回看不画 .mfoot，「从网盘找回」那个按钮也就不在。不假装这个入口不存在，
+           也不给一个点了没用的按钮 —— 直说差哪一步（owner：空的时候也要画出来）。
+           ⚠ 以前这句只在**空相册**时画：相册里有照片、又是只读时，屏幕上就只是「少了个
+           按钮」，读起来和「这功能没上线」一模一样。所以只读就画，并且把那一步**就地**
+           给出来（点这里退出），不必回台本页去找那条横幅。 */''}
+      ${S.readonly?`<p class="note9" style="max-width:640px;margin:10px auto 0">
+        只读回看不能改相册 —— 传照片和「从网盘找回」都要先
+        <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读回看</span>。
+        （挂回只往这场活动里加一条照片记录，网盘上的字节一个都不动。）</p>`:''}
       <p class="note9" id="mthint" style="display:none;max-width:640px;margin:8px auto 0">
         照片显示不出来 —— 这台浏览器没登录存照片的那个 Google 账号。登录一次就能看；不影响上传。</p>
       ${n&&!S.readonly?`<p class="note9" style="max-width:640px;margin:10px auto 0">
         ✕ 删除会连云端那份一起丢进回收站（30 天内还能还原）。</p>`:''}
     </div>
-    ${!S.readonly?`<div class="mfoot">
+    ${!S.readonly?`<div class="mfoot" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <label class="fileadd">${ico('up')}传照片（可多选 · 先打码再传）
         <input type="file" accept="image/*" multiple style="display:none" onchange="mediaAdd(this)"></label>
+      ${/* 永远画出来，不是「有孤儿才画」—— 有没有孤儿要点了才知道，
+           而「上线了但看不见 = 等于没上线」。从打开 app 数：活动卡 → 媒体库 → 这里，3 下出结果。 */''}
+      <button class="btn ghost sm" onclick="mediaScan(0)"
+        ${S.mediaScan&&S.mediaScan.state==='run'?'disabled':''}>${ico('cloud')}从网盘找回</button>
     </div>`:''}
   </div>`;
+}
+/* ===== 从网盘找回 (2026-08-05) —— 字节在网盘、相册里却没有记录的那些照片 =====
+   来路：08-05 修掉的那个手机竞态。cloudRefresh 在上传循环中途一句 `STORE.events[i]=inc`
+   把活动对象整个换掉，后面几张就 push 进了没人要的孤儿对象 —— toast 说「传好 3 张」，
+   相册却是空的，而字节确确实实躺在 Drive 的 <活动 · 日期>/照片/ 里。竞态本身修好了，
+   但**已经掉出去的那些照片没有任何入口能找回来**：这一段就是那个入口。
+   三条底线：
+     ① 挂回 = 只往 payload 里加一条引用，一个字节都不动（本来就在网盘里，不搬也不复制）；
+     ② 取图仍然只有 driveThumb 一个出口，面板里没有任何指向网盘的链接（owner 2026-08-03）；
+     ③ 每一种结局都画在面板上并留在屏幕上 —— toast 1.8 秒就 remove，而 owner 能转述的
+        只有还留在屏幕上的字，所以「哪一层、什么码」要写进面板，不能只放进 toast。
+   服务端那侧要管理员做两件事（配 YM_DRIVE_SECRET / 更新 Apps Script 部署），没做完时
+   点下去会明说差哪一步 —— 三档状态（服务端钥匙 503 · 脚本钥匙 503 · 部署落后 501）各说各话。 */
+/* 相册里**所有已知的** driveId。范围是整个 STORE，不只当前活动：同一份字节如果已经被
+   记在别的活动、或某一行的附件里，它就不是孤儿，不该再被「找回」一遍。 */
+function mediaKnownIds(store){
+  const s=new Set(); const eat=a=>(a||[]).forEach(x=>{if(x&&x.driveId)s.add(String(x.driveId));});
+  (((store||{}).events)||[]).forEach(e=>{if(!e)return;
+    eat(e.media);eat(e.files);(e.rows||[]).forEach(r=>eat(r&&r.files));});
+  return s;
+}
+/* 孤儿 = 网盘里有、相册里没有。**按 driveId 去重，不是文件名** —— 两台手机都会有
+   IMG_0001.jpg，同一张传两次也是两个不同的 Drive 文件；ts 也会重（同一秒传的两张）。
+   只有 Drive 的 file id 是身份。非图片一律不挂：照片/ 里如果被人手工放了 PDF，
+   driveThumb 会渲染成一张永远坏掉的图（GAS 那侧已经滤过一道，这里是第二道）。 */
+function mediaOrphans(files,known){
+  const have=new Set(known||[]);const out=[];let dup=0,skip=0;
+  (files||[]).forEach(f=>{const id=String((f&&f.file_id)||'');if(!id)return;
+    if(!/^image\//.test(String((f&&f.mime_type)||''))){skip++;return;}
+    if(have.has(id)){dup++;return;}
+    have.add(id);                       // 回包里同一个 id 可能出现两次（同名活动目录有两个）
+    out.push({driveId:id,name:String(f.name||'照片'),ts:Number(f.ts)||0,url:String(f.url||'')});});
+  return {orphans:out,dup:dup,skip:skip};
+}
+/* 「传上网盘」的时刻，给卡片用。不新增全局日期助手 —— 这个文件只有 fmtDate(日期串)，
+   没有能格式化时分的那种，而这里要的正是时分（同一天传的几张，靠分钟才分得开）。 */
+function mediaWhen(ts){const d=new Date(Number(ts)||0);if(isNaN(d)||!ts)return '';
+  const p=n=>String(n).padStart(2,'0');
+  return (d.getMonth()+1)+'/'+d.getDate()+' '+p(d.getHours())+':'+p(d.getMinutes());}
+/* 传输层 —— 形状照抄 mediaTrash，只是多几支**读 body** 的分岔：501 和两种 503 要说三句
+   完全不同的话（更新部署 / 服务端配钥匙 / 脚本配钥匙），只看状态码分不出来。
+   ⚠ 403 也是**读 body** 的一支，不是「看见 403 就 denied」：代理在里面装了 reason，
+      而那两种 reason 要做的事一个是等几秒、一个是核对名字，都和「换个账号登录」无关。 */
+async function mediaScanDo(group,skip){
+  try{
+    const r=await upFetch(API+'/api/ym_file',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({user_token:(await liveToken())||undefined,
+        action:'list_media',group:String(group||''),skip:skip|0})});
+    // 401 / 403 分开：401 是没登录或 token 过期（「请重新登录」在这一档才成立），
+    // 403 是服务端**认得你**、判定这个动作不给做 —— 而它 body 里带着理由。
+    if(r.status===401)return 'noauth';
+    /* 和 mediaTrash 逐字同一支（一把尺子只该有一份判据）：代理在 403 里装了
+       {"error":"not your group","reason":"no_cloud_events"|"not_in_your_events"}。
+       这两种情况主办要做的事完全不同 —— 一个是等同步落地（几秒），一个是名字对不上；
+       压成「请用主办账号登录」会让他去退出重登、换账号，而账号从头到尾都是对的。 */
+    if(r.status===403){let j=null;try{j=await r.json();}catch(e3){}
+      const rs=String((j&&j.reason)||'');
+      if(rs==='no_cloud_events')return 'nocloud';
+      if(rs==='not_in_your_events')return 'notyours';
+      return 'denied';}
+    /* 501 = 部署落后（不是「没配置」）：owner 要做的事完全不同，所以它有自己的码。
+       gas_rev 是线上那份的版本号 —— 08-03 的教训是 gas.ok:true 只说明部署活着、
+       不说明是哪一版，能把「线上是 2026-08-03-lock」直接说出来，值这一次读 body。 */
+    if(r.status===501){let j=null;try{j=await r.json();}catch(e3){}
+      return 'stale:'+((j&&j.gas_rev)||'旧版');}
+    if(r.status===503){let j=null;try{j=await r.json();}catch(e3){}
+      const er=(j&&j.error)||'';
+      if(er==='list not configured')return (j&&j.side==='gas')?'nokey_gas':'nokey_srv';
+      return 'unwired';}
+    /* ⚠ 这里以前只带一个 'HTTP '+status，把 body 里的 detail 整段丢了 —— 于是
+       「两侧密钥不是同一串」「GAS 回了登录页」「超时」在屏幕上长成同一句「HTTP 502」，
+       而这三种要做的事完全不同。detail 是代理专门装进来给人看的，读它。 */
+    if(!r.ok){let j=null;try{j=await r.json();}catch(e3){}
+      const er=String((j&&j.error)||'');
+      const det=String((j&&(j.detail||j.error))||'');
+      console.warn('ym_file list HTTP '+r.status,j);
+      /* er 和 det 分开读：ownership 那一支的 detail 是一句英文长句
+         （'ownership check unavailable (supabase)'），只比 detail 认不出它，
+         于是「读归属名单这一层坏了」会被说成一句通用的「HTTP 502」。 */
+      if(er==='group required'||det==='group required')return 'stalepage';
+      if(er==='ownership')return 'ownership';
+      // 密钥不匹配单独一支：它有唯一确定的动作（去核对两侧那串），不该混在通用码里
+      if(det==='secret mismatch')return 'mismatch:'+r.status;
+      return {fail:'HTTP '+r.status+(det?' · '+det:'')};}
+    const j=await r.json();
+    if(j&&j.ok&&Array.isArray(j.files))return j;
+    console.warn('ym_file list bad payload',j);return {fail:'回包不对'};
+  }catch(e){return {fail:'网络'};}
+}
+async function mediaScan(skip){
+  if(S.readonly)return;
+  const e=ev();if(!e)return;
+  if(!SESSION){toast('这台设备还没登录 —— 点右上角登录后再找回');return;}
+  const evId=e.id,group=evGroup(e);
+  S.mediaScan={evId,group,state:'run',folder:group+'/照片'};render();
+  toast('正在看网盘里这一场的照片…');
+  /* 排进上传队尾（**不要**再自己 upMark —— upSerial 已经在 run 里标了忙）。
+     正在上传时去列目录，会把「字节已到、记录下一行才写」的那张列成孤儿，
+     主办一挂回就是一条我们自己造出来的重复条目。 */
+  const r=await upSerial(()=>mediaScanDo(group,skip|0));
+  // 规矩 11：跨 await 不攥活动对象。回来先确认还在同一场（也含主办中途「✕ 收起」= 取消），
+  // 再按 id 把活动找回来。
+  if(!S.mediaScan||S.mediaScan.evId!==evId)return;
+  const cur=STORE.events.find(x=>x&&x.id===evId);if(!cur)return;
+  const die=(why)=>{S.mediaScan={evId,group,state:'err',why:why,folder:group+'/照片'};render();};
+  if(typeof r==='string'){
+    if(r==='nokey_srv'){die('服务端还没配 YM_DRIVE_SECRET（503 · 服务端）');
+      toast('「从网盘找回」还没接线：服务端缺 YM_DRIVE_SECRET —— 请管理员配上（和「移除时删云端」是同一把钥匙）');return;}
+    if(r==='nokey_gas'){die('网盘脚本还没配 SHARED_SECRET（503 · 脚本侧）');
+      toast('「从网盘找回」还没接线：Apps Script 缺 SHARED_SECRET —— 两边要配同一把');return;}
+    if(r.slice(0,9)==='mismatch:'){
+      die('两侧密钥不是同一串（'+r.slice(9)+' · 请核对 Apps Script 的 SHARED_SECRET 与 Vercel 的 YM_DRIVE_SECRET）');
+      toast('两侧密钥不是同一串（'+r.slice(9)+'）—— 请管理员核对 Apps Script 的 SHARED_SECRET 与 Vercel 的 YM_DRIVE_SECRET，两边要一模一样');return;}
+    if(r.slice(0,6)==='stale:'){die('网盘脚本是旧版（线上 '+r.slice(6)+'，501 · 部署落后）');
+      toast('网盘脚本还是旧版（线上 '+r.slice(6)+'），里面还没有「找回」这个动作 —— 请管理员用「Edit existing deployment」更新部署');return;}
+    /* 401 独立一句：它是这一串里**唯一**真该说「重新登录」的一档。 */
+    if(r==='noauth'){die('这台设备的登录已经过期（401）');
+      toast('这台设备的登录已经过期（401）—— 请重新登录后再点一次');return;}
+    /* 403 的两种 reason，代理已经分好，主办要做的事完全不同：
+         · no_cloud_events   = 云端一场活动都还没有。上传对 host 没有 group 闸，照片能落进
+           一个**还没推上云**的活动目录（新建活动 + 800ms 防抖 / 离线 / 上次推送报错），
+           随后列却被同一把闸拒掉 —— 等同步落地就好，账号从头到尾都是对的；
+         · not_in_your_events = 名单在、这个名字不在里面（改过名/日期也长这样）。
+       ⚠ 改名这一句和面板上 group_found:false 那句是同一个根因的两张脸，口径必须一致
+         （把名字/日期改回上传那一版），不许造第二种说法。 */
+    if(r==='nocloud'){die('这场活动还没同步到云端（403 · 云端一场活动都还没有）');
+      toast('这场活动还没同步到云端（403）—— 等几秒同步完再点一次，不用换账号');return;}
+    if(r==='notyours'){die('这个名字不在你的活动里（403）');
+      toast('这个名字不在你的活动里（403）—— 活动改过名字或日期？改完要等这台设备把它同步上云端（几秒）再点一次');return;}
+    /* 坏的是**读归属名单**这一层（Supabase），不是权限、不是配置。说出是哪一层，
+       主办才不会去换账号，管理员也才知道该看哪里。 */
+    if(r==='ownership'){die('归属名单暂时读不到（502 · Supabase）');
+      toast('归属名单暂时读不到（502 · Supabase），稍后再试 —— 不是你的账号有问题');return;}
+    // 旧页面：下一步是刷新，不是「等会儿再试」。把「没更新」说成「临时故障」是误诊
+    if(r==='stalepage'){die('页面是旧的（400 · group required）');
+      toast('页面是旧的，请刷新一次再点（400 · group required）');return;}
+    if(r==='denied'){die('这个账号不能找回（403）');
+      toast('这个账号不能从网盘找回照片 —— 请用主办账号登录（登录过很久的页面请先刷新一次）');return;}
+    if(r==='unwired'){die('云盘没接线（503）');
+      toast('云盘没接线 —— 请管理员配好 YM_DRIVE_EXEC');return;}
+    /* 兜底：将来代理多回一种字符串，宁可当面说「没认出来」，也不能让它悄悄走到下面
+       被当成「一张都没有」—— 那就是又一次「屏幕说没有、网盘里其实有」。 */
+    die('没认出来的回应（'+r+'）');toast('没读到网盘目录（'+r+'）—— 把括号里的字发给管理员');return;
+  }
+  if(!r||r.fail){die(String((r&&r.fail)||'网络'));
+    toast('没读到网盘目录（'+String((r&&r.fail)||'网络')+'）—— 把括号里的码发给管理员');return;}
+  const o=mediaOrphans(r.files,mediaKnownIds(STORE));
+  /* pageN = 这一页**原始**回来几个文件（不是过滤后的孤儿数）：翻页的脚注要说
+     「这一页列的是第几到第几张」，那说的是网盘目录里的位置，和孤儿多少无关。 */
+  S.mediaScan={evId,group,state:'ok',folder:r.folder,groupFound:!!r.group_found,
+    found:!!r.found,folders:r.folders|0,dirs:r.dirs|0,total:r.total|0,skip:r.skip|0,
+    truncated:!!r.truncated,overflow:!!r.overflow,others:r.others|0,trashed:r.trashed|0,
+    pageN:(r.files||[]).length,rows:o.orphans,dup:o.dup,skip2:o.skip};
+  render();
+  /* ⚠ 「相册里都有了」是拿**一页**的结果下**整个目录**的结论：truncated（后面还有页）
+     或 overflow（目录大到这次根本没走完）时它是假的，而且和屏幕上还亮着的「继续看后面的」
+     直接打架。所以这句只在真的看完时才允许说，toast 和面板按同一条件分岔。 */
+  toast(!r.group_found?('网盘里没有「'+group+'」这个目录 —— 这一场没有照片传上去过'):
+    !r.found?('这一场的目录在，但里面没有「照片」子目录 —— 从来没往媒体库传过照片'):
+    o.orphans.length?('网盘里有 '+o.orphans.length+' 张相册里没有的照片 —— 在下面逐张确认要不要挂回'):
+    (r.truncated||r.overflow)?('这一页里的都已经在相册里了 —— 还没看完'+(r.truncated?'，点「继续看后面的」':'（这个目录太大，这次没扫完）')):
+    ('网盘里这一场有 '+(r.total|0)+' 张，相册里都有了 —— 没有需要找回的'));
+}
+// 收起 = 这次找回到此为止。S.mediaScan 只是 UI 态，清掉不动任何数据；
+// 正在扫的时候收起，回包到达时上面那道 evId 闸会让它自己作废（等于取消）。
+function mediaScanClose(){S.mediaScan=null;render();}
+/* 挂回 = 只往 payload 里加一条引用，字节一个都不动（它们本来就在网盘里）。
+   所以这条路上没有网络、没有 await，规矩 11 那个坑不在这里。
+   但**去重要在点的这一刻重算**：扫完到点之间，cloudRefresh 可能已经把另一台设备
+   挂回的那批拉下来了，照扫描时的名单硬加就会出现两条指向同一个文件的条目 ——
+   删一条另一条还在，谁也说不清。 */
+function mediaKeepIds(ids){
+  const sc=S.mediaScan;if(!sc||sc.state!=='ok'||S.readonly)return;
+  const cur=STORE.events.find(x=>x&&x.id===sc.evId);if(!cur)return;   // 活动被云端换走：别写孤儿
+  if(!cur.media)cur.media=[];
+  const want=new Set((ids||[]).map(String));
+  // 这些行在扫描时已经过了一道 image/ 筛（GAS 那侧还有一道），这里补 mime_type 只是
+  // 为了复用同一个纯函数做去重，不是重新判类型。
+  const o=mediaOrphans((sc.rows||[]).filter(f=>want.has(String(f.driveId)))
+      .map(f=>({file_id:f.driveId,name:f.name,ts:f.ts,url:f.url,mime_type:'image/jpeg'})),
+    mediaKnownIds(STORE));
+  o.orphans.forEach(f=>cur.media.push({id:uid(),name:f.name,driveId:f.driveId,
+    url:f.url,ts:f.ts,rescued:1}));
+  const before=(sc.rows||[]).length;
+  sc.rows=(sc.rows||[]).filter(f=>!want.has(String(f.driveId)));
+  /* 挂回之后，脚注里那句「另有 X 张相册里已经有了」也要跟着涨：刚离开列表的这几张
+     现在**确实**在相册里了。不累加的话，脚注停在扫描那一刻的旧数，主办自己一加
+     （列表里几张 + 脚注几张）就对不上网盘里的总数，而对不上的账最难解释。 */
+  sc.dup=(sc.dup|0)+(before-(sc.rows||[]).length);
+  cur.mtime=Date.now();save();render();
+  const k=o.orphans.length,d=want.size-k;
+  toast(d?('已挂回 '+k+' 张（另 '+d+' 张相册里已经有了）'):
+    ('已挂回 '+k+' 张 —— 网盘里那些一个字节都没动'));
+}
+function mediaKeep(fid){mediaKeepIds([String(fid||'')]);}
+/* 相册里已有条目的**文件名**集合。id 判身份（mediaKnownIds），名字判「像不像同一张的
+   另一份」—— 现实里绝大多数孤儿是当时重传前的那一批：主办以为传失败又传了一次，
+   网盘里于是躺着两份内容相同、名字相同、file id 不同的照片。按 id 它们不是重复，
+   按名字它们八成是。所以这不是拦截规则，是一条**提示**：同名的排除在一键挂回之外，
+   要不要它由主办看着图决定。
+   ⚠ 名字比较 trim + 转小写：iOS 是 IMG_0001.JPG，安卓/桌面可能是 img_0001.jpg，
+   大小写不同的同一张若被算成两张，一键挂回就又会造出双胞胎。 */
+function mediaDupNames(evId){
+  const s=new Set();
+  mediaList(STORE.events.find(x=>x&&x.id===evId)).forEach(m=>{
+    const k=String((m&&m.name)||'').trim().toLowerCase();if(k)s.add(k);});
+  return s;
+}
+function mediaIsDupName(f,names){
+  const k=String((f&&f.name)||'').trim().toLowerCase();
+  return !!k&&!!names&&names.has(k);
+}
+/* 一键挂回只带**不重名**的那一批（facilitator：事实摊开，但别把「很可能是重复」的那批
+   做成一键主操作）。同名的留给每张卡上的「挂回相册」逐张点。
+   ⚠ 名单在**点的这一刻**重算，不是用扫描时的快照：这中间 cloudRefresh 可能已经把另一台
+   设备挂回的那批拉下来了，用旧快照会把已经重名的那张当成干净的。 */
+function mediaKeepAll(){
+  const sc=S.mediaScan;if(!sc||!sc.rows)return;
+  const names=mediaDupNames(sc.evId);
+  const rest=sc.rows.filter(f=>!mediaIsDupName(f,names));
+  if(!rest.length){toast('剩下的每一张在相册里都有同名的 —— 请对着图逐张确认，别一键挂');return;}
+  mediaKeepIds(rest.map(f=>f.driveId));
+}
+/* 结果面板。每一种结局都画 —— `if(!n)return ''` 是这个仓库的经典错误：什么都不画，
+   主办看到的和「按钮坏了」一模一样。facilitator：数得出来的都摊开（同名目录、回收站里的、
+   非图片的、已经有的、没扫完的），不替主办做隐藏决定。 */
+function mediaScanPanel(e){
+  const sc=S.mediaScan;if(!sc)return '';
+  /* 这一行是给**没结果**的那几屏看的：主办点了没反应时，第一反应应该是「去找管理员配那两样」，
+     而不是「这个功能坏了」。⚠ 但它**不能跟到已经列出照片的那一屏上** —— 主办刚看见几张待挂回的
+     照片和一颗按得动的按钮，底下却写着「找回需要管理员配好密钥并更新部署」，那是自己打自己的脸。
+     （2026-08-05 在浏览器里看出来的：全套断言都是绿的，这一条是**眼睛**看出来的 —— 规矩 2。）
+     列得出来就说明两样都配好了，这时候再讲怎么配是纯噪音。 */
+  const tailTxt='<p class="note9">找回需要管理员配好一把密钥并更新 Apps Script 部署；没配好时点下去会告诉你差哪一步。</p>';
+  const box=(inner,listed)=>`<div class="in"><div class="rvsec">
+      <div class="hd"><span class="lbl">从网盘找回</span>
+        <span class="bk" style="cursor:pointer" onclick="mediaScanClose()">✕ 收起</span></div>
+      ${inner}${listed?'':tailTxt}</div></div>`;
+  const line=(t)=>'<div style="font-size:12.5px;line-height:1.9">'+t+'</div>';
+  if(sc.state==='run')return box(line('正在读网盘的「'+esc(sc.folder||'')+'」…'));
+  // 失败这一句**必须留在屏幕上**：toast 1.8 秒就没了，而 why 里带着「哪一层、什么码」，
+  // owner 只能把看得见的字发回来。
+  if(sc.state==='err')return box(line('没读到网盘目录 —— '+esc(sc.why||'')+'。')
+    +'<button class="btn ghost sm" style="margin-top:8px" onclick="mediaScan(0)">再试一次</button>');
+  const rows=sc.rows||[],n=rows.length;
+  /* 同名 = 「很可能是当时重传前的那一份」。判定在**画这一屏的这一刻**重算（不是扫描那一刻）：
+     cloudRefresh 可能刚把另一台设备挂回的那批拉下来，用旧快照就会把已经重名的说成干净的。 */
+  const dupNames=mediaDupNames(sc.evId);
+  const dupN=rows.filter(f=>mediaIsDupName(f,dupNames)).length,restN=n-dupN;
+  /* 一页 ≠ 整个目录。truncated = 后面还有页；overflow = 目录大到这一趟根本没走完
+     （两者含义不同，能做的事也不同：前者点「继续看后面的」，后者只能去网盘分批整理）。
+     seenN/leftN 说的都是**网盘目录里的位置**，和其中几张是孤儿无关。 */
+  const seenN=(sc.skip|0)+(sc.pageN|0),leftN=Math.max(0,(sc.total|0)-seenN),partial=!!(sc.truncated||sc.overflow);
+  const pageSpan='这一页（第 '+((sc.skip|0)+1)+'–'+seenN+' 张）';
+  /* 「目录不在」和「目录在、里面空」是两句完全不同的话：前者多半是活动改过名字/日期，
+     后者是这一场真的没往媒体库传过。压成一句就把诊断信息扔了。 */
+  const lead=!sc.groupFound
+    ?line('网盘里没有这场活动的目录。找的是：'+esc(sc.folder||''))
+      +'<p class="note9">活动改过名字或日期的话，网盘上的目录还是<b>上传当时</b>那个名字 —— 把名字/日期改回上传那一版，再点一次。</p>'
+    :!sc.found?line('这场活动的目录在，但里面没有「照片」子目录 —— 这一场从来没往媒体库传过照片。')
+    :!(sc.total|0)?line('网盘的「'+esc(sc.folder||'')+'」是空的 —— 那些照片可能根本没传上去。')
+    /* ⚠ 「相册里都有了」是**整个目录**的结论，只有真的看完才说得出口。没看完时说它，
+       既可能是假的，又和正下方还亮着的「继续看后面的」当面打架。 */
+    :!n?(partial
+        ?line(pageSpan+'里的都已经在相册里了 —— '
+          +(sc.truncated?('还有 '+(leftN||'一些')+' 张没看，点下面的「继续看后面的」。')
+                        :'但这个目录太大，这一趟没扫完，后面还有没看到的。'))
+        :line('网盘里这一场有 '+(sc.total|0)+' 张，相册里都有了 —— 没有需要找回的。'))
+    :line('网盘里有 <b>'+n+'</b> 张不在相册里'
+      +(dupN?('，其中 <b>'+dupN+'</b> 张和相册里已有的照片<b>重名</b> —— 很可能是当时「以为没传上、又传了一次」的那一份'):'')
+      +'。挂回之后它们就是相册里的正常照片（✕ 删除、云端回收站都照旧）。');
+  const fn=[];
+  if((sc.folders|0)>1)fn.push('⚠ 网盘里有 '+(sc.folders|0)+' 个同名的活动目录（早期并发上传留下的），已经一起看过了。');
+  if((sc.trashed|0)>0)fn.push('另有 '+(sc.trashed|0)+' 张在网盘的回收站里（之前删掉的），没有列出来。');
+  if((sc.others|0)+(sc.skip2|0)>0)fn.push('另有 '+((sc.others|0)+(sc.skip2|0))+' 个不是图片，没有列出来。');
+  if((sc.dup|0)>0)fn.push('另有 '+(sc.dup|0)+' 张相册里已经有了。');
+  if(sc.overflow)fn.push('这个目录里的文件超过一次能扫的上限，只看了前面一批 —— 剩下的请让管理员在网盘里分批整理。');
+  // 有孤儿时恒画：挂回来的按「传上网盘的时间」排，原有的按拍摄时间排，顺序会和当时不一样。
+  // 先说出来，比事后被问「为什么这张跑到最后面」强。
+  if(n)fn.push('找回的照片按「传上网盘的时间」排，相册里原有的按拍摄时间排 —— 顺序可能和当时不完全一样。');
+  // 同名的为什么不在那颗按钮里 —— 说出理由，主办才知道这不是漏了，是留给他自己看图定夺的。
+  if(dupN)fn.push('重名的那 '+dupN+' 张没有算进上面那颗按钮：同名多半是同一张的另一份，一起挂回就会在相册里变成两条一模一样的。要哪张，对着图逐张点「挂回相册」。');
+  /* 翻页说的是**网盘目录里的位置**（pageN = 这一页原始回来几个文件），不是孤儿数 ——
+     「第 1–200 张」讲的是目录里的位置，和其中几张是孤儿无关。这一句排在按钮之前
+     （决定要不要挂回之前就该知道「这只是前 200 张」），去下一页的按钮排在卡片之后。 */
+  const notes=fn.map(t=>'<p class="note9">'+esc(t)+'</p>').join('')
+    +(sc.truncated?`<p class="note9">网盘里这一场共 ${sc.total|0} 张，这一页看的是第 ${(sc.skip|0)+1}–${(sc.skip|0)+(sc.pageN|0)} 张。</p>`:'');
+  // 下一页从 skip+200 开始 —— 200 是代理写死的一页大小（客户端不自造 skip）
+  const more=sc.truncated?`<button class="btn ghost sm" style="margin-top:6px"
+    onclick="mediaScan(${(sc.skip|0)+200})">继续看后面的</button>`:'';
+  /* 主按钮只带**不重名**的那一批：丢的那一批通常是整批掉出去的，一张一张点是白受的罪；
+     但「很可能是重复」的那几张不能躲在一键里 —— 主办点完才发现相册里多了一排双胞胎，
+     那就是我们替他做了一个隐藏决定。逐张的「挂回相册」在每张卡上，谁都不缺入口。 */
+  const all=!restN?'':`<button class="btn sm" style="margin:10px 0" onclick="mediaKeepAll()">${
+    dupN?('挂回其余 '+restN+' 张（跳过重名的 '+dupN+' 张）'):('全部挂回（'+restN+' 张）')}</button>`;
+  // 一张都不剩给一键时，说清楚为什么没有那颗按钮（空态也要画出来，别让它读成「按钮丢了」）
+  const noBulk=(n&&!restN)?'<p class="note9">这一页每一张在相册里都有同名的 —— 没有可以一键挂回的，请对着图逐张确认。</p>':'';
+  const cards=rows.map(f=>{const w=mediaWhen(f.ts),d=mediaIsDupName(f,dupNames);
+    return `<div class="mshot mnew${d?' mdup':''}">
+      <img src="${esc(driveThumb(f.driveId,1200))}" alt="${esc(f.name||'')}" loading="lazy"
+        onerror="mediaThumbFail(this)">
+      <span class="bn">${esc(f.name||'照片')}</span>
+      <span class="keep" onclick="mediaKeep('${escJs(f.driveId)}')">挂回相册</span>
+    </div>
+    <div class="msinfo">${esc(f.name||'照片')} · ${w?esc(w)+' 传上网盘':'传上网盘的时间不明'}${
+      d?'<br><span class="dup">相册里已有同名照片 —— 很可能是同一张的另一份。挂回会变成两条，先看图确认。</span>':''}</div>`;}).join('');
+  // 第二个参数 = 「这一屏真的列出照片了」→ 底部那句「怎么配」不再跟着出现（见 box 的注释）
+  return box(lead+notes+noBulk+all+cards+more, n>0);
 }
 function addRow(){const e=ev();e.rows.push({id:uid(),time:'',seg:'',owner:'',resources:[],money:[]});
   S.sel=e.rows[e.rows.length-1].id;save();render();}
@@ -6868,12 +7299,19 @@ function viewDesk(){
         onclick="event.stopPropagation();S.evId='${e.id}';go('signup')">${ico('person')}${esc(signupText(e))}</span>`}
       <div class="dc-t">${esc(e.name)||'未命名'}</div>
       <div class="dc-m">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${f.length?` · 待办 <b>${f.length}</b>`:''}${pendCount(e)?` · <span style="color:var(--brass)">● 待确认 ${pendCount(e)}</span>`:''}</div>
-      ${ph==='archived'?'':`<div class="dc-acts">
-        ${ph==='current'?go2(`goExec('${e.id}')`,ico('go')+'执行看板'):''}
-        ${go2(`S.evId='${e.id}';go('sheet')`,'计划')}
-        ${go2(`S.evId='${e.id}';go('signup')`,'报名')}
-        ${go2(`S.evId='${e.id}';goDay()`,'当天')}
-        ${go2(`S.evId='${e.id}';goReview()`,'复盘')}
+      ${/* ⚠ 归档卡原来整行动作都不画（`ph==='archived'?'':…`），于是「复盘」这道门在归档
+           活动上根本不存在 —— 而媒体库和「从网盘找回」都住在复盘里：最需要找回照片的
+           （过去的那些活动）反倒够不着，主办得先在台本页点一个写着「退出只读编辑」的东西
+           才摸得到。归档仍然不给编辑类入口（计划/报名/当天都不画），只补这一颗：复盘是回看屏。
+           数一数：卡上「复盘 · 照片」→「媒体库」→「从网盘找回」= 3 下出结果。 */''}
+      ${ph==='archived'
+        ?`<div class="dc-acts">${go2(`openReview('${escJs(e.id)}')`,ico('eye')+'复盘 · 照片')}</div>`
+        :`<div class="dc-acts">
+        ${ph==='current'?go2(`goExec('${escJs(e.id)}')`,ico('go')+'执行看板'):''}
+        ${go2(`S.evId='${escJs(e.id)}';go('sheet')`,'计划')}
+        ${go2(`S.evId='${escJs(e.id)}';go('signup')`,'报名')}
+        ${go2(`S.evId='${escJs(e.id)}';goDay()`,'当天')}
+        ${go2(`openReview('${escJs(e.id)}')`,'复盘')}
       </div>`}
       <div class="dc-brief">${e._host?'共办 · ':''}${e.ownerRef?'负责人 '+esc(ownName(e.ownerRef))+' · ':''}环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}　— 点击进入${act} →${(ph==='hot'||ph==='archived')?`　·　<span class="t" onclick="event.stopPropagation();cloneEvent('${e.id}')">${ico('again')}再办一场</span>`:''}</div></div>`;};
   const sec=(k,hint)=>`<div class="sec">${PHASE_LABEL[k]} ${groups[k].length?'· '+groups[k].length:''}</div>`+
@@ -6901,7 +7339,9 @@ function viewDesk(){
 function deskOpen(id){const e=STORE.events.find(x=>x.id===id);if(!e)return;const ph=evPhase(e);S.peek=null;
   if(ph==='current')goExec(id);
   else if(ph==='archived')openArchived(id);
-  else if(ph==='hot'){S.evId=id;S.view='review';render();}
+  // 仍热的活动也走 openReview：进复盘的路只留一条，省得哪天从别处带着一个陈旧的
+  // S.readonly=true 进来，媒体库的按钮又整块消失（那正是归档活动踩过的坑）。
+  else if(ph==='hot'){openReview(id);}
   else {S.evId=id;go('sheet');}}
 function peek(id){S.peek=id;render();}
 function peekCard(){
@@ -6916,10 +7356,18 @@ function peekCard(){
       <div style="font-size:16px;font-weight:700;margin:2px 0">${esc(e.name)||'未命名'}</div>
       <div class="note9" style="margin:0 0 8px">${fmtDate(e.date)}${e.start?' '+esc(e.start):''}${e.venue?' · '+esc(e.venue):''}</div>
       <div style="font-size:12.5px;line-height:1.9">环节 ${e.rows.length} · 待办 ${f.length} · 收支差额 ${yen(mt.planNet)}</div>
-      <button class="btn" style="width:100%;margin-top:12px" onclick="S.peek=null;${ph==='hot'?`S.evId='${e.id}';S.view='review';render()`:open}">${openLbl}</button>
+      <button class="btn" style="width:100%;margin-top:12px" onclick="S.peek=null;${ph==='hot'?`openReview('${escJs(e.id)}')`:open}">${openLbl}</button>
     </div></div>`;
 }
 function openArchived(id){S.evId=id;S.readonly=true;go('sheet');}
+/* 进复盘 = 回看这一场：台本对照、收支、到场、媒体库都在那一屏。
+   ⚠ 这里**显式**关掉 S.readonly，理由要写清楚：只读回看那把锁保护的是**台本那一页**
+   （openArchived → 计划页，防的是误改已归档活动的行和牌）；复盘屏本身是回看，而它里面
+   唯一的写动作 ——「从网盘找回」挂回一张照片 —— 只往 payload 加一条引用，网盘上的字节
+   一个都不动。不关掉的话，归档活动进到复盘也只能干看：媒体库的 .mfoot 整块不画，
+   那颗「从网盘找回」不存在 —— 而最需要找回照片的，恰恰是过去的活动。
+   goReview 自己不碰 readonly（别的调用方靠 go() 清），所以这一颗要自己关。 */
+function openReview(id){S.evId=id;S.readonly=false;goReview();}
 
 /* 记住最后一个被点进去的输入框：浮动话筒听清了、但意图判断用不了的时候，
    那句话不能就这么扔掉 —— 直接写进主办刚才在打的那一格（owner 2026-08-03：
