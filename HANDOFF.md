@@ -1151,6 +1151,18 @@ owner 报「user report failure on photo uploading to 媒体库 on mobile」。
 2. `YM_DRIVE_SECRET` 从来没配过（探针 `trash_key:false`）。
 3. 线上 Apps Script 落后一版：线上 `rev` 是 `2026-08-03-lock`，仓库里是 `2026-08-03-trash`。
 
+✅ **三条当天全部解决（owner 2026-08-05 亲手做完 ②③，① 随 `fc891ff` 上线）。** 探针现在是：
+`trash_key:true` · `gas.rev:"2026-08-05-trash-group"` · `gas.list:true` · `gas.trash_scope:"group"` ·
+`gas.actions:["upload_media","trash_media","list_media"]`。三个动作无 token 时一律 403（路由通、闸在）。
+⚠ **所以「✕ 移除」是从 2026-08-05 起才第一次真的会删东西**（丢进 Drive 回收站，30 天可还原）。
+在这之前它一张都没删掉过 —— 老活动里那些「删了又还在」的照片，是那个时候留下的，不是新 bug。
+
+⚠ 过程中踩到的：owner 先配好了 Vercel 那把密钥、脚本却还没发出去，探针立刻显示
+`trash_key:true` 而 `gas.rev` 纹丝不动。**`gas.rev` 是唯一诚实的那个信号** ——
+Apps Script 编辑器里保存 ≠ 发布，网页应用永远跑「已部署的那个版本」，
+必须 Manage deployments → 铅笔 ✏️ → Version 选 **New version** → Deploy。
+留在原版本号上点 Deploy 不会有任何变化，而屏幕上一样写着成功。
+
 ⭐ **教训：一个功能可以「代码写完了、注释很讲究、套件全绿」，而线上三层里没有一层是通的。**
 `?probe` 这种「让部署自己报出它是谁」的只读体检，是唯一能一眼看穿的东西 —— 新加动作时
 一定要让它进探针，否则下一次又只能靠猜。
