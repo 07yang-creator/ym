@@ -934,14 +934,25 @@ function cloudPushAll(){
 let _docPulling=false,_docPullT=null;
 function typingNow(){const el=document.activeElement;
   return !!(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable));}
+/* 「正在传文件」和「正在打字」是同一类事：内存里有一份还没落盘的编辑，重画会吃掉它。
+   （owner 2026-08-05「手机传照片到媒体库失败」。2026-08-02 那条「手机传的照片，再次打开
+   就没有了」是同一个症状的**另一道门** —— 那次修的是别的设备上的旧页面来覆盖，这次是
+   同一台手机自己把自己盖掉。一个功能可以有两道门，只修一道等于没修。）
+   手机上点「传照片」会把整个页面切去系统相册，回来的一瞬 visibilitychange 和 focus 一起打，
+   这一拉正好落在上传循环中间；下面那句 `STORE.events[i]=inc` 把活动对象整个换掉，循环里
+   握着的那个 e 从此是孤儿，剩下的照片全 push 进了没人要的对象，最后 save() 存的是新对象 ——
+   toast 说「传好 N 张」，相册却是空的。桌面上文件框是模态的、循环又短，所以只在手机上出得来。 */
+let _upBusy=0;
+function busyNow(){return _upBusy>0;}
+function upMark(d){_upBusy=Math.max(0,_upBusy+d);}
 async function cloudRefresh(){
-  if(_docPulling||!canCloud()||typingNow())return;
+  if(_docPulling||!canCloud()||typingNow()||busyNow())return;
   _docPulling=true;
   try{
     const uid=SESSION.user.id;
     const {data:rows,error}=await sb.from('ym_doc').select('doc_id,payload,owner').eq('kind','event');
-    // 拉的过程中换了人 / 开始打字 → 这一批作废，什么都不动
-    if(error||!SESSION||SESSION.user.id!==uid||typingNow())return;
+    // 拉的过程中换了人 / 开始打字 / 开始传文件 → 这一批作废，什么都不动
+    if(error||!SESSION||SESSION.user.id!==uid||typingNow()||busyNow())return;
     const norm=o=>{const c=Object.assign({},o);delete c.mtime;return JSON.stringify(c);};
     let changed=0;const seen={};
     (rows||[]).forEach(r=>{
@@ -3039,7 +3050,9 @@ async function liveToken(){
    等 owner 下次更新 Apps Script 部署（HANDOFF 有步骤）。 */
 let _upChain=Promise.resolve();
 function upSerial(fn){
-  const run=()=>fn();
+  // 所有上传路径（票据 / 附件 / 媒体库 / 删云端）唯一的咽喉 —— 在这里挡住 cloudRefresh。
+  // 这是皮带不是裤腰带：两张照片**之间**的压缩间隙不在这里，所以 mediaAdd/attachTo 自己也标。
+  const run=()=>{upMark(1);return Promise.resolve().then(fn).finally(()=>upMark(-1));};
   const p=_upChain.then(run,run);
   _upChain=p.then(()=>{},()=>{});   // 一个失败不能卡死后面所有人
   return p;
@@ -3079,7 +3092,13 @@ async function attachUploadDo(b64,mime,name,kind){
 }
 function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs||!fs.length)return;
   if(!holder.files)holder.files=[];let pending=fs.length;const n=fs.length;let bad=0,denied=0;
-  const finish=()=>{if(!--pending){save();render();
+  /* holder 是活动里的一个子对象（header / 某一行 / 活动本身），跨 await 攥着它和媒体库那边
+     攥着 e 是同一个病：cloudRefresh 换掉整个活动对象之后，它就是个孤儿。这里按 id 找不回
+     holder（它可能是任意一层），所以走另外两条：整批期间挡住拉取，且每落一个就存一次盘
+     —— 存下的第一下就把 mtime 盖上，「本机未推的编辑在先」那道闸随即接手。 */
+  upMark(1);
+  const finish=()=>{save();
+    if(!--pending){upMark(-1);render();
     toast(bad?('已附上 '+(n-bad)+' 个，'+bad+' 个没传上去'+(denied?'（当前账号没有上传权限 —— 请先登录主办账号）':'')):('已附上 '+n+' 个文件'));}};
   [...fs].forEach(f=>{const fid=uid();
     /* 照片先压到 1600px 再传 —— 和票据同一条规矩（rcShoot 一直是这么做的）。
@@ -3174,13 +3193,16 @@ function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value=''
   if(!fs.length){input.value='';return;}
   if(!e.media)e.media=[];
   let decodeBad=0,svrBad=0,svrWhy='',unwired=0,denied=0;const n=fs.length;
+  const evId=e.id;          // 跨 await 只留 id，不留对象引用（见下面 cur 那段）
   toast('正在传 '+n+' 张…');
+  upMark(1);                // 整批期间挡住 cloudRefresh（含两张之间的压缩间隙）
   /* 逐张顺序传，不并发（owner 2026-08-02：3 张并行上传，Drive 上同名目录建出两份 ——
      GAS 每个请求各自执行，findOrCreate「找不到就建」没有锁，三个请求同时都「找不到」。
      顺序传第一张把目录建好，后面的复用。真正的服务端锁已写进 docs/apps-script-upload.js
      的 findOrCreate，等 owner 下次更新部署后，多设备同时上传也不会再建重。 */
   (async()=>{
     let ok=0;
+    try{
     for(const f of fs){
       const b64=await new Promise(r=>shrink(f,r));
       if(!b64){decodeBad++;continue;}                 // 坏图：算失败，别静静挂住
@@ -3188,9 +3210,18 @@ function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value=''
       if(up==='unwired'){unwired++;continue;}
       if(up==='denied'){denied++;continue;}
       if(!up||up.fail){svrBad++;svrWhy=String((up&&up.fail)||'网络');continue;}
-      e.media.push({id:uid(),name:f.name,driveId:up.id,url:up.url,ts:f.lastModified||Date.now()});
+      /* 每一张都**按 id 重新找回活动**，绝不跨 await 攥着开头那个 e —— cloudRefresh 一句
+         `STORE.events[i]=inc` 就能把它换成另一个对象。busyNow 已经挡在前面，这是第二道门。 */
+      const cur=STORE.events.find(x=>x&&x.id===evId)||e;
+      if(!cur.media)cur.media=[];
+      cur.media.push({id:uid(),name:f.name,driveId:up.id,url:up.url,ts:f.lastModified||Date.now()});
+      /* 传一张落一次盘（而不是整批传完才存）：手机传到一半被切走或被系统杀掉，已经进了
+         网盘的那几张不会变成谁也够不着的孤儿字节；顺带立刻盖上 mtime 戳，从这一刻起
+         cloudRefresh 那道「本机未推的编辑在先」也开始护着这场活动。 */
+      cur.mtime=Date.now();save();render();
       ok++;if(n>1)toast('已传 '+ok+'/'+n+' …');
     }
+    }finally{upMark(-1);}
     save();render();
     toast(unwired?'云盘没接线，照片传不上去（媒体库不往手机里存底）':
       denied?('传不上去 —— 当前登录的是 '+((SESSION&&SESSION.user&&SESSION.user.email)||'未知账号')+'，这个账号没有上传权限。请用主办账号登录后再传'):
