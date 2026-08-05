@@ -3171,7 +3171,11 @@ async function mediaDel(id){const e=ev();if(!e||!e.media)return;
     if(r==='denied'){toast('这个账号不能删云端的照片 —— 请用主办账号');return;}
     if(r!==true){toast('云端没删成（'+r+'）—— 这条先留着，等会儿再试');return;}
   }
-  e.media=e.media.filter(x=>x.id!==id);save();render();toast('已删除（网盘回收站里还能找回）');}
+  /* 和 mediaAdd 同一条规矩（规矩 11）：await 之后按 id 重新找回活动。写进被换掉的那个对象
+     的话，网盘里那份已经进回收站了，屏幕上这张却会在下一次重画时**原地复活**。 */
+  const cur=STORE.events.find(x=>x&&x.id===e.id)||e;
+  cur.media=(cur.media||[]).filter(x=>x.id!==id);cur.mtime=Date.now();
+  save();render();toast('已删除（网盘回收站里还能找回）');}
 async function mediaTrash(driveId){
   try{
     const r=await upFetch(API+'/api/ym_file',{method:'POST',
