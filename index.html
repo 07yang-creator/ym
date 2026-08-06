@@ -77,6 +77,41 @@
   footer{margin-top:56px;background:var(--felt);color:#8E9A90;font-size:12px;padding:26px 0 34px}
   footer .brand{color:var(--brass-l);font-family:Oswald,sans-serif;font-size:15px;margin-bottom:8px}
   footer a{color:#B8C4BC}
+  /* ⚠ 2026-08-06：这一段（连同它最后那行的 style 闭合标签）被「清掉演示数据」那一轮
+     和 .demo-note 一起删掉了。.demo-note 删得对（页面上确实不再用它），
+     但这两样都不是演示数据：
+       · 阅读器样式是给**真实**已发布文章用的 —— 下面 JS 的 open() 仍然在 createElement
+         'rdbg' / 'rd'，少了这层样式就是一个没有定位、没有背景的裸 div；
+       · 少掉那行闭合标签是**整站白屏**：浏览器把后面的 header / section / script 全当成
+         CSS 文本吞进这个块里，document.body 一个节点都不剩，登录入口也一起消失。
+     两条教训：① 删 CSS 要连着看这个块的**边界**，别只盯被删的那几条声明；
+     ② 这段说明里不能出现那个闭合序列的字面写法 —— 解析器在块里看到它就当成闭合，
+        哪怕它写在 CSS 注释中间（写这段注释时当场又踩了一次）。 */
+  /* reader overlay for a published 文章/新闻 */
+  .rdbg{position:fixed;inset:0;background:rgba(22,36,30,.55);z-index:60}
+  .rd{position:fixed;inset:auto 0 0 0;top:0;z-index:61;overflow:auto;padding:0 0 60px}
+  .rd .inner{max-width:720px;margin:0 auto;background:var(--paper);min-height:100%;
+    padding:26px 22px 50px;box-shadow:0 0 40px rgba(0,0,0,.25)}
+  .rd .x{position:sticky;top:10px;float:right;background:var(--felt);color:var(--stock);
+    border:0;border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer}
+  .rd h1{font-size:22px;margin:6px 0 4px;letter-spacing:.02em}
+  .rd .m{color:var(--muted);font-size:12px;margin-bottom:18px}
+  .rd .body{font-size:15px;line-height:1.95}
+  .rd .body h2{font-size:17px;margin:22px 0 8px}
+  .rd .body h3{font-size:15px;margin:18px 0 6px}
+  .rd .body p{margin:11px 0}
+  .rd .body ul,.rd .body ol{padding-left:22px;margin:11px 0}
+  .rd .body img{max-width:100%;height:auto;border-radius:5px;margin:12px 0;display:block}
+  .rd .body a{color:var(--brass);text-decoration:underline}
+  .rd .body blockquote{border-left:3px solid var(--line);margin:12px 0;padding-left:14px;color:var(--muted)}
+  .rd .body table{border-collapse:collapse;width:100%;margin:12px 0}
+  .rd .body td,.rd .body th{border:1px solid var(--line);padding:6px 9px;font-size:13.5px;text-align:left}
+  .card.tap{cursor:pointer}
+  .card.tap:hover{border-color:var(--brass-l)}
+  .newslist .n-item.tap{cursor:pointer}
+  .newslist .n-item.tap:hover{color:var(--brass)}
+</style>
+</head>
 
 <header>
   <nav class="nav">
@@ -107,7 +142,6 @@
     <p>缘满沙龙是面向在日华人的相亲交友组织。我们不做海量配对，只做小而精的线下活动——
       十对十茶会、兴趣小组、季节远足。每一场都有主持、有节奏、有跟进，
       让认真想认识新朋友的人，见到同样认真的人。</p>
-/div>
   </div>
 </div>
 
