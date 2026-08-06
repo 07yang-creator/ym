@@ -428,6 +428,8 @@
   .dvx{cursor:pointer;color:var(--brass);white-space:nowrap}
   .dvbd{padding:12px;overflow:auto;text-align:center;font-size:12.5px}
   .dvim{max-width:100%;height:auto;display:block;margin:0 auto;border-radius:4px}
+  .dvrt{display:inline-block;margin-top:10px;color:var(--brass);cursor:pointer;text-decoration:underline}
+  .mshot[onclick]{cursor:pointer}
   .mshot .bn .st .rt{color:var(--brass);cursor:pointer;text-decoration:underline;margin-left:6px}
   .mshot.bad .bn .st{color:var(--alarm)}
   .mshot .x{position:absolute;top:6px;right:6px;z-index:2;width:26px;height:26px;border-radius:50%;
@@ -3198,9 +3200,14 @@ function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs
    <a>，用户点它的那一下才是手势。
    ⚠ 为什么不进 _mediaBlob：那个缓存归 mediaForget 管（关相册就整批 revoke），
    而这个查看器可以在相册之外打开 —— 共用会让别人替它把 URL 收走。 */
-let _dvUrl=null;
+let _dvUrl=null,_dvOwn=false;   // _dvOwn=false 表示这个 URL 是**借**相册缓存的，不归我 revoke
 function dvClose(){const o=document.getElementById('dvov');if(o)o.remove();
-  if(_dvUrl){try{URL.revokeObjectURL(_dvUrl);}catch(e){}_dvUrl=null;}}
+  /* 只 revoke **自己造的**那一个。相册缓存（_mediaBlob）里那份归 mediaForget 管 ——
+     借来的 URL 在这里 revoke 掉，相册里那张当场就变成坏图。 */
+  if(_dvUrl&&_dvOwn){try{URL.revokeObjectURL(_dvUrl);}catch(e){}}
+  _dvUrl=null;_dvOwn=false;}
+// 相册里点一张 → 查看器。名字带过去，下载下来才是原来那个文件名而不是一串 blob id
+function mediaOpenOne(driveId,name){driveView(driveId,mediaGroupNow(),name,'');}
 async function driveView(driveId,group,name,mime){
   const id=mediaId(driveId);
   if(!id){toast('这一条没有网盘文件号 —— 请重新上传一次');return;}
@@ -3213,12 +3220,23 @@ async function driveView(driveId,group,name,mime){
   hd.appendChild(x);bx.appendChild(hd);
   const bd=document.createElement('div');bd.className='dvbd';bd.textContent='读取中…';
   bx.appendChild(bd);ov.appendChild(bx);document.body.appendChild(ov);
-  const r=await mediaReadDo(id,group);
-  if(document.getElementById('dvov')!==ov)return;    // 用户已经关掉了：别往尸体上画
-  if(!r||!r.blob){bd.textContent=(r&&r.why)||'读不出来';return;}
-  _dvUrl=URL.createObjectURL(r.blob);
+  /* 相册里那张已经取回来过 → 直接借它的 blob: URL：点开是瞬时的，也不用再打一次 GAS
+     （GAS 会把并发请求排队，一次不必要的往返就是好几秒）。 */
+  const cached=_mediaBlob.get(id);
+  if(cached){_dvUrl=cached;_dvOwn=false;}
+  else{
+    const r=await mediaReadDo(id,group);
+    if(document.getElementById('dvov')!==ov)return;  // 用户已经关掉了：别往尸体上画
+    if(!r||!r.blob){
+      bd.textContent=(r&&r.why)||'读不出来';
+      // 超时/网络是会自己好的：这里也要给出口，别让人只能关掉重开（和相册那条同一个道理）
+      const rt=document.createElement('span');rt.className='dvrt';rt.textContent='重试';
+      rt.onclick=()=>driveView(driveId,group,name,mime);bd.appendChild(rt);
+      return;}
+    _dvUrl=URL.createObjectURL(r.blob);_dvOwn=true;mime=r.blob.type||mime;
+  }
   bd.textContent='';
-  const isImg=/^image\//.test(String((r.blob.type||mime||'')));
+  const isImg=!/pdf/i.test(String(mime||''));
   if(isImg){const im=document.createElement('img');im.className='dvim';im.src=_dvUrl;bd.appendChild(im);}
   else{const p=document.createElement('p');p.className='note9';
     p.textContent='这是一个 PDF —— 点下面「下载 / 打开」在本机查看。';bd.appendChild(p);}
@@ -3654,11 +3672,18 @@ function mediaSheet(e){
      没有 driveId 的老条目（历史上只存过文件名的那种）直接画成失败态并说清下一步，
      不能让它挂在「读取中…」上永远转 —— 那读起来就是「卡住了」。 */
   const roll=n?`<div class="in">${ms.map(m=>{const did=mediaId(m.driveId);
-    return `<div class="mshot ${did?'load':'bad'}">
+    /* 点照片 = 打开查看器（大图 + 下载）。owner 2026-08-06：「even they tap on photo
+       try to download, they should not be asked for google login」—— 在这之前相册里
+       点照片一点反应都没有：卡上唯一能点的是 ✕，整屏没有任何下载入口。
+       ⚠ ✕ 必须 stopPropagation，否则点删除会顺手把查看器也开出来。
+       ⚠ 这段注释在模板字面量里面，剥注释那两道都够不着它 —— 所以这里不写星号强调，
+          否则会被「用户看得见的文案里不许有星号」那条锁抓住（规矩 9 的同一个坑）。 */
+    return `<div class="mshot ${did?'load':'bad'}"${
+        did?` onclick="mediaOpenOne('${escJs(did)}','${escJs(m.name||'照片')}')" title="点开看大图 / 下载"`:''}>
       <img${did?` data-mid="${esc(did)}"`:''} alt="${esc(m.name||'')}" onerror="mediaThumbFail(this)">
       <span class="bn">${esc(m.name||'照片')}<span class="st">${
         did?'读取中…':'这条记录没有网盘文件号 —— 请重新上传一次'}</span></span>
-      ${!S.readonly?`<span class="x" onclick="mediaDel('${escJs(m.id)}')" title="移除">✕</span>`:''}
+      ${!S.readonly?`<span class="x" onclick="event.stopPropagation();mediaDel('${escJs(m.id)}')" title="移除">✕</span>`:''}
     </div>`;}).join('')}</div>`
     /* 空相册这一句是**反着写**的：相册空着，恰恰是最该去网盘看一眼的时候（08-05 那个竞态
        的症状就是「toast 说传好了、相册是空的」）。所以不止说「还没有照片」，还要把下一步
