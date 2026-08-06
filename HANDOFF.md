@@ -974,12 +974,20 @@ insert into ym_entry(host,entry_date,direction,amount) values (auth.uid(),'2026-
   returning voucher_no;    -- 期望 R-2026-0001；删不掉（没有 delete policy），改成 void 才是正路
 ```
 
-### 2. push = 自动部署 —— ⚠ **两个仓库**
-`git push`（monorepo）**不会**更新 ym.jjconnect.tokyo。ym 子域从**另一个仓库**部署，
-每次改完 `ym/` 都要再来一次 subtree split（`docs/DEPLOY.md` 有原文）：
-```bash
-git subtree split --prefix=ym -b ym-deploy && git push https://github.com/07yang-creator/ym.git ym-deploy:main && git branch -D ym-deploy
-```
+### 2. push = 自动部署 —— ⚠ **家搬了（2026-08-07，owner 裁定）**
+**ym 的源码之家现在就是本仓库（`07yang-creator/ym`，本地 `~/Documents/GitHub/ym`）。**
+owner 裁定「ym 和 JJcashflow 记账日记是两个产品，不许混」—— 8-06 的白屏事故正是混居的代价：
+一个「JJcashflow 清演示数据」的提交删掉了 ym 的 style 闭合标签，还搭别人的 subtree push 上了线。
+- **改这里 → `git push origin main` → Vercel 自动部署 ym.jjconnect.tokyo。就这一步，没有 subtree 了。**
+- 旧 monorepo（JJcashflow）里的 `ym/` 已删除；**别再往那边写 ym 代码**，也永远不要再跑
+  subtree split —— 它现在推上去的会是「整棵树被删掉」。
+- **还留在 JJcashflow 仓库的两样（分离 S3/S4 未做）**：`api/*.py`（parse 的 ym_form/roster_shot
+  模式、ym_reg/ym_join/ym_file/phrase —— 前端照旧打 `www.jjconnect.tokyo/api/*`）和
+  `supabase/migrations/*_ym*.sql`（数据库还和记账共用一个 Supabase 项目）。改它们要去那个仓库，
+  **单独成 commit、别和记账侧同车**。
+- `node scripts/check-ym.mjs` 在**本仓库根**跑；它的三层检查（页面＋api＋迁移）会自动去**并排的**
+  `~/Documents/GitHub/JJcashflow` 读 api 和 migrations —— 两个仓库必须并排放着，找不到会大声报错
+  而不是静默跳过。
 ### 3. owner 还没走过的真机验收（375px，按这个顺序）
 - **主办台（不挂活动）** → 「记一张票据」→ **卡上当面问「这笔算在哪」** → 选一般费用 → 入账 → 去总账。
   *这一个入口在三份设计里有两份是静默失效的*，所以先走它。
