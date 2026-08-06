@@ -418,6 +418,16 @@
   /* 文件名可能是一长串没有空格的 IMG_xxxx（要 break-all），这一句是中文（break-all 会把
      句子切得七零八落）—— 所以状态行自己一套换行规则。 */
   .mshot .bn .st{display:block;margin-top:5px;word-break:normal;overflow-wrap:anywhere}
+  /* 附件 / 票据原图的查看器：盖在页面上，不换页、不开新标签（见 driveView 的注释）。 */
+  .dvov{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:90;display:flex;
+    align-items:center;justify-content:center;padding:16px}
+  .dvbx{background:var(--card);border:1px solid var(--line);border-radius:8px;
+    max-width:min(680px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden}
+  .dvhd{display:flex;justify-content:space-between;gap:12px;align-items:center;
+    padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px}
+  .dvx{cursor:pointer;color:var(--brass);white-space:nowrap}
+  .dvbd{padding:12px;overflow:auto;text-align:center;font-size:12.5px}
+  .dvim{max-width:100%;height:auto;display:block;margin:0 auto;border-radius:4px}
   .mshot .bn .st .rt{color:var(--brass);cursor:pointer;text-decoration:underline;margin-left:6px}
   .mshot.bad .bn .st{color:var(--alarm)}
   .mshot .x{position:absolute;top:6px;right:6px;z-index:2;width:26px;height:26px;border-radius:50%;
@@ -3177,11 +3187,55 @@ function attachTo(holder,input){if(S.readonly)return;const fs=input.files;if(!fs
   input.value='';}
 /* 老 payload 里存的是 data: URL，新的是 Drive 链接 —— 两种都要能开，别的一律不开。
    payload 虽然是主办自己写的，但它会被发布/共享，不该成为一条能塞 javascript: 的通道。 */
+/* ⭐⭐ 全 app 从网盘取字节**只有这一个出口**。owner 2026-08-06：「even they tap on photo try
+   to download, they should not be asked for google login because we have verify his authority
+   in this app, nothing related to google drive.」
+   把 Drive 链接塞进 <img src> 或 window.open()，就是把取件这件事**外包给看件的人那台浏览器**
+   —— 于是能不能看取决于他登没登 owner 的 Google 账号。相册 08-05 已经改过来了，
+   附件和票据原图是**同一个病的另外两处**（08-06 owner 报「还是要登 Google」就是它们）。
+   ⚠ 为什么不是 window.open(blobUrl)：手机上 await 之后再 open 会被当成**非用户手势**的弹窗
+   拦掉，屏幕上什么都不会发生。所以先把件取回来画在页面里，「下载」是一个真正带 href 的
+   <a>，用户点它的那一下才是手势。
+   ⚠ 为什么不进 _mediaBlob：那个缓存归 mediaForget 管（关相册就整批 revoke），
+   而这个查看器可以在相册之外打开 —— 共用会让别人替它把 URL 收走。 */
+let _dvUrl=null;
+function dvClose(){const o=document.getElementById('dvov');if(o)o.remove();
+  if(_dvUrl){try{URL.revokeObjectURL(_dvUrl);}catch(e){}_dvUrl=null;}}
+async function driveView(driveId,group,name,mime){
+  const id=mediaId(driveId);
+  if(!id){toast('这一条没有网盘文件号 —— 请重新上传一次');return;}
+  dvClose();
+  const ov=document.createElement('div');ov.id='dvov';ov.className='dvov';
+  ov.onclick=e=>{if(e.target===ov)dvClose();};
+  const bx=document.createElement('div');bx.className='dvbx';
+  const hd=document.createElement('div');hd.className='dvhd';hd.textContent=name||'附件';
+  const x=document.createElement('span');x.className='dvx';x.textContent='✕ 关闭';x.onclick=dvClose;
+  hd.appendChild(x);bx.appendChild(hd);
+  const bd=document.createElement('div');bd.className='dvbd';bd.textContent='读取中…';
+  bx.appendChild(bd);ov.appendChild(bx);document.body.appendChild(ov);
+  const r=await mediaReadDo(id,group);
+  if(document.getElementById('dvov')!==ov)return;    // 用户已经关掉了：别往尸体上画
+  if(!r||!r.blob){bd.textContent=(r&&r.why)||'读不出来';return;}
+  _dvUrl=URL.createObjectURL(r.blob);
+  bd.textContent='';
+  const isImg=/^image\//.test(String((r.blob.type||mime||'')));
+  if(isImg){const im=document.createElement('img');im.className='dvim';im.src=_dvUrl;bd.appendChild(im);}
+  else{const p=document.createElement('p');p.className='note9';
+    p.textContent='这是一个 PDF —— 点下面「下载 / 打开」在本机查看。';bd.appendChild(p);}
+  // 真正带 href 的 <a>：点它那一下才是手势，手机上才不会被当成弹窗拦掉
+  const a=document.createElement('a');a.className='btn sm';a.style.marginTop='10px';
+  a.href=_dvUrl;a.download=name||'file';a.target='_blank';a.rel='noopener';
+  a.textContent=isImg?'下载这张':'下载 / 打开';bd.appendChild(a);
+}
 function openAtt(f){
   const u=String((f&&f.url)||'');
-  if(!u){toast((f&&f.name||'这个附件')+' —— 旧版本只存了文件名，请重新上传一次');return;}
-  if(!/^data:/.test(u)&&!/^https:\/\/[a-z]+\.google\.com\//.test(u)){toast('这个附件的链接不对');return;}
-  window.open(u,'_blank','noopener');
+  /* 有 driveId 的一律走查看器（= 走我们自己的鉴权代理）。以前这里是
+     window.open(driveUrl)，那一下就是把人送去 Google 登录页 —— 08-06 owner 报的
+     「还是要登 Google」有一半是这里。 */
+  if(f&&f.driveId){driveView(f.driveId,mediaGroupNow(),f.name,f.mime);return;}
+  // 老 payload 里的 data: 是「云盘没接线」时的内联退路，那一份本来就在本机，直接开没问题
+  if(/^data:/.test(u)){window.open(u,'_blank','noopener');return;}
+  toast((f&&f.name||'这个附件')+' —— 旧版本只存了文件名，请重新上传一次');
 }
 /* 复盘 event-level attachments */
 function evAttach(input){const e=ev();if(e)attachTo(e,input);}
@@ -6084,13 +6138,21 @@ function rcFromSubmit(sid,src){
 // 凭证原图 —— 只在主办点开时取一次。BUILD THE NODE, never attribute HTML (0014's XSS fix).
 function rcImage(id,boxId){
   const box=$(boxId);if(!box||!canCloud())return;box.textContent='读取中…';
-  sb.from('ym_entry').select('image_url,image_name').eq('id',id).maybeSingle()
+  sb.from('ym_entry').select('image_id,image_name,image_mime,event_id').eq('id',id).maybeSingle()
     .then(({data,error})=>{
-      if(error||!data||!data.image_url){box.textContent='这一条没有留图（门票是内部凭证）';return;}
+      if(error||!data||!data.image_id){box.textContent='这一条没有留图（门票是内部凭证）';return;}
       box.textContent='';
-      const a=document.createElement('a');a.className='pf';
-      a.href=data.image_url;a.target='_blank';a.rel='noopener';
-      a.textContent='在网盘打开 '+(data.image_name||'票据');box.appendChild(a);});
+      /* 以前这里是一个「在网盘打开」的 <a href=Drive链接> —— 点下去就是 Google 登录页。
+         税理士、志愿者、别的主办都没有 owner 的 Google 账号，所以那个入口对他们等于没有。
+         现在走查看器：字节从我们自己这道门过，谁被 app 授权了谁就看得见。
+         活动按 entry 的 event_id 找回来（票据落在 <活动 · 日期>/票据/ 底下），
+         找不到就退回当前活动 —— 找错了会得到一句 not in group，而不是默默看到别的东西。 */
+      const e0=STORE.events.find(x=>x&&x.id===String(data.event_id||''));
+      const b=document.createElement('span');b.className='pf';b.style.cursor='pointer';
+      b.textContent='查看 '+(data.image_name||'票据');
+      b.onclick=()=>driveView(data.image_id,e0?evGroup(e0):mediaGroupNow(),
+                              data.image_name||'票据',data.image_mime);
+      box.appendChild(b);});
 }
 // 取消 = 削除ではない。行は残り、合計からは外れ、理由が残る。
 function rcVoid(id){
@@ -7455,17 +7517,22 @@ function pendOpenFile(sid){
   submitFile(sid)
     .then(({data,error})=>{
       if(error||!data){box.textContent='读取失败';return;}
-      /* 0025：PDF 存在 Drive 上，行里只有引用。开新标签页看 —— 不要塞 iframe，Drive 自己
-         带 X-Frame-Options，塞进去只会得到一个空白框。href 用**属性赋值**、并且照服务端那条
-         google.com 规则再验一次，理由和下面 file_data 那段 XSS 教训是同一条。 */
-      if(data.file_url){
-        const url=String(data.file_url);
+      /* 0025：PDF 存在 Drive 上，行里只有引用。
+         ⚠ 2026-08-06：这里**不再**给一个指向 Drive 的 <a> —— 那一下就是把人送去 Google
+         登录页，而税理士 / 志愿者 / 别的主办都没有、也不该有 owner 的 Google 账号
+         （owner 原话：「we have verify his authority in this app, nothing related to google
+         drive」）。改走和相册、附件、票据原图**同一个** driveView：字节从我们自己这道门过。
+         也不塞 iframe —— Drive 带 X-Frame-Options，那只会得到一个空白框；查看器里是
+         blob:，PDF 给一个带 href 的下载/打开按钮（手机上 await 之后 open 会被当弹窗拦掉）。 */
+      if(data.file_id){
         box.textContent='';
-        if(!/^https:\/\/[a-z]+\.google\.com\//.test(url)){box.textContent='这条的原件链接不对';return;}
-        const a=document.createElement('a');a.className='pf';
-        a.href=url;a.target='_blank';a.rel='noopener';
-        a.textContent='看原件 '+(data.file_name||'票据.pdf');
-        box.appendChild(a);return;
+        const r0=(PENDING||[]).find(r=>r.id===sid)||{};
+        const e0=STORE.events.find(x=>x&&x.id===String(r0.event_id||''));
+        const b=document.createElement('span');b.className='pf';b.style.cursor='pointer';
+        b.textContent='看原件 '+(data.file_name||'票据.pdf');
+        b.onclick=()=>driveView(data.file_id,e0?evGroup(e0):mediaGroupNow(),
+                                data.file_name||'票据.pdf','application/pdf');
+        box.appendChild(b);return;
       }
       // file_data is MEMBER-controlled. Interpolating it into src="…" let a quote inside the
       // "base64" break out of the attribute and run script on the host's origin — i.e. the host's
