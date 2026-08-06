@@ -78,7 +78,8 @@
   footer .brand{color:var(--brass-l);font-family:Oswald,sans-serif;font-size:15px;margin-bottom:8px}
   footer a{color:#B8C4BC}
   /* ⚠ 2026-08-06：这一段（连同它最后那行的 style 闭合标签）被「清掉演示数据」那一轮
-     和 .demo-note 一起删掉了。.demo-note 删得对（页面上确实不再用它），
+     和那条演示用的提示条样式一起删掉了。那一条删得对（页面上确实不再用它，
+     它的类名这里故意不写出来：断言查的就是那个字面串，写进注释就会把它撞红 —— 规矩 9），
      但这两样都不是演示数据：
        · 阅读器样式是给**真实**已发布文章用的 —— 下面 JS 的 open() 仍然在 createElement
          'rdbg' / 'rd'，少了这层样式就是一个没有定位、没有背景的裸 div；
