@@ -392,7 +392,8 @@
   /* ===== 复盘媒体库 —— 打码后的活动照片。owner 2026-08-03：「要的是能滚着看的相册，
      不是缩略图列表」。所以整屏一栏、照片按原比例铺满宽度、直接往下滚 ——
      没有九宫格、没有点开再看一层、也没有任何指向网盘的链接（owner：没要那个）。
-     字节不在本页：src 指向 Drive 的缩略图服务，这里只存引用。 ===== */
+     字节由 JS 带着登录态从代理取回、塞成 blob: URL 再进 src（见 mediaImgLoad）——
+     整个文件里不再有任何指向 Google 网盘的地址。 ===== */
   .mfull{position:fixed;inset:0;z-index:52;background:var(--felt);display:flex;flex-direction:column}
   .mfull .mhd{display:flex;align-items:center;gap:10px;padding:12px 14px;
     border-bottom:1px solid var(--line);background:var(--felt)}
@@ -402,9 +403,22 @@
     background:#0e1512;margin-bottom:12px}
   .mshot img{width:100%;height:auto;display:block}
   .mshot .bn{display:none}
-  .mshot.bad{padding:18px 12px;text-align:center}
-  .mshot.bad img{display:none}
-  .mshot.bad .bn{display:block;font-size:11px;color:var(--stock-dim);word-break:break-all}
+  /* 两个「屏幕上没有图」的状态长得一样：整块塌成一行文件名 + 一句交代。区别只在那句话 ——
+     .load 是「读取中…」（字节还在路上），.bad 是「哪一层、什么码」。
+     一片空白是最难受的那一种：主办分不出「在读」和「坏了」，只会读成又一次功能坏了。 */
+  .mshot.load,.mshot.bad{padding:18px 12px;text-align:center}
+  /* 「还在读」的占位要占**接近一张照片**的高度，两个理由，第二个是功能性的：
+     ① 塌成一条 50px 的细线，滚起来是一排看不懂的名字，图回来时又整屏跳动；
+     ② 懒加载是按「离视野 400px」触发的 —— 占位越矮，一屏里塞进来的卡就越多，
+        于是一进相册几十张**同时**排队，懒加载等于没懒。给它一个高度，队列才真的按滚动展开。
+     .bad 不给高度：已经确定读不出来的那张，留一行字说清原因就够，撑成大空盒只是噪音。 */
+  .mshot.load{min-height:180px;display:flex;align-items:center;justify-content:center}
+  .mshot.load img,.mshot.bad img{display:none}
+  .mshot.load .bn,.mshot.bad .bn{display:block;font-size:11px;color:var(--stock-dim);word-break:break-all}
+  /* 文件名可能是一长串没有空格的 IMG_xxxx（要 break-all），这一句是中文（break-all 会把
+     句子切得七零八落）—— 所以状态行自己一套换行规则。 */
+  .mshot .bn .st{display:block;margin-top:5px;word-break:normal;overflow-wrap:anywhere}
+  .mshot.bad .bn .st{color:var(--alarm)}
   .mshot .x{position:absolute;top:6px;right:6px;z-index:2;width:26px;height:26px;border-radius:50%;
     background:rgba(8,12,10,.55);color:var(--stock-dim);display:flex;align-items:center;
     justify-content:center;font-size:11px;cursor:pointer}
@@ -420,7 +434,7 @@
   .mshot .keep{position:absolute;top:6px;right:6px;z-index:2;height:26px;padding:0 11px;border-radius:13px;
     background:rgba(8,12,10,.55);color:var(--brass);display:flex;align-items:center;
     justify-content:center;font-size:11px;cursor:pointer}
-  /* 文件名和时间写在图**外面**：缩略图取不出来（这台浏览器没登录那个 Google 账号）时，
+  /* 文件名和时间写在图**外面**：字节取不回来（网盘脚本还没更新 / 目录名对不上）时，
      整块图会塌成一行文件名，那时这一行就是主办唯一能据以判断「是不是那几张」的东西。 */
   .msinfo{font-size:11px;color:var(--stock-dim);margin:2px 0 10px}
   .mfoot{padding:10px 12px;border-top:1px solid var(--line);background:var(--felt)}
@@ -2298,7 +2312,12 @@ function render(){
      一个字不渲染。?cap= 手机拍照页在 boot 就分流了（token 即凭据），到不了这里；
      成员页从第一天就是这个结构（!SESSION → loginHtml）。等待批准 / 成员点错门 /
      重设密码回来的人都**带着会话**，照旧走下面的工作台 + 抽屉。 */
-  if(!SESSION){$('app').innerHTML=authWall();return;}
+  /* ⚠ 这一句 return 在 mediaLazyWire() **前面**，而「离开相册就把 blob 还回去」那道网正是
+     挂在 mediaLazyWire 开头的。退出登录 / 会话过期走的就是这条路：屏幕已经是登录墙，而上
+     一个主办那一批来宾照片的字节还留在这个页面里（单页 app，一天都不刷新一次），要等下一个
+     人登录后第一次带会话的 render 才被清掉。所以在这里先把它们还回去 ——「退出 = 这台设备
+     回到出厂演示态」（owner 2026-08-02）这条，在照片这一项上不能破口。 */
+  if(!SESSION){mediaForget();$('app').innerHTML=authWall();return;}
   const navItems=[['desk','工作台'],['sheet','计划'],['people','用户'],['lib','资产库'],['post','发布']];
   if(PROFILE&&PROFILE.is_admin)navItems.push(['admin','管理']);
   // 待批申请 / 刚注册的人在**任何**页面都要看得见 —— 只长在 用户 页里的提醒，等于要主办
@@ -2346,8 +2365,13 @@ function render(){
   if(S.postEdit&&$('po_body')&&window.ymSanitize)
     window.ymSanitize.into($('po_body'),S.postEdit.body_html||'');
   if(S.exTask)positionExDlg();   // anchor the floating task detail next to its node
+  /* 相册的图不在 HTML 里（<img> 出生时没有 src）—— innerHTML 换完之后才挂懒加载、
+     并把这次会话已经取回来的贴回去。必须**每次** render 都来一趟：这一句 innerHTML
+     把整个 #app 换掉，上一批 <img> 和上一个 IntersectionObserver 一起成了孤儿。
+     相册没开时它只做一件事：把上一次取回来的 blob 全部 revoke 掉（见 mediaForget）。 */
+  mediaLazyWire();
 }
-function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;S.mediaOpen=false;S.mediaScan=null;S.ownPick=null;if(v!=='sheet')S.readonly=false;
+function go(v){S.view=v;S.drawer=false;S.armed=null;S.exTask=null;S.mediaOpen=false;S.mediaScan=null;mediaForget();S.ownPick=null;if(v!=='sheet')S.readonly=false;
   if(v==='people')loadAccepted();          // 本人申报的数字来自 accepted 行，不在轮询里
   if(v==='ledger'){loadAccepted();loadLedger();}   // 自费脚注 + 行，都要有数据
   if(v==='signup')loadPending();                   // 待确认的报名（join）要立刻显示，别等 60 秒
@@ -3172,20 +3196,216 @@ function openFile(rid,fid){const r=ev().rows.find(x=>x.id===rid);const f=r&&(r.f
    Drive 的 <活动 · 日期>/照片/，payload 里只留 {id,name,driveId,url,ts} 引用 ——
    和 attachTo 同一条底线「不往 ym_doc.payload 加新字节」；不同的是这里没有 data: 退路：
    Drive 没接线就当面拒收，新面不背老包袱。
-   图直接指 drive.google.com/thumbnail —— 浏览器登着有权限的 Google 账号、或根目录设成
-   「知道链接的人可查看」时才显示得出来；显示不出来就降级成文件名，并露一行提示。
    ⚠ 2026-08-03 owner 两条：① 要的是**能滚着看的相册**，不是缩略图列表（所以整屏一栏、
-   原比例、直接滚，灯箱和九宫格都撤了）；② **不要指向网盘的链接**（「在网盘打开」「下载」
-   都撤了，driveThumb 是仅剩的取图出口）。 */
+   原比例、直接滚，灯箱和九宫格都撤了）；② **不要指向网盘的链接**。
+   ⚠ 2026-08-05 owner 第三条，也是这一段被重写的原因，见下面「取图」那一节。 */
 function mediaList(e){return ((e&&e.media)||[]).slice().sort((a,b)=>(a.ts||0)-(b.ts||0));}
-// Drive 文件 id 只该有 [A-Za-z0-9_-]；先洗再拼。这是仅有的取图出口
-function driveThumb(id,w){const c=String(id||'').replace(/[^\w-]/g,'');
-  return c?('https://drive.google.com/thumbnail?id='+c+'&sz=w'+(w||400)):'';}
+/* ===== 取图 (2026-08-05) —— 字节走代理，绝不让**看的人**自己去 Google 取 =====
+   在此之前是 driveThumb：<img src> 直接指着 Google 网盘的缩略图服务（thumbnail?id=…）。
+   那等于把取图这件事外包给**看的人那台浏览器**，于是「看不看得见」取决于它登没登
+   一个对这个 Drive 有权限的 Google 账号 —— 志愿者、嘉宾、别的主办没有、也**不该有**
+   owner 的 Google 账号（owner 2026-08-05：「other user can not login with my google
+   account, we need add an photo read to authorized in google drive folder」）。
+   屏幕上那句「这台浏览器没登录存照片的那个 Google 账号，登录一次就能看」是**一条错的
+   指令**（它在教主办的员工去要 owner 的账号），连同 driveThumb 一起删掉。
+   现在这条路：JS 带着登录态 POST /api/ym_file(read_media) 拿原始字节 → blob: URL → <img>。
+   为什么不是「签发一个短时签名 URL」：那要新增一个**不带登录态就能取到字节**的公开端点
+   和一把新密钥，而这个仓库刚在 08-05 被越权和假锁教训过 —— 少一道新门就少一处能写错的
+   地方。这条路不新增端点、不新增密钥，授权**完全复用**代理那把 host_groups/_group_gate
+   的尺子（和上传/删除/找回一模一样）。
+   代价：blob 没有跨页面的 HTTP 缓存，每次进相册都要重取一遍。用两样抵：
+     · 会话内缓存（同一张在这一次会话里只取一次，render 重画不重取）；
+     · 懒加载 + 并发上限 3（滚到哪张取哪张，不是一进门就把整个目录拉下来）。
+   ⚠ 取图**不排进 upSerial**。那是上传队列：一边传照片一边滚相册的话，取图会把上传挤在
+   后面（上传一张要好几秒），而上传中途 mediaAdd 又在等自己那一批 —— 互相饿死。
+   取图有自己的小队列，也因此**不标忙**（不 upMark）：cloudRefresh 可以在取图半路把整个
+   #app 换掉，所以回包一律按 data-mid 现查现贴，绝不攥着发起时那个 <img>（规矩 11 的形）。 */
+// Drive 文件 id 只该有 [A-Za-z0-9_-]。它现在要进 CSS 选择器和请求体，洗得更要紧
+function mediaId(id){return String(id||'').replace(/[^\w-]/g,'');}
+const MEDIA_PAR=3;                  // 同时最多 3 个取图请求（手机上再多只是互相排队）
+const _mediaBlob=new Map();         // driveId -> blob: URL（会话内缓存；离开相册全部 revoke）
+const _mediaWhy=new Map();          // driveId -> 失败时那句人话（滚回来不再重取同一张）
+const _mediaBusy=new Set();         // 已入队/在飞的 driveId，别重复排
+const _mediaQ=[];                   // 待取队列
+let _mediaRun=0;
+/* 在飞的 AbortController。为什么取图不能用 upFetch（见 mediaReadDo 的注释）：那个超时只盖到
+   响应头，而这条路绝大部分时间花在响应**体**上。一次不 settle 就永久少一个并发位子，
+   攒够 MEDIA_PAR 次，全 app 的取图静默死掉 —— 没有任何错误码，只有刷新页面能解。 */
+const _mediaAC=new Set();
+const MEDIA_READ_TIMEOUT=60000;     // 覆盖到 blob() 之后；比 upFetch 的 90 秒短，图不该拖那么久
+/* 代数：mediaForget 一清，还在飞的那几个回来时就该**当场作废**（否则它们会往刚清空的
+   缓存里再塞一份 blob，相册关了字节却留在页面里 —— 那正是要避免的泄漏）。 */
+let _mediaGen=0;
+/* 取图的 group 和上传 / 删除 / 找回走**同一把尺子**（evGroup）。少送或在中途改写这一个
+   字段，代理的 _group_gate 和 GAS 的 insideGroup 就都对不上，表现是「照片一张都读不出来」。 */
+function mediaGroupNow(){return evGroup(ev());}
+/* 传输层。形状照抄 mediaTrash / mediaScanDo（一把尺子只该有一份判据），差别只有两处：
+     · 成功回的是**字节**不是 JSON（代理直接把 Drive 的原始字节透出来），所以走 r.blob()；
+     · 失败要说的话更细：这一张读不出来时，屏幕上只剩一行文件名，那句话就是全部线索。 */
+async function mediaReadDo(id,group){
+  /* ⚠ 这条路**故意不用 upFetch**：它的超时定时器挂在 `.finally` 上，而 fetch 的 promise 在
+     **响应头**到达的那一刻就 resolve —— 真正下载几百 KB~几 MB 的是下面那句 `await r.blob()`，
+     那一整段在 upFetch 里是**没有任何保护**的。别的调用方（trash / scan / upload）读的都是
+     几百字节的 JSON，所以只有取图这条是「绝大部分时间花在无保护阶段」。
+     半开连接（手机走出电梯、运营商 NAT 静默掐断）会让它永远不 settle，`_mediaRun` 就永久
+     少一个位子；攒够 MEDIA_PAR 次（不必同时，一天里陆续攒也算），mediaPump 的并发闸再也
+     进不去，**全 app 的取图静默死掉** —— 所有相册只剩「读取中…」，没有任何错误码，
+     只有刷新页面能解。所以这里自己拿一个 controller，覆盖到 blob() 之后才 clearTimeout。 */
+  const ac=(typeof AbortController!=='undefined')?new AbortController():null;
+  let t=null;
+  if(ac){_mediaAC.add(ac);t=setTimeout(()=>{try{ac.abort();}catch(e){}},MEDIA_READ_TIMEOUT);}
+  try{
+    const r=await fetch(API+'/api/ym_file',{method:'POST',
+      headers:{'content-type':'application/json'},
+      signal:ac?ac.signal:undefined,
+      body:JSON.stringify({user_token:(await liveToken())||undefined,
+        action:'read_media',file_id:String(id||''),group:String(group||'')})});
+    // 401 = 这台设备没登录 / token 过期。整串里**只有这一档**该说「重新登录」
+    if(r.status===401)return {why:'这台设备的登录已经过期（401）—— 请重新登录后再进相册'};
+    /* 403 读 body 里的 reason（和 mediaTrash / mediaScanDo 逐字同一支）：这两种情况
+       主办要做的事完全不同，压成「请用主办账号登录」会让他去换账号，而账号是对的。 */
+    if(r.status===403){let j=null;try{j=await r.json();}catch(e3){}
+      const rs=String((j&&j.reason)||'');
+      if(rs==='no_cloud_events')return {why:'这场活动还没同步到云端（403）—— 等几秒同步完再进一次相册'};
+      if(rs==='not_in_your_events')return {why:'这个名字不在你的活动里（403）—— 活动改过名字或日期？改完等这台设备把它同步上云端再看'};
+      return {why:'这个账号不能看这场活动的照片（403）'};}
+    /* 501 = 网盘脚本是旧版（部署没更新），不是「没配置」也不是「没权限」。
+       owner 要做的事完全不同，所以它有自己的一句，并且把线上那一版的 gas_rev 说出来。 */
+    if(r.status===501){let j=null;try{j=await r.json();}catch(e3){}
+      return {why:'网盘脚本还是旧版（线上 '+((j&&j.gas_rev)||'旧版')+'），里面还没有「读取照片」这个动作 —— 请管理员用「Edit existing deployment」更新现有部署'};}
+    // 503 分两侧：服务端缺钥匙 / 脚本侧缺钥匙 / 根本没接线，管理员要做的事各不相同
+    if(r.status===503){let j=null;try{j=await r.json();}catch(e3){}
+      const er=String((j&&j.error)||''),side=String((j&&j.side)||'');
+      if(er==='read not configured'||side)
+        return {why:'读取照片还没接线：'+(side==='gas'?'Apps Script 缺 SHARED_SECRET':'服务端缺 YM_DRIVE_SECRET')+'（503 · '+(side||'服务端')+'）'};
+      return {why:'云盘没接线（503）—— 请管理员配好 YM_DRIVE_EXEC'};}
+    /* 其余失败：error 和 detail **分开读**（ownership 那一支的 detail 是一句英文长句，
+       拿 detail 比对认不出它）。只报状态码的话，密钥不匹配 / 目录名对不上 / 超时
+       在屏幕上会长成同一句「HTTP 502」，而这几种要做的事完全不同。 */
+    if(!r.ok){let j=null;try{j=await r.json();}catch(e3){}
+      const er=String((j&&j.error)||'');
+      const det=String((j&&(j.detail||j.error))||'');
+      console.warn('ym_file read HTTP '+r.status,j);
+      if(er==='group required'||det==='group required')return {why:'页面是旧的，请刷新一次（400 · group required）'};
+      if(er==='ownership')return {why:'归属名单暂时读不到（502 · Supabase），稍后再进一次 —— 不是你的账号有问题'};
+      if(det==='secret mismatch')return {why:'两侧密钥不是同一串（502 · 请核对 Apps Script 的 SHARED_SECRET 与 Vercel 的 YM_DRIVE_SECRET）'};
+      /* 「改过名字/日期」的真身，和删除那侧的 notingroup 是同一个根因 —— 口径必须一致
+         （把名字/日期改回上传那一版），不许造第二种说法。 */
+      if(det==='not in group')return {why:'这张不在这场活动的网盘目录里（502 · not in group）—— 活动改过名字或日期？网盘上的目录还是「上传当时」那个名字'};
+      if(det==='gone')return {why:'网盘上找不到这张了（502 · gone）—— 可能已经被删进回收站'};
+      if(det==='too big')return {why:'这张原图太大，读不过来（502 · too big）'};
+      if(det==='not image')return {why:'这个文件不是图片（502 · not image）'};
+      return {why:'读不出来（HTTP '+r.status+(det?' · '+det:'')+'）'};}
+    const b=await r.blob();
+    // 0 字节也要当面说：把它当成功会让 <img> 静静地画一个坏图标，又回到「一片空白」
+    if(!b||!b.size)return {why:'读回来是空的（0 字节）'};
+    return {blob:b};
+  }catch(e){
+    // 超时/被 mediaForget 中止 和 「网络断了」要分开说：前者滚开再滚回来就会重试
+    if(e&&e.name==='AbortError')return {why:'读这张超时了（网络太慢或断开）—— 滚开再滚回来会重试'};
+    return {why:'读不出来（网络）'};}
+  finally{if(t)clearTimeout(t);if(ac)_mediaAC.delete(ac);}
+}
+/* 把已有的结果贴到一个 <img> 上。回 true = 这一张已经有结论（成功或失败），不必再取。 */
+function mediaPaintEl(el,id){
+  const box=el.closest?el.closest('.mshot'):null;
+  const url=_mediaBlob.get(id);
+  if(url){el.src=url;if(box)box.classList.remove('load','bad');return true;}
+  const why=_mediaWhy.get(id);
+  if(why==null)return false;
+  if(box){box.classList.remove('load');box.classList.add('bad');
+    const st=box.querySelector('.st');if(st)st.textContent=why;}
+  return true;
+}
+/* ⚠ 按 data-mid **现查现贴**，不用发起时那个节点：取图故意不标忙（见上面那段），
+   所以 cloudRefresh 完全可能在半路 render() 一次、把整个 #app 换掉 —— 那时发起时的
+   <img> 已经是孤儿，字节取到了、屏幕却永远停在「读取中…」。 */
+function mediaPaint(id){const k=mediaId(id);if(!k)return;
+  document.querySelectorAll('img[data-mid="'+k+'"]').forEach(el=>mediaPaintEl(el,k));}
+function mediaPump(){
+  while(_mediaRun<MEDIA_PAR&&_mediaQ.length){
+    const job=_mediaQ.shift(),gen=_mediaGen;_mediaRun++;
+    mediaReadDo(job.id,job.group).then(r=>{
+      // 这一趟已经作废（相册关了 / 换了活动）：连 blob URL 都别造，造了就没人 revoke
+      if(gen!==_mediaGen)return;
+      if(r&&r.blob)_mediaBlob.set(job.id,URL.createObjectURL(r.blob));
+      else _mediaWhy.set(job.id,String((r&&r.why)||'读不出来'));
+      mediaPaint(job.id);
+    }).finally(()=>{_mediaRun--;_mediaBusy.delete(job.id);mediaPump();});
+  }
+}
+function mediaQueue(id,group){
+  const k=mediaId(id);if(!k||_mediaBusy.has(k))return;
+  if(_mediaBlob.has(k)||_mediaWhy.has(k)){mediaPaint(k);return;}
+  _mediaBusy.add(k);_mediaQ.push({id:k,group:String(group||'')});mediaPump();
+}
+/* 一张图的入口。缓存里有就立刻贴，没有就排进取图队列。
+   名字里的 load 说的是「去取这一张」，和 <img loading> 无关。 */
+function mediaImgLoad(el,driveId){
+  if(!el)return;
+  const id=mediaId(driveId||el.getAttribute('data-mid'));if(!id)return;
+  if(mediaPaintEl(el,id))return;      // 这一次会话里已经取过（成功或失败）：不重取
+  mediaQueue(id,mediaGroupNow());
+}
+let _mediaIO=null,_mediaIORoot=null;
+function mediaIOOff(){if(_mediaIO){try{_mediaIO.disconnect();}catch(e){}}_mediaIO=null;_mediaIORoot=null;}
+/* render() 每次都把 #app 整个换掉 —— 上一批 <img> 和上一个观察者一起成了孤儿。
+   所以懒加载不能只挂一次，每次重画之后都要重挂一遍（render 末尾调用）。
+   root 用 .mroll（相册自己的滚动容器）：root 留空的话 rootMargin 撑的是视口，
+   而照片被 .mroll 的 overflow 裁掉，预取那 400px 一点用都没有。 */
+function mediaLazyWire(){
+  if(!S.mediaOpen){mediaForget();return;}   // 相册关了（✕/换页/退出登录/换账号）→ 把 blob 还回去
+  const roll=document.querySelector('.mroll');if(!roll)return;
+  const group=mediaGroupNow();
+  if(_mediaIORoot!==roll){
+    mediaIOOff();
+    if(typeof IntersectionObserver!=='undefined'){
+      _mediaIORoot=roll;
+      _mediaIO=new IntersectionObserver(es=>{es.forEach(x=>{
+        if(!x.isIntersecting)return;
+        if(_mediaIO)_mediaIO.unobserve(x.target);   // 取一次就够，别在滚动里反复触发
+        // 观察的是 .mshot 盒子（理由见下面 observe 那段），图在盒子里面
+        const img=x.target.querySelector?x.target.querySelector('img[data-mid]'):null;
+        const t=img||x.target;
+        mediaImgLoad(t,t.getAttribute('data-mid'));});},
+        {root:roll,rootMargin:'400px 0px'});
+    }
+  }
+  roll.querySelectorAll('img[data-mid]').forEach(el=>{
+    const id=mediaId(el.getAttribute('data-mid'));if(!id)return;
+    if(mediaPaintEl(el,id))return;            // 已有结果：立刻贴回，不必等滚到眼前
+    /* ⚠ 观察 **.mshot 盒子**，不是 <img> 本身。占位期间卡片是 `.mshot.load`，而 CSS 里
+       `.mshot.load img{display:none}` —— display:none 的元素**没有布局盒**，
+       IntersectionObserver 对它永远只报 isIntersecting:false，于是 mediaImgLoad 一次都
+       不会被调用，每张卡永久停在「读取中…」。屏幕上的样子和 owner 卡了好几天的那一张
+       几乎一模一样（一排文件名、图出不来），而套件全绿 —— 2026-08-05 对抗式复查抓到的。 */
+    const box=(el.closest&&el.closest('.mshot'))||el;
+    if(_mediaIO)_mediaIO.observe(box);
+    else mediaImgLoad(el,id);                 // 没有 IntersectionObserver 的老浏览器：直接取
+  });
+}
+/* 离开相册 = 把这一批 blob: URL 全部还回去。不 revoke 的话，每开一次相册就在这个页面里
+   多留一整份照片字节（手机上开几次就是几十 MB），而这个 app 是单页、一天都不刷新一次。
+   ⚠ 只清缓存和队列：payload 里的条目、网盘上的字节，一个字都不碰。 */
+function mediaForget(){
+  mediaIOOff();
+  // render 每次按键都会走到这里，没东西可清就别空转
+  if(!_mediaBlob.size&&!_mediaWhy.size&&!_mediaQ.length&&!_mediaBusy.size&&!_mediaAC.size)return;
+  _mediaGen++;                       // 在飞的那几个回来时会发现自己已经作废
+  _mediaQ.length=0;_mediaBusy.clear();
+  /* 在飞的那几个要**当场掐掉**，光靠代数作废不够：它们各自正在把一份照片字节下载进这个
+     页面，而 mediaForget 的触发点恰恰是「相册关了 / 换账号 / 退出登录」—— 让上一个人的
+     来宾照片继续下载进来，正是这道网要防的事。abort 之后它们的 finally 会把位子还回来。 */
+  _mediaAC.forEach(a=>{try{a.abort();}catch(e){}});_mediaAC.clear();
+  _mediaBlob.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});
+  _mediaBlob.clear();_mediaWhy.clear();
+}
 function mediaOpen(){S.mediaOpen=true;render();}
 /* S.mediaScan 和 S.mediaOpen 同生共死（另外三处：go / 退账 / 换账号）。它是纯 UI 态，
    **绝不写进 STORE 或活动 payload** —— 写进去就会被 cloudPushAll 推上 ym_doc，
    一台设备的一次扫描结果从此长在所有人的活动里。 */
-function mediaClose(){S.mediaOpen=false;S.mediaScan=null;render();}
+// 关相册顺手把取回来的字节还回去（mediaLazyWire 里还有一道网兜着退出登录/换账号那几条路）
+function mediaClose(){S.mediaOpen=false;S.mediaScan=null;mediaForget();render();}
 /* 移除 = 连云端那份一起丢进回收站（owner 2026-08-03：「deletion may delete the photo from
    drive too」—— 在那之前只摘条目、要主办自己去网盘手删）。三道限制在服务端和 Apps Script
    那边（只碰 ym 目录树 / 只进回收站 / 要密钥），这里只负责两件事：
@@ -3338,19 +3558,28 @@ function mediaAdd(input){if(S.readonly)return;const e=ev();if(!e){input.value=''
     input.value='';
   })();
 }
-function mediaThumbFail(el){const t=el.closest('.mshot');if(t)t.classList.add('bad');
-  const h=document.getElementById('mthint');if(h)h.style.display='';}
+/* <img> 自己报错。走到这里的只剩一种：字节已经取回来了（blob: 都造出来了），浏览器却
+   解不开这张图 —— 网络/权限/部署那几档在 mediaReadDo 里就分好了，根本到不了 onerror。
+   所以这句话只说这一件事，**不再**提 Google 账号：那句「登录一次就能看」是错的指令
+   （owner 2026-08-05：别的用户不该、也不可能有他的 Google 账号），连同 #mthint 一起删了。 */
+function mediaThumbFail(el){const t=el&&el.closest?el.closest('.mshot'):null;if(!t)return;
+  t.classList.remove('load');t.classList.add('bad');
+  const st=t.querySelector('.st');if(st)st.textContent='字节取回来了，但这张图打不开（文件可能已经损坏）';}
 function mediaSheet(e){
   const ms=mediaList(e),n=ms.length;
   /* 一栏到底、按原比例、直接滚（owner 2026-08-03：「要的是能滚着看的相册，不是缩略图列表」）。
      没有九宫格、没有「点开再看一层」的灯箱 —— 滚动本身就是浏览方式，少一层状态。
-     取图用 w1200：手机上是 2~3 倍像素密度，比原来的 400 清楚得多，又不至于把流量吃光。 */
-  const roll=n?`<div class="in">${ms.map(m=>`<div class="mshot">
-      <img src="${esc(driveThumb(m.driveId,1200))}" alt="${esc(m.name||'')}" loading="lazy"
-        onerror="mediaThumbFail(this)">
-      <span class="bn">${esc(m.name||'照片')}</span>
+     ⚠ <img> **不带 src**：字节由 mediaLazyWire/mediaImgLoad 滚到眼前才去代理取，
+     取回来是 blob: —— 页面上一个指向 Google 网盘的地址都没有（owner 2026-08-05）。
+     没有 driveId 的老条目（历史上只存过文件名的那种）直接画成失败态并说清下一步，
+     不能让它挂在「读取中…」上永远转 —— 那读起来就是「卡住了」。 */
+  const roll=n?`<div class="in">${ms.map(m=>{const did=mediaId(m.driveId);
+    return `<div class="mshot ${did?'load':'bad'}">
+      <img${did?` data-mid="${esc(did)}"`:''} alt="${esc(m.name||'')}" onerror="mediaThumbFail(this)">
+      <span class="bn">${esc(m.name||'照片')}<span class="st">${
+        did?'读取中…':'这条记录没有网盘文件号 —— 请重新上传一次'}</span></span>
       ${!S.readonly?`<span class="x" onclick="mediaDel('${escJs(m.id)}')" title="移除">✕</span>`:''}
-    </div>`).join('')}</div>`
+    </div>`;}).join('')}</div>`
     /* 空相册这一句是**反着写**的：相册空着，恰恰是最该去网盘看一眼的时候（08-05 那个竞态
        的症状就是「toast 说传好了、相册是空的」）。所以不止说「还没有照片」，还要把下一步
        指出来 —— 不给下一步的空态，读起来就是「这个功能坏了」。
@@ -3374,8 +3603,11 @@ function mediaSheet(e){
         只读回看不能改相册 —— 传照片和「从网盘找回」都要先
         <span class="bk" style="color:var(--brass);cursor:pointer" onclick="S.readonly=false;render()">退出只读回看</span>。
         （挂回只往这场活动里加一条照片记录，网盘上的字节一个都不动。）</p>`:''}
-      <p class="note9" id="mthint" style="display:none;max-width:640px;margin:8px auto 0">
-        照片显示不出来 —— 这台浏览器没登录存照片的那个 Google 账号。登录一次就能看；不影响上传。</p>
+      ${/* 这里以前有一句常驻提示：「照片显示不出来 —— 这台浏览器没登录存照片的那个 Google
+           账号，登录一次就能看」。它被整句删掉了（owner 2026-08-05）：那是**一条错的指令**，
+           在教主办的志愿者/嘉宾去要 owner 的 Google 账号。现在字节走代理，谁登录 app 谁就
+           看得见；真出问题时那句「哪一层、什么码」写在**出问题的那一张**卡片上，
+           而不是一句对所有人都亮着的通用提示。 */''}
       ${n&&!S.readonly?`<p class="note9" style="max-width:640px;margin:10px auto 0">
         ✕ 删除会连云端那份一起丢进回收站（30 天内还能还原）。</p>`:''}
     </div>
@@ -3396,7 +3628,8 @@ function mediaSheet(e){
    但**已经掉出去的那些照片没有任何入口能找回来**：这一段就是那个入口。
    三条底线：
      ① 挂回 = 只往 payload 里加一条引用，一个字节都不动（本来就在网盘里，不搬也不复制）；
-     ② 取图仍然只有 driveThumb 一个出口，面板里没有任何指向网盘的链接（owner 2026-08-03）；
+     ② 取图和相册**走同一条路**（mediaImgLoad → 代理 → blob:），面板里没有任何指向网盘的
+        链接（owner 2026-08-03），也没有任何指向 Google 网盘的地址（owner 2026-08-05）；
      ③ 每一种结局都画在面板上并留在屏幕上 —— toast 1.8 秒就 remove，而 owner 能转述的
         只有还留在屏幕上的字，所以「哪一层、什么码」要写进面板，不能只放进 toast。
    服务端那侧要管理员做两件事（配 YM_DRIVE_SECRET / 更新 Apps Script 部署），没做完时
@@ -3412,7 +3645,8 @@ function mediaKnownIds(store){
 /* 孤儿 = 网盘里有、相册里没有。**按 driveId 去重，不是文件名** —— 两台手机都会有
    IMG_0001.jpg，同一张传两次也是两个不同的 Drive 文件；ts 也会重（同一秒传的两张）。
    只有 Drive 的 file id 是身份。非图片一律不挂：照片/ 里如果被人手工放了 PDF，
-   driveThumb 会渲染成一张永远坏掉的图（GAS 那侧已经滤过一道，这里是第二道）。 */
+   挂回来也只会在相册里长成一张永远读不出来的卡片（代理那侧对着 mime 再拒一次，
+   GAS 那侧也滤过一道 —— 这里是最前面那道）。 */
 function mediaOrphans(files,known){
   const have=new Set(known||[]);const out=[];let dup=0,skip=0;
   (files||[]).forEach(f=>{const id=String((f&&f.file_id)||'');if(!id)return;
@@ -3686,11 +3920,13 @@ function mediaScanPanel(e){
     dupN?('挂回其余 '+restN+' 张（跳过重名的 '+dupN+' 张）'):('全部挂回（'+restN+' 张）')}</button>`;
   // 一张都不剩给一键时，说清楚为什么没有那颗按钮（空态也要画出来，别让它读成「按钮丢了」）
   const noBulk=(n&&!restN)?'<p class="note9">这一页每一张在相册里都有同名的 —— 没有可以一键挂回的，请对着图逐张确认。</p>':'';
-  const cards=rows.map(f=>{const w=mediaWhen(f.ts),d=mediaIsDupName(f,dupNames);
-    return `<div class="mshot mnew${d?' mdup':''}">
-      <img src="${esc(driveThumb(f.driveId,1200))}" alt="${esc(f.name||'')}" loading="lazy"
-        onerror="mediaThumbFail(this)">
-      <span class="bn">${esc(f.name||'照片')}</span>
+  // 卡片的形状/取图和相册里那些**完全一样**（.mshot + data-mid 懒加载），只有边框颜色不同：
+  // 它们还没进相册，一眼要分得开（owner 2026-08-03 那条相册观感不因为多了这个功能而变）。
+  const cards=rows.map(f=>{const w=mediaWhen(f.ts),d=mediaIsDupName(f,dupNames),did=mediaId(f.driveId);
+    return `<div class="mshot mnew${d?' mdup':''} ${did?'load':'bad'}">
+      <img${did?` data-mid="${esc(did)}"`:''} alt="${esc(f.name||'')}" onerror="mediaThumbFail(this)">
+      <span class="bn">${esc(f.name||'照片')}<span class="st">${
+        did?'读取中…':'这一条没有网盘文件号'}</span></span>
       <span class="keep" onclick="mediaKeep('${escJs(f.driveId)}')">挂回相册</span>
     </div>
     <div class="msinfo">${esc(f.name||'照片')} · ${w?esc(w)+' 传上网盘':'传上网盘的时间不明'}${

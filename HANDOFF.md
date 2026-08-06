@@ -1213,6 +1213,66 @@ Apps Script 编辑器里保存 ≠ 发布，网页应用永远跑「已部署的
 底下却写着这功能还没配好 —— **自己打自己的脸**。全套断言都是绿的。
 （规矩 2 又赢了一次：套件全绿 ≠ 能用，也 ≠ 看着不别扭。）
 
+## 照片显示：不再靠看图人的 Google 登录（2026-08-05）
+
+owner 原话：「this is not acceptable. other user can not login with my google account.
+we need add an photo read to authorized in google drive folder, **I ask for it multiple times**.」
+
+**病根**：`driveThumb()` 拼的是 `https://drive.google.com/thumbnail?id=…` —— 把取图这件事
+**外包给看图的人那台浏览器**。于是「看不看得见」取决于那台浏览器登没登一个对这个网盘有权限的
+Google 账号：owner 自己的机器看得见，志愿者 / 嘉宾 / 别的主办全是一排文件名。
+而屏幕上那句「这台浏览器没登录存照片的那个 Google 账号，登录一次就能看」是**一条错的指令** ——
+它在教主办的员工去要 owner 的 Google 账号。
+
+**做法**：字节改走我们自己那道门 —— 浏览器带着 app 的登录态 POST `/api/ym_file`(`read_media`)
+→ 代理过**同一把** `_group_gate` → GAS 校验 `insideRoot` + `insideGroup` → Drive → 原路回来 →
+`blob:` URL 塞进 `<img>`。**「谁能看照片」= 「app 授权了谁」，和 Google 账号彻底脱钩。**
+副作用正合 owner 08-03 那条：**客户端现在一个 `drive.google.com` 都不剩**。
+
+选它而不是「签发短时签名 URL」：后者要新增一个**不带登录态的公开端点**和一把新密钥，
+而这个仓库当天刚在授权上栽过（越权 + 假锁）—— 少一道新门就少一处能写错的地方。
+
+### ⭐⭐ 差点又白干：套件全绿，而一张照片都取不回来
+
+第一版实现里，懒加载的 `IntersectionObserver` 观察的是 `<img data-mid>` 本身。
+而占位期间卡片是 `.mshot.load`，CSS 里 `.mshot.load img{display:none}` 把它整个隐掉 ——
+**`display:none` 的元素没有布局盒，观察器对它永远只报 `isIntersecting:false`**。
+于是 `mediaImgLoad` 一次都不会被调用，每张卡永久停在「读取中…」——
+**屏幕上的样子和 owner 卡了好几天的那一张几乎一模一样**（一排文件名、图出不来），
+只是那句错的提示换成了「读取中…」。**而当时全套断言是绿的**：那一段一条都没钉 observe 的目标。
+
+修法是观察 `.mshot` 盒子，回调里再取出里面的 `<img>`。顺带给 `.mshot.load` 一个
+`min-height` —— 那不是审美：懒加载按「离视野 400px」触发，占位塌成一条细线的话，
+一屏里塞进来几十张卡，等于一进相册全部排队，**懒加载名存实亡**。
+
+⭐ **教训（规矩 12 的第二次学费）：断言证明不了「观察器会不会触发」。**
+这一条只有**在真浏览器里把图调出来**才验得到。验收标准要写成 owner 那句话
+——「一个从来没有 Google 账号的人，登录 app 之后能看见照片」—— 而不是「代码看起来对」。
+
+### 另外两条也是复查抓的
+
+· **取图不能用 `upFetch`**：它的超时定时器挂在 `.finally` 上，而 `fetch` 的 promise 在
+  **响应头**到达就 resolve —— 真正下载几百 KB~几 MB 的 `await r.blob()` 完全没有保护。
+  别的调用方读的都是几百字节 JSON，只有取图绝大部分时间花在那一段。半开连接下它永远不
+  settle → `_mediaRun` 永久少一个并发位子 → 攒够 3 次（不必同时，一天里陆续攒也算），
+  **全 app 的取图静默死掉**，没有任何错误码，只有刷新页面能解。现在它自己拿一个
+  `AbortController`，覆盖到 `blob()` 之后，`mediaForget` 会把在飞的一并掐掉。
+· **退出登录不 revoke**：`render()` 在登录墙那句 `return` 排在 `mediaLazyWire()` **前面**，
+  而「离开相册就把 blob 还回去」那道网正挂在 `mediaLazyWire` 开头。于是退出登录后，
+  上一个主办那一批来宾照片的字节还留在页面里（单页 app，一天都不刷新一次）。
+  现在那句 `return` 自己先 `mediaForget()`。
+
+### ⚠ 残留（stakes 变了，owner 该重新看一眼）
+
+08-05 owner 裁定「就用现在的名字闸，所有主办都能用」时，那把尺子挡不住的是
+**「照着官网抄一个活动名、在自己台上建一场同名活动」**（见上一节）。当时的代价是
+「泄一串 file_id / 能删别人的照片」——**图本身看不见**，因为那还需要 owner 的 Google 账号。
+**这一版把字节接到了同一把尺子后面，代价升级成「来宾的正脸」。**
+复查提的最小改法：放行前再问一句「这个 group 字符串在 `ym_doc(kind=event)` 里是不是只对应
+一个 owner」，出现第二个就 fail closed 并说人话（「有另一场活动同名同日，网盘目录会撞在
+一起，请改名字或日期」），三条路一起过。**没做** —— owner 当天明确说「不考虑顺带，
+这个问题卡住好几天了，先解决吧」。**要做的时候连非恶意撞名也一起解决了。**
+
 ## 这个 repo 的规矩（血泪版）
 
 1. **只在本仓库写**。兄弟仓库（monospages/rakusat 等）只读参考 —— 需要那边改动就告诉 owner 切过去。
