@@ -418,6 +418,7 @@
   /* 文件名可能是一长串没有空格的 IMG_xxxx（要 break-all），这一句是中文（break-all 会把
      句子切得七零八落）—— 所以状态行自己一套换行规则。 */
   .mshot .bn .st{display:block;margin-top:5px;word-break:normal;overflow-wrap:anywhere}
+  .mshot .bn .st .rt{color:var(--brass);cursor:pointer;text-decoration:underline;margin-left:6px}
   .mshot.bad .bn .st{color:var(--alarm)}
   .mshot .x{position:absolute;top:6px;right:6px;z-index:2;width:26px;height:26px;border-radius:50%;
     background:rgba(8,12,10,.55);color:var(--stock-dim);display:flex;align-items:center;
@@ -3222,7 +3223,12 @@ function mediaList(e){return ((e&&e.media)||[]).slice().sort((a,b)=>(a.ts||0)-(b
    #app 换掉，所以回包一律按 data-mid 现查现贴，绝不攥着发起时那个 <img>（规矩 11 的形）。 */
 // Drive 文件 id 只该有 [A-Za-z0-9_-]。它现在要进 CSS 选择器和请求体，洗得更要紧
 function mediaId(id){return String(id||'').replace(/[^\w-]/g,'');}
-const MEDIA_PAR=3;                  // 同时最多 3 个取图请求（手机上再多只是互相排队）
+/* 并发 2，不是 3（owner 2026-08-05 实测：三张里有一张 502 timeout 30s）。
+   Apps Script 会把同时来的请求**排队**执行，而我们这一侧的超时时钟是从「发出去」那一刻
+   开始走的 —— 并发 3 时，第三个在 GAS 队列里干等的时间全算进它自己的 30 秒里，等轮到它
+   的时候预算已经花掉大半。降到 2 不会让整批更慢（GAS 反正是排队的），但每一个请求的
+   时钟和它真正被执行的时刻更接近，超时就少得多。 */
+const MEDIA_PAR=2;
 const _mediaBlob=new Map();         // driveId -> blob: URL（会话内缓存；离开相册全部 revoke）
 const _mediaWhy=new Map();          // driveId -> 失败时那句人话（滚回来不再重取同一张）
 const _mediaBusy=new Set();         // 已入队/在飞的 driveId，别重复排
@@ -3317,7 +3323,11 @@ function mediaPaintEl(el,id){
   const why=_mediaWhy.get(id);
   if(why==null)return false;
   if(box){box.classList.remove('load');box.classList.add('bad');
-    const st=box.querySelector('.st');if(st)st.textContent=why;}
+    const st=box.querySelector('.st');
+    if(st){st.textContent=why+' ';
+      // 入口长在失败那一行里：主办看到原因的同一眼就看得到「再试一次」在哪
+      const a=document.createElement('span');a.className='rt';a.textContent='重试';
+      a.onclick=()=>mediaRetry(id);st.appendChild(a);}}
   return true;
 }
 /* ⚠ 按 data-mid **现查现贴**，不用发起时那个节点：取图故意不标忙（见上面那段），
@@ -3325,6 +3335,17 @@ function mediaPaintEl(el,id){
    <img> 已经是孤儿，字节取到了、屏幕却永远停在「读取中…」。 */
 function mediaPaint(id){const k=mediaId(id);if(!k)return;
   document.querySelectorAll('img[data-mid="'+k+'"]').forEach(el=>mediaPaintEl(el,k));}
+/* 超时/网络这类失败是**会自己好**的，而 _mediaWhy 一记就是一整个会话（那是为了不让同一张
+   反复重取）。所以给失败的卡一个「重试」：把这一张的失败记忆擦掉再排一次。
+   （owner 2026-08-05：三张里有一张 502 timeout —— 没有重试的话，那一张在这次会话里
+   就永远是一行字，只能关掉整个相册重开。） */
+function mediaRetry(id){const k=mediaId(id);if(!k)return;
+  _mediaWhy.delete(k);
+  document.querySelectorAll('img[data-mid="'+k+'"]').forEach(el=>{
+    const box=el.closest?el.closest('.mshot'):null;
+    if(box){box.classList.remove('bad');box.classList.add('load');
+      const st=box.querySelector('.st');if(st)st.textContent='重新读取中…';}});
+  mediaQueue(k,mediaGroupNow());}
 function mediaPump(){
   while(_mediaRun<MEDIA_PAR&&_mediaQ.length){
     const job=_mediaQ.shift(),gen=_mediaGen;_mediaRun++;
@@ -5023,6 +5044,7 @@ function rosterShot(inp){if(S.readonly)return;const f=inp.files&&inp.files[0];in
       body:JSON.stringify({image:b64,media_type:'image/jpeg',mode:'roster_shot',
         user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
     .then(r=>r.json()).then(res=>{
+      if(res&&res.error){toast('识别失败：'+res.error);return;}
       const people=((res&&res.people)||[]).map(p=>({name:(p.name||'').trim(),gender:p.gender})).filter(p=>p.name);
       if((res&&res.is_roster===false)||!people.length){toast('没认出名字 — 换一张更清楚的截图，或用「导入名单」贴文字');return;}
       const seen={};
@@ -5698,6 +5720,7 @@ function capShoot(inp,token){
       body:JSON.stringify({image:b64,media_type:mime})})
     .then(r=>r.json()).catch(()=>({}))
     .then(res=>{
+      if(res&&res.error){capStat('识别失败：'+res.error+' —— 请重拍，或在电脑上手工填');return;}
       if(res&&res.is_receipt===false){capStat('这张不像票据，请重拍');return;}
       capStat('传给电脑…');
       return sb.rpc('cap_submit',{p_token:token,p_draft:res||{},
@@ -5758,6 +5781,7 @@ function rcParse(b64,mime,name,ctx){
     body:JSON.stringify({image:b64,media_type:mime,
       user_token:(SESSION&&SESSION.access_token)||undefined})})
   .then(r=>r.json()).then(res=>{
+    if(res&&res.error){open({},'hand');toast('识别失败：'+res.error+' —— 请手工填一下，原图已经留着了');return;}
     if(res&&res.is_receipt===false){toast('这张不像票据，请重拍');return;}
     open(res,'');})
   // 圏外でも取りこぼさない：画像は握ったまま手入力に落とす（会場の WiFi は必ず死ぬ）。
@@ -6313,6 +6337,7 @@ function formPhoto(inp){
       body:JSON.stringify({image:b64,media_type:'image/jpeg',mode:'ym_form',
         user_token:(typeof SESSION!=='undefined'&&SESSION&&SESSION.access_token)||null})})
     .then(r=>r.json()).then(res=>{
+      if(res&&res.error){toast('识别失败：'+res.error);return;}
       if(res.is_form===false){toast('这张不像报名表，请重拍');return;}
       S.formDraft=res;render();})
     .catch(e2=>toast('识别失败：'+e2.message));
