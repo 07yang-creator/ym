@@ -3288,6 +3288,9 @@ async function mediaReadDo(id,group){
       console.warn('ym_file read HTTP '+r.status,j);
       if(er==='group required'||det==='group required')return {why:'页面是旧的，请刷新一次（400 · group required）'};
       if(er==='ownership')return {why:'归属名单暂时读不到（502 · Supabase），稍后再进一次 —— 不是你的账号有问题'};
+      /* 409 = 这个目录名在云端对应不止一个主办（撞名同日）。字节物理上就落在同一个
+         Drive 目录里，放行等于让两边看见彼此的来宾照片，所以两边一起拒并说清怎么办。 */
+      if(er==='group collision')return {why:'有另一场活动和这一场同名同日，网盘目录会撞在一起 —— 为了不让两边看见彼此的照片，这里先不放行（409）。请把其中一场的活动名或日期改掉'};
       if(det==='secret mismatch')return {why:'两侧密钥不是同一串（502 · 请核对 Apps Script 的 SHARED_SECRET 与 Vercel 的 YM_DRIVE_SECRET）'};
       /* 「改过名字/日期」的真身，和删除那侧的 notingroup 是同一个根因 —— 口径必须一致
          （把名字/日期改回上传那一版），不许造第二种说法。 */
@@ -3444,6 +3447,7 @@ async function mediaDel(id){const e=ev();if(!e||!e.media)return;
     if(r==='stalepage'){toast('页面是旧的，请刷新一次再删（400 · group required）—— 这张先留着');return;}
     /* 坏掉的是**读归属名单**这一层，不是权限、也不是配置：说出是哪一层，主办才不会去换账号。 */
     if(r==='ownership'){toast('归属名单暂时读不到（502 · Supabase），稍后再试 —— 不是你的账号有问题，这张先留着');return;}
+    if(r==='collide'){toast('有另一场活动和这一场同名同日，网盘目录会撞在一起 —— 为了不让两边看见彼此的照片，这里先不放行（409）。请把其中一场的活动名或日期改掉，这张先留着');return;}
     if(r==='mismatch'){toast('两侧密钥不是同一串（502 · 请核对 Apps Script 的 SHARED_SECRET 与 Vercel 的 YM_DRIVE_SECRET）—— 这张先留着');return;}
     if(typeof r==='string'&&r.slice(0,6)==='stale:'){
       toast('网盘脚本还是旧版（线上 '+r.slice(6)+'），里面还没有「移除」这个动作 —— 请管理员用「Edit existing deployment」更新现有部署');return;}
@@ -3501,6 +3505,7 @@ async function mediaTrash(driveId,group){
       const det=String((j&&(j.detail||j.error))||'');
       if(er==='group required'||det==='group required')return 'stalepage';
       if(er==='ownership')return 'ownership';
+      if(er==='group collision')return 'collide';
       if(det==='secret mismatch')return 'mismatch';
       // 这一支是「改过名字/日期」的真身：文件在 ROOT 底下，但不在**这一场**的目录底下
       if(det==='not in group')return 'notingroup';
@@ -3704,6 +3709,7 @@ async function mediaScanDo(group,skip){
          于是「读归属名单这一层坏了」会被说成一句通用的「HTTP 502」。 */
       if(er==='group required'||det==='group required')return 'stalepage';
       if(er==='ownership')return 'ownership';
+      if(er==='group collision')return 'collide';
       // 密钥不匹配单独一支：它有唯一确定的动作（去核对两侧那串），不该混在通用码里
       if(det==='secret mismatch')return 'mismatch:'+r.status;
       return {fail:'HTTP '+r.status+(det?' · '+det:'')};}
@@ -3754,6 +3760,8 @@ async function mediaScan(skip){
       toast('这个名字不在你的活动里（403）—— 活动改过名字或日期？改完要等这台设备把它同步上云端（几秒）再点一次');return;}
     /* 坏的是**读归属名单**这一层（Supabase），不是权限、不是配置。说出是哪一层，
        主办才不会去换账号，管理员也才知道该看哪里。 */
+    if(r==='collide'){die('两场活动同名同日（409）');
+      toast('有另一场活动和这一场同名同日，网盘目录会撞在一起 —— 为了不让两边看见彼此的照片，这里先不放行（409）。请把其中一场的活动名或日期改掉');return;}
     if(r==='ownership'){die('归属名单暂时读不到（502 · Supabase）');
       toast('归属名单暂时读不到（502 · Supabase），稍后再试 —— 不是你的账号有问题');return;}
     // 旧页面：下一步是刷新，不是「等会儿再试」。把「没更新」说成「临时故障」是误诊
