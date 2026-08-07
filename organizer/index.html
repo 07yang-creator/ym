@@ -3131,7 +3131,19 @@ function upFetch(url,opt){
    两边差一个字就永远查不到（而查不到的表现是「网盘里没有这个目录」，看上去像照片没了）。
    日期为空时它是「八月茶会 ·」—— 那也是网盘上真实的样子，所以照抄，
    不许在找回那一侧「顺手修一下」把尾巴上的空格/圆点抹掉。 */
-function evGroup(e){return e?((e.name||'活动')+' · '+(e.date||'')).trim():'';}
+function evGroup(e){
+  if(!e)return'';
+  var g=((e.name||'活动')+' · '+(e.date||'')).trim();
+  var id=String(e.id||'').replace(/[^A-Za-z0-9_-]/g,'').slice(0,6);
+  /* RULING（owner 2026-08-07）：「we give each event an ID in back stage … use subfolder ID to
+     prevent future confusing」。目录身份从「名字 · 日期」改成「名字 · 日期 · #id6」——
+     同名同日的两场（跨账号的老同步副本、两边各一张未命名草稿）从此各住各的网盘目录，
+     撞名 409 对新目录在构造上就不可能，改名/重名再也不牵连照片。
+     110 = 120（GAS clean 和服务端都在 120 截断）− ' · #'+6位 的 10：后缀必须活过截断，
+     否则长名字的活动会退回按名字撞。服务端 host_groups / group_owners 按同一规则拼第二种
+     口径（新旧两种都收，所以老目录里的照片旧口径还够得着，开着的旧页面也不会断）。 */
+  return id?g.slice(0,110)+' · #'+id:g;
+}
 async function attachUpload(b64,mime,name,kind){return upSerial(()=>attachUploadDo(b64,mime,name,kind));}
 async function attachUploadDo(b64,mime,name,kind){
   try{
@@ -6000,7 +6012,7 @@ function ledgerNotReady(e){const m=String((e&&e.message)||'')+' '+String((e&&e.c
 async function rcUpload(b64,mime,name,ev){return upSerial(()=>rcUploadDo(b64,mime,name,ev));}
 async function rcUploadDo(b64,mime,name,ev){
   try{
-    const group=ev?((ev.name||'活动')+' · '+(ev.date||'')).trim():'';
+    const group=evGroup(ev);   // 口径只有一句：evGroup（v2 · #id6）。票据和照片同一个目录树
     /* 令牌取**实时**的（getSession 会自动续期）。ef48749 给附件那条修过这个：手机页面在
        后台放久，内存里的 access_token 过期 → 403，症状和「你不是主办」一模一样。
        排队之后这条路更危险 —— 一张票据可能先在队里等上好一会儿才轮到它读令牌。 */

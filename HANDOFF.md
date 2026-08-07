@@ -1002,6 +1002,18 @@ mediaReadDo 同款的「POST /api/ym_file(list_media→read_media) → blob: →
 ym_share 任务列他被派到的活动。另外顺手验一件事：ljzhujudy 在**共编**活动上能不能看到照片
 （host_groups 的 0027 那半 —— 如果不能，是数据里没 share 行，不是闸的错）。
 **没有任何一步需要 owner 动 GAS 或 Drive** —— read/list 早已部署，这次只动了鉴权层。
+
+**追記（同日 10:5x · RULING「use subfolder ID to prevent future confusing」已实施）：**
+目录口径升到 v2 = `<名字 · 日期 · #id6>`（evGroup 一处生成；票据那条内联拼法已并进 evGroup）。
+服务端（JJcashflow 仓 api/ym_file.py）新旧两种口径**都收**：旧页面不断，新页面新目录，
+同名同日从此各住各的目录，撞名 409 对 v2 目录构造上不可能。read_media 带旧目录回落
+（剥 #id 再过同一把闸 —— 改口径**之前**已附在活动上的老照片继续显示；admin 永远可见，
+host 只在旧目录不跨账号共享时可见）。**这边剩下的活**：
+① list_media（找回面板）还没有旧目录回落 —— 老目录里的散照片暂时只有 admin 找得回；
+② ym_share 的 jobs 还是旧口径（成员上传范围/未来成员相册要跟 v2，得在派任务时把 event id
+   写进 job，member_groups 再学 grp2）；
+③ 跨账号的老副本行清理（可选 —— 新上传已不受影响）：Supabase SQL editor 列出
+   `kind='event'` 按 name·date 分组 `having count(distinct owner)>1` 的行，删/改旧副本。
 ### 3. owner 还没走过的真机验收（375px，按这个顺序）
 - **主办台（不挂活动）** → 「记一张票据」→ **卡上当面问「这笔算在哪」** → 选一般费用 → 入账 → 去总账。
   *这一个入口在三份设计里有两份是静默失效的*，所以先走它。

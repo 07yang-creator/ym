@@ -3695,7 +3695,7 @@ const pyBody = (code, sig) => {
      拿到全部 file_id 之后再照着逐个 trash。 */
   check(py, '归属闸①：host_groups(uid) 在，名单 = 自己的活动 + 0027 共编的活动',
     !!hg
-    && /ym_doc\?select=payload&kind=eq\.event&owner=eq\." \+ uid/.test(hg)
+    && /ym_doc\?select=doc_id,payload&kind=eq\.event&owner=eq\." \+ uid/.test(hg)
     && /ym_event_share\?select=host,doc_id&member=eq\." \+ uid/.test(hg)
     // 共编那半在**这一侧**按 (host, doc_id) 配对：doc_id 是客户端生成的自由文本，
     // 拼进 PostgREST 的过滤器就是一条注入面
@@ -3716,20 +3716,26 @@ const pyBody = (code, sig) => {
       if (!guard.test(hg)) return false;
       if (hg.replace(guard, '').includes('hosts.add(')) return false;   // 别处再塞 host = 校验白做
       const share = hg.slice(hg.indexOf('if pairs:'));                  // 共编那半（边界跟着代码走）
-      const pair = /if \(str\(row\.get\("owner"\) or ""\), str\(row\.get\("doc_id"\) or ""\)\) in pairs:\s*\n\s*out\.add\(grp\(row\.get\("payload"\)\)\)/;
+      const pair = /if \(str\(row\.get\("owner"\) or ""\), str\(row\.get\("doc_id"\) or ""\)\) in pairs:\s*\n\s*b = grp\(row\.get\("payload"\)\)\s*\n\s*out\.add\(b\); out\.add\(grp2\(b, row\.get\("doc_id"\)\)\)/;
       if (!pair.test(share)) return false;                              // 精确配对，命中才收
       return !share.replace(pair, '').includes('out.add(');             // 配对之外没有第二个落点
     })());
   /* 口径差一个空格 = 主办被告知「这不是你的活动」，而他正看着自己的活动，手上没有任何
      线索能看出差的是一个空格。所以三处（客户端 evGroup / member_groups / host_groups）
      必须是同一句话，而且客户端每一个拼目录名的地方都得长一模一样。 */
-  check(py, '归属闸②：目录名口径三处逐字一致（差一个空格就永远对不上）',
-    C.includes("function evGroup(e){return e?((e.name||'活动')+' · '+(e.date||'')).trim():'';}")
+  /* RULING（owner 2026-08-07）「use subfolder ID to prevent future confusing」：口径 v2 =
+     <名字 · 日期 · #id6>。同名同日（跨账号老副本、两张未命名草稿）从此各住各的目录。
+     110 = 120 − ' · #'+6位 —— 后缀必须活过两侧的 120 截断，否则长名活动退回按名字撞。 */
+  check(py, '归属闸②：目录名口径三处逐字一致 + v2（· #id6）两侧同一条规则（RULING 08-07）',
+    C.includes("var g=((e.name||'活动')+' · '+(e.date||'')).trim();")
+    && C.includes("var id=String(e.id||'').replace(/[^A-Za-z0-9_-]/g,'').slice(0,6);")
+    && C.includes("return id?g.slice(0,110)+' · #'+id:g;")
     && /\(str\(pl\.get\("name"\) or "活动"\) \+ " · " \+ str\(pl\.get\("date"\) or ""\)\)\.strip\(\)/.test(hg)
-    && /\(str\(nm\) \+ " · " \+ str\(dt\)\)\.strip\(\)/.test(mg)
-    && (() => {   // 客户端所有拼目录名的地方：分隔符必须都是 ' · '（票据那条自带 ev 参数，不走 evGroup）
+    && py.includes('return (base[:110] + " · #" + i) if i else base')
+    && /\(str\(nm\) \+ " · " \+ str\(dt\)\)\.strip\(\)/.test(mg)   // member 侧仍是旧口径（jobs 还没带 id —— HANDOFF §2.5）
+    && (() => {   // 拼目录名的地方只剩 evGroup 一处；票据那条已并进 evGroup（不再自带 ev 参数拼一遍）
       const sites = [...C.matchAll(/\(\(?[a-z]+\.name\|\|'活动'\)\+'[^']*'\+\([a-z]+\.date\|\|''\)\)/g)];
-      return sites.length >= 2 && sites.every(m => m[0].includes("+' · '+"));
+      return sites.length === 1 && C.includes('const group=evGroup(ev);');
     })());
   /* ⭐⭐ 方向锁。member_groups 读不到时**放行**到 未归活动/（写这一侧：宁可归错类），
      host_groups 读不到时必须**拒**（读这一侧：读不到名单就放行 = 名单一挂，全网主办的
