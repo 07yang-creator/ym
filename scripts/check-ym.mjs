@@ -1442,6 +1442,10 @@ const pyBody = (code, sig) => {
     /<details class="intro">(?![^>]*open)/.test(s) && !/<details class="intro" open/.test(s)
     && s.includes('class="more"') && s.includes('class="less"')
     && /\.intro\[open\] \.more\{display:none\}/.test(s));
+  // owner 08-07 追加：展开后按钮要在全文**之后**（flex order 只动视觉序，DOM 序不动）
+  check(s, '展开时收起按钮排在全文之后（.intro[open] flex + summary order）',
+    /\.intro\[open\]\{display:flex;flex-direction:column\}/.test(s)
+    && /\.intro\[open\]>summary\{order:9/.test(s));
   check(s, '完整介绍锚句在折叠体内：25 岁门槛 · 公益去向 · 结尾那句',
     s.includes('仅限 25 岁以上单身伙伴') && s.includes('活动结余将全部用于支持在日华人公益事业')
     && s.includes('也或许会遇见那个让你怦然心动的人'));

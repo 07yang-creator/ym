@@ -68,6 +68,10 @@
   .hero .intro .less{display:none}
   .hero .intro[open] .more{display:none}
   .hero .intro[open] .less{display:inline}
+  /* 展开后按钮排到全文**之后**（owner 08-07：按钮要在段尾，不卡在正文中间）。
+     只动视觉序（flex order）—— DOM 里 summary 仍在前，键盘/读屏顺序不变。 */
+  .hero .intro[open]{display:flex;flex-direction:column}
+  .hero .intro[open]>summary{order:99;align-self:flex-start;margin-top:18px}
   .hero .intro p{margin:14px 0 0}
   .hero .intro .cond{color:var(--brass-l);letter-spacing:.04em}
   /* sections */
