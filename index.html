@@ -57,6 +57,19 @@
   .hero .stats{display:flex;gap:34px;margin-top:30px}
   .hero .stats .s .n{font-family:Oswald,sans-serif;font-size:26px;color:var(--brass-l)}
   .hero .stats .s .l{font-size:11px;letter-spacing:.16em;color:#8E9A90}
+  /* 组织介绍全文 — 折叠导入（owner 2026-08-07「平时处于折叠状态，点击才能查看完整原文」）。
+     <details> 而不是 JS —— 和导航 .who 同一条理由：静态页不为一个开合养状态。 */
+  .hero .intro{margin-top:16px;max-width:560px}
+  .hero .intro>summary{list-style:none;cursor:pointer;display:inline-block;
+    font-size:12.5px;letter-spacing:.14em;color:var(--brass-l);
+    border:1px solid rgba(201,163,86,.45);border-radius:4px;padding:7px 14px}
+  .hero .intro>summary::-webkit-details-marker{display:none}
+  .hero .intro>summary:hover{background:rgba(201,163,86,.12)}
+  .hero .intro .less{display:none}
+  .hero .intro[open] .more{display:none}
+  .hero .intro[open] .less{display:inline}
+  .hero .intro p{margin:14px 0 0}
+  .hero .intro .cond{color:var(--brass-l);letter-spacing:.04em}
   /* sections */
   section{padding:44px 0 8px}
   .sec-k{font-size:11px;letter-spacing:.3em;color:var(--brass)}
@@ -140,9 +153,24 @@
   <div class="wrap">
     <div class="k">YUANMAN SALON · 东京</div>
     <h1>认真办好每一场相遇</h1>
-    <p>缘满沙龙是面向在日华人的相亲交友组织。我们不做海量配对，只做小而精的线下活动——
-      十对十茶会、兴趣小组、季节远足。每一场都有主持、有节奏、有跟进，
+    <p>緣滿沙龍是面向在日华人的社交交友组织。我们不做海量配对，只做小而精的线下活动——
+      游戏茶会、兴趣小组、季节远足。每一场都有主持、有节奏、有跟进，
       让认真想认识新朋友的人，见到同样认真的人。</p>
+    <!-- 完整介绍 = owner 2026-08-07 的原文，逐字导入；行内换行按原稿的分行走 -->
+    <details class="intro">
+      <summary><span class="more">阅读完整介绍 ▾</span><span class="less">收起介绍 ▴</span></summary>
+      <p class="cond">仅限 25 岁以上单身伙伴<br>三观同频｜线下交友｜拓展人脉</p>
+      <p>由几位热心姐妹自发组织的小众聚会，无机构背景，非商业化运营。<br>
+        活动仅收取基础场地及餐饮成本费用，<br>
+        活动结余将全部用于支持在日华人公益事业。</p>
+      <p>在快节奏的生活里，<br>
+        我们想为大家留下一场真诚而温暖的相遇。<br>
+        不必刻意迎合，<br>
+        也无需精心包装。<br>
+        或许是一场轻松愉快的交流，<br>
+        或许能认识志同道合的朋友，<br>
+        也或许会遇见那个让你怦然心动的人。</p>
+    </details>
   </div>
 </div>
 

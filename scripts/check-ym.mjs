@@ -1436,6 +1436,18 @@ const pyBody = (code, sig) => {
     && !s.includes('/api/') && !/method:\s*['"](POST|PUT|PATCH|DELETE)/i.test(s)
     && !s.includes('auth.signIn') && !s.includes('supabase-js'));
   check(s, 'fonts URL is well-formed', s.includes('family=Oswald:wght@400;600') && !s.includes('wghtght'));
+  /* 组织介绍全文（owner 2026-08-07 原稿）：平时折叠，点击展开。<details> 无 open 属性 =
+     默认折叠；两态文案都在（.more/.less），CSS 按 [open] 切换。改介绍文案时更新锚句即可。 */
+  check(s, '组织介绍全文已导入：默认折叠的 <details class="intro">，无 open 属性',
+    /<details class="intro">(?![^>]*open)/.test(s) && !/<details class="intro" open/.test(s)
+    && s.includes('class="more"') && s.includes('class="less"')
+    && /\.intro\[open\] \.more\{display:none\}/.test(s));
+  check(s, '完整介绍锚句在折叠体内：25 岁门槛 · 公益去向 · 结尾那句',
+    s.includes('仅限 25 岁以上单身伙伴') && s.includes('活动结余将全部用于支持在日华人公益事业')
+    && s.includes('也或许会遇见那个让你怦然心动的人'));
+  check(s, '首段已换新定位：社交交友 + 游戏茶会（旧词 相亲/十对十茶会 不再出现在正文）',
+    s.includes('社交交友组织') && s.includes('游戏茶会')
+    && !s.includes('相亲交友组织') && !s.includes('十对十茶会、'));
 }
 
 // ---------- Y7 step 7: 一键发布 + 抢单 (0016_ym_claim.sql) ----------
