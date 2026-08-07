@@ -988,6 +988,20 @@ owner 裁定「ym 和 JJcashflow 记账日记是两个产品，不许混」—�
 - `node scripts/check-ym.mjs` 在**本仓库根**跑；它的三层检查（页面＋api＋迁移）会自动去**并排的**
   `~/Documents/GitHub/JJcashflow` 读 api 和 migrations —— 两个仓库必须并排放着，找不到会大声报错
   而不是静默跳过。
+
+### 2.5 照片的下一件事（RULING 2026-08-07 · owner 原话记录）
+owner：「a volunteer or host are supposed to see photos because it is who uploaded photos」；
+「Guest would not have access to working desk and plan」（嘉宾不做）。
+**API 侧已经改完**（JJcashflow 仓 api/ym_file.py，套件四条锁已随之重钉）：
+- `read_media` / `list_media` 从 host/admin 放宽到 **host/admin/member**；member 的范围在
+  `_group_gate` 的 member 分支里用 **ym_share（member_groups）** 收窄 =「被派到的那几场」，
+  名单读不到 fail closed。403 的 reason 对 member 是 `no_assignments` / `not_assigned`。
+- `trash_media` **没有**放宽（志愿者不能删主办的照片）。upload 一切照旧。
+**这边（ym 仓）剩的活：成员端相册**。member/index.html 目前没有任何照片界面 —— 用和主办台
+mediaReadDo 同款的「POST /api/ym_file(list_media→read_media) → blob: → <img>」，按成员自己的
+ym_share 任务列他被派到的活动。另外顺手验一件事：ljzhujudy 在**共编**活动上能不能看到照片
+（host_groups 的 0027 那半 —— 如果不能，是数据里没 share 行，不是闸的错）。
+**没有任何一步需要 owner 动 GAS 或 Drive** —— read/list 早已部署，这次只动了鉴权层。
 ### 3. owner 还没走过的真机验收（375px，按这个顺序）
 - **主办台（不挂活动）** → 「记一张票据」→ **卡上当面问「这笔算在哪」** → 选一般费用 → 入账 → 去总账。
   *这一个入口在三份设计里有两份是静默失效的*，所以先走它。

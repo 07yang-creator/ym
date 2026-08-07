@@ -3737,8 +3737,8 @@ const pyBody = (code, sig) => {
      fail open —— 所以这条把**四个 return 的顺序**整个钉死：
        admin 放行 → 名单读不到 502 → 不是你的 403 → 通过。
      把第二个换成放行，序列立刻变成 None|None|(403|None，这条就红。 */
-  check(py, '归属闸③ ⭐ 名单读不到 = 拒（fail closed）—— 方向和 member_groups 相反，别照抄',
-    /owned = host_groups\(uid\)\s*\n\s*if owned is None:\s*\n\s*return \(502,/.test(gate)
+  check(py, '归属闸③ ⭐ 名单读不到 = 拒（fail closed）—— 上传那一侧才允许落公共兜底',
+    /else:\s*\n\s*allowed = host_groups\(uid\)[\s\S]{0,120}if allowed is None:\s*\n\s*return \(502,/.test(gate)
     && ((gate.match(/return (?:None|\(\d{3},)/g) || []).join('|')
         === 'return None|return (502,|return (403,|return (502,|return (409,|return None')
     && !gate.includes('未归活动')            // 写那一侧的兜底搬过来 = 把公共垃圾桶打开
@@ -3767,10 +3767,16 @@ const pyBody = (code, sig) => {
      ROOT/<活动名 · 日期>/，没有主办这一维，所以列/删/**看**三条路一起被放行。
      read_media 把字节接到同一把尺子后面之后，这条的代价从「泄 file_id」变成「来宾的正脸」。
      ⚠ 它同时修掉一个非恶意的老问题：两个主办同名同日的活动，字节本来就落进同一个目录。 */
-  const GATE_IFS = 'if role == "admin": | if owned is None: | if group not in {g[:120] for g in owned}: | if n is None: | if n > 1:';
+  /* ⚠ RULING（owner 2026-08-07）：「a volunteer or host are supposed to see photos because
+     it is who uploaded photos」。闸里从此有 member 分支：范围 = ym_share（member_groups），
+     和他上传落目录的同一把尺子；读不到名单 fail closed（和上传那侧方向相反）。
+     trash 不随之放宽 —— 它在自己的角色闸就把 member 挡下（⑤ 钉着）。 */
+  const GATE_IFS = 'if role == "admin": | if role == "member": | if allowed is None: | if group not in {g[:120] for g in allowed}: | if n is None: | if n > 1:';
   check(py, '归属闸③b ⭐⭐ 判据逐字：not in · 集合来自 owned · 两侧都截 120（反过来/放宽/丢截断都要红）',
     gateIfs === GATE_IFS
-    && /if group not in \{g\[:120\] for g in owned\}:\s*return \(403,/.test(gateCode)
+    && /if group not in \{g\[:120\] for g in allowed\}:\s*return \(403,/.test(gateCode)
+    && /if role == "member":\s*allowed = member_groups\(uid\)\s*miss = \("no_assignments", "not_assigned"\)/.test(gateCode.replace(/\n\s*/g,' '))
+    && count(PY, /member_groups\(/g) === 3
     // 「两侧」的另一侧：送进闸的那个值，两条路都先 strip 再截 120（和 g[:120] 同一个数）
     && [trashBlk, listBlk].every(b => /group = \(body\.get\("group"\) or ""\)\.strip\(\)\[:120\]/.test(b))
     // 撞名这一道：读不到**拒**（不是放行），撞上了回 409 —— 两个方向都钉
@@ -3782,7 +3788,8 @@ const pyBody = (code, sig) => {
      而账号从头到尾都是对的（最常见那条来路是这场活动还没推上云端，等几秒就好）。
      这是跨层的**同一份合同**：代理写 reason、客户端读 reason，两边一起钉才作数。 */
   check(py, '归属闸③c：403 摊开 reason（两种）+ cloud_groups，客户端两条路都读它再分岔',
-    /return \(403, \{"error": "not your group",\s*"reason": "no_cloud_events" if not owned else "not_in_your_events",\s*"cloud_groups": len\(owned\)\}\)/.test(gateCode)
+    /return \(403, \{"error": "not your group",\s*"reason": miss\[0\] if not allowed else miss\[1\],\s*"cloud_groups": len\(allowed\)\}\)/.test(gateCode)
+    && /miss = \("no_cloud_events", "not_in_your_events"\)/.test(gateCode)
     && [tr, sd].every(b =>
          /if\(r\.status===403\)\{let j=null;try\{j=await r\.json\(\);\}catch\(e3\)\{\}/.test(b)
          && /const rs=String\(\(j&&j\.reason\)\|\|''\);/.test(b)
@@ -3805,11 +3812,15 @@ const pyBody = (code, sig) => {
      这三条路泄的东西一条比一条重：list 泄一串 file_id，trash 能删掉别人的照片，
      read 直接把**照片本身**（真人来宾的正脸）送出去。新路自己另起一套判据，正是 08-05
      复查坐实的那个形状（只问「你是不是主办」，没问「这个 group 是不是**你的**活动」）。 */
-  check(py, '归属闸⑤：list / trash / read 三条路都过同一把尺子（admin 例外是明写的）',
+  check(py, '归属闸⑤：list / trash / read 三条路都过同一把尺子；member 能列能看（RULING 08-07）、独独不能删',
     [trashBlk, listBlk, readBlk].every(b =>
-      /if role not in \("host", "admin"\):/.test(b)
-      && /gate = self\._group_gate\(role, uid, group\)/.test(b)
+      /gate = self\._group_gate\(role, uid, group\)/.test(b)
       && /if gate:\s*\n\s*return self\._send\(gate\[0\], gate\[1\]\)/.test(b))
+    // trash：08-05 的窄门原样 —— 志愿者不该能抹掉主办的活动照片
+    && /if role not in \("host", "admin"\):/.test(trashBlk)
+    && !/if role not in \("host", "admin", "member"\):/.test(trashBlk)
+    // list / read：member 进门（范围由闸的 member 分支收窄）。谁能列谁就能看 —— 两条路同宽
+    && [listBlk, readBlk].every(b => /if role not in \("host", "admin", "member"\):/.test(b))
     && /if role == "admin":\s*\n\s*return None/.test(gate)
     && count(PY, /host_groups\(/g) === 2
     && count(PY, /group_owners\(/g) === 2);   // 定义 + 闸里那一处；第二处调用 = 有人绕开了闸
