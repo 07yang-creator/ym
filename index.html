@@ -245,6 +245,35 @@
 <script src="sanitize.js"></script>
 <script src="enhance.js"></script>
 <script>
+/* 已登录的人不该再看见「登录 / 加入」（owner 2026-08-07：主办登着号回到首页，右上角
+   还是登录按钮，也没有一扇直接进主办台的门）。同源三页共用 supabase 放在 localStorage
+   的会话钥匙 —— 这里**只读它做显示**：不装 supabase 的 JS 客户端、不发任何请求，安全边界仍在
+   两个 app 的服务端（CLAUDE 约定 §1：客户端角色只管显示）。access_token 过期**不算**
+   退出：refresh_token 还在，打开主办台/成员页会自动续期 —— 判退出只看钥匙在不在。
+   角色（主办/成员）这里故意不猜：两扇门都给，走错的那扇有自己的墙。 */
+(function(){
+  'use strict';
+  var raw=null;
+  try{raw=localStorage.getItem('sb-ugkopxmeqsbtjeimultz-auth-token');}catch(e){}
+  if(!raw)return;
+  var user=null;
+  try{var s=JSON.parse(raw);if(s&&s.refresh_token&&s.user)user=s.user;}catch(e){}
+  if(!user)return;
+  var who=document.querySelector('.who');if(!who)return;
+  var name=String(user.email||'我').split('@')[0].slice(0,14);
+  who.querySelector('summary').textContent=name;   // 用户数据只走 textContent，不进 innerHTML
+  var sheet=who.querySelector('.sheet');
+  while(sheet.firstChild)sheet.removeChild(sheet.firstChild);
+  function door(href,big,small){
+    var a=document.createElement('a');a.setAttribute('href',href);
+    var b=document.createElement('b');b.textContent=big;
+    var sp=document.createElement('span');sp.textContent=small;
+    a.appendChild(b);a.appendChild(sp);sheet.appendChild(a);
+  }
+  door('organizer/','进入主办台','办活动 · 台本 · 发布');
+  door('member/','我的成员页','志愿者 · 嘉宾 · 捐赠者');
+})();
+
 /* Live content from the host's 发布 tab. Anon read of published rows only (0010 RLS).
    The static markup above stays as the fallback: if the fetch fails or nothing is
    published yet, the page still looks finished rather than empty. */

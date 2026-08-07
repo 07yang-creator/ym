@@ -1452,6 +1452,14 @@ const pyBody = (code, sig) => {
   check(s, '首段已换新定位：社交交友 + 游戏茶会（旧词 相亲/十对十茶会 不再出现在正文）',
     s.includes('社交交友组织') && s.includes('游戏茶会')
     && !s.includes('相亲交友组织') && !s.includes('十对十茶会、'));
+  /* 已登录回首页（owner 08-07）：右上角要认得人、给两扇门。只读 localStorage 里
+     supabase 的会话钥匙做显示 —— 不装 supabase-js、不发请求（上面 read-only pin 兜着），
+     名字只走 textContent；判退出只看钥匙在不在（access_token 过期不算：refresh 在就续得回）。 */
+  check(s, '已登录只做显示：读 sb- 会话钥匙、名字走 textContent、两扇门都给',
+    s.includes("localStorage.getItem('sb-ugkopxmeqsbtjeimultz-auth-token')")
+    && s.includes('s.refresh_token&&s.user')
+    && /querySelector\('summary'\)\.textContent=name/.test(s)
+    && s.includes("door('organizer/','进入主办台'") && s.includes("door('member/','我的成员页'"));
 }
 
 // ---------- Y7 step 7: 一键发布 + 抢单 (0016_ym_claim.sql) ----------
