@@ -342,8 +342,11 @@
   }
   document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
 
+  /* 排序：post_date 主序（卡片上印的就是它，倒序才不会出现 8/7、8/14、8/7 的花脸），
+     **published_at 破平**（owner 08-07：同一天发的几篇，后发的排上面）。published_at 只在
+     「发布」那一下由服务端盖章、改稿不动它（0010 的触发器），所以顺序不会被后来的小修打乱。 */
   fetch(SB+'/rest/v1/ym_post?select=id,kind,title,summary,body_html,meta,post_date'+
-        '&published=eq.true&order=post_date.desc.nullslast&limit=60',
+        '&published=eq.true&order=post_date.desc.nullslast,published_at.desc.nullslast&limit=60',
         {headers:{apikey:KEY,Authorization:'Bearer '+KEY}})
   .then(function(r){return r.ok?r.json():[];})
   .then(function(rows){

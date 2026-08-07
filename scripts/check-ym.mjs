@@ -1455,6 +1455,10 @@ const pyBody = (code, sig) => {
   /* 已登录回首页（owner 08-07）：右上角要认得人、给两扇门。只读 localStorage 里
      supabase 的会话钥匙做显示 —— 不装 supabase-js、不发请求（上面 read-only pin 兜着），
      名字只走 textContent；判退出只看钥匙在不在（access_token 过期不算：refresh 在就续得回）。 */
+  // owner 08-07：同一天发的几篇，后发的排上面。published_at 只在发布那一下盖章（0010 触发器），
+  // 改稿不动它 —— 主序仍是卡片上印着的 post_date，别倒回「纯发布序」（卡片日期会花脸）。
+  check(s, '文章排序：post_date 主序 + published_at 破平（同日后发的在上）',
+    s.includes('order=post_date.desc.nullslast,published_at.desc.nullslast'));
   check(s, '已登录只做显示：读 sb- 会话钥匙、名字走 textContent、两扇门都给',
     s.includes("localStorage.getItem('sb-ugkopxmeqsbtjeimultz-auth-token')")
     && s.includes('s.refresh_token&&s.user')
