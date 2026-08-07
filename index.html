@@ -90,6 +90,11 @@
   .card .tag{display:inline-block;font-size:10.5px;letter-spacing:.1em;color:var(--brass);
     border:1px solid var(--line);border-radius:3px;padding:2px 8px;margin-top:12px}
   .card.ev{border-top:3px solid var(--brass-l)}
+  /* 海报卡（owner 08-07：「近期活动」= 海报墙）。图就是卡面，标题小字垫底 */
+  .card.poster{padding:0;overflow:hidden;border-top:3px solid var(--brass-l)}
+  .card.poster img{width:100%;height:auto;display:block}
+  .card.poster .pc{padding:10px 14px 12px}
+  .card.poster .pc h3{margin:2px 0 0}
   .card.full{opacity:.62}
   .newslist{border-top:1px solid var(--line)}
   .newslist .n-item{display:flex;gap:16px;align-items:baseline;padding:13px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
@@ -301,6 +306,16 @@
       '<div class="date">'+fmt(p.post_date)+'</div><h3>'+esc(p.title)+'</h3>'+
       '<p>'+esc(p.summary||'')+'</p></div>';
   }
+  /* 海报卡：第一张图当卡面。src 从 body_html 里抠出来 —— 先还原实体再过 safeUrl，
+     库不是信任边界，这里的门和阅读器同一把（没图的海报退回文字卡：编辑器有硬闸，这是兜底） */
+  function posterCard(p,i){
+    var m=/<img[^>]*src="([^"]+)"/.exec(p.body_html||'');
+    var src=m?(window.ymSanitize?window.ymSanitize.safeUrl(m[1].replace(/&amp;/g,'&'),true):''):'';
+    if(!src)return artCard(p,i);
+    return '<div class="card poster tap" data-i="'+i+'">'+
+      '<img src="'+esc(src)+'" alt="'+esc(p.title||'海报')+'" loading="lazy">'+
+      '<div class="pc"><span class="date">'+fmt(p.post_date)+'</span><h3>'+esc(p.title)+'</h3></div></div>';
+  }
   function newsRow(p,i){
     var has=(p.body_html||'').length>0;
     return '<div class="n-item'+(has?' tap':'')+'"'+(has?' data-i="'+i+'"':'')+'>'+
@@ -352,15 +367,19 @@
   .then(function(rows){
     if(!rows||!rows.length)return;                 // keep the static fallback
     POSTS=rows;
-    var evs=[],arts=[],news=[];
+    var evs=[],arts=[],news=[],pos=[];
     rows.forEach(function(p,i){
       if(p.kind==='event')evs.push(evCard(p));
+      else if(p.kind==='poster')pos.push(posterCard(p,i));
       else if(p.kind==='article')arts.push(artCard(p,i));
       else news.push(newsRow(p,i));});
     /* Each section is replaced independently as real content arrives. The page ships with
        an empty state, never with fabricated events/articles/counts — so there is no longer a
        disclaimer to manage, and nothing on screen can be mistaken for real activity. */
-    if(evs.length)el('evGrid').innerHTML=evs.join('');
+    /* 海报替换文字活动卡（owner 08-07）：有海报就整节让位；一张都没有时旧卡照旧 ——
+       别让「还没发第一张海报」的过渡期把官网顶部清空。海报点开走同一个阅读器。 */
+    if(pos.length){el('evGrid').innerHTML=pos.join('');bind(el('evGrid'));}
+    else if(evs.length)el('evGrid').innerHTML=evs.join('');
     if(arts.length){el('artGrid').innerHTML=arts.join('');bind(el('artGrid'));}
     if(news.length){el('newsList').innerHTML=news.join('');bind(el('newsList'));}
     if(location.hash.indexOf('#p-')===0){

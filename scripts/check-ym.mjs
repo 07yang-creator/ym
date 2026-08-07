@@ -1459,6 +1459,15 @@ const pyBody = (code, sig) => {
   // 改稿不动它 —— 主序仍是卡片上印着的 post_date，别倒回「纯发布序」（卡片日期会花脸）。
   check(s, '文章排序：post_date 主序 + published_at 破平（同日后发的在上）',
     s.includes('order=post_date.desc.nullslast,published_at.desc.nullslast'));
+  /* 海报墙（owner 08-07：近期活动 = 海报，多张并存，后台主办+管理员）。kind='poster' 要
+     0030 迁移放宽 CHECK；行为 pin 在下面，服务端那半 pin 在迁移文件区。 */
+  check(s, '海报分流 + 替换规则：有海报让位、零海报旧卡兜底、点开走同一个阅读器',
+    s.includes("p.kind==='poster')pos.push(posterCard(p,i))")
+    && /if\(pos\.length\)\{el\('evGrid'\)\.innerHTML=pos\.join\(''\);bind\(el\('evGrid'\)\);\}/.test(s)
+    && s.includes("else if(evs.length)el('evGrid').innerHTML=evs.join('')"));
+  check(s, '海报卡面 src 过 safeUrl（库不是信任边界），没图退回文字卡',
+    /posterCard[\s\S]{0,400}safeUrl\(m\[1\]\.replace\(\/&amp;\/g,'&'\),true\)/.test(s)
+    && /if\(!src\)return artCard\(p,i\);/.test(s));
   check(s, '已登录只做显示：读 sb- 会话钥匙、名字走 textContent、两扇门都给',
     s.includes("localStorage.getItem('sb-ugkopxmeqsbtjeimultz-auth-token')")
     && s.includes('s.refresh_token&&s.user')
@@ -4725,6 +4734,19 @@ const pyBody = (code, sig) => {
     && api.includes('ACTIONS = ("upload_media", "list_media")'));
   check(api, '体积闸按动作生效：只有 upload_media 收正文，别的动作夹带正文一律拒',
     /elif data:\n            return self\._send\(400/.test(api));
+
+  /* ---- 海报（owner 08-07）：0030 放宽 kind CHECK；发布台认识 poster；没图挡保存 ---- */
+  const mig30 = read('supabase/migrations/0030_ym_poster.sql');
+  check(mig30, '0030：kind CHECK 放宽到含 poster，末尾 do $$ 自检',
+    mig30.includes("check (kind in ('article','news','event','poster'))")
+    && mig30.includes('do $$') && mig30.includes('ym_post_kind_check'));
+  check(org, '发布台认识海报：＋海报按钮 + 列表分节 + 行标签',
+    org.includes("postNew('poster')") && org.includes("sec('海报") &&
+    org.includes("p.kind==='poster'?'海报'"));
+  check(org, '海报三道闸：没图挡保存（硬闸）；0030 没跑说人话；行标签/编辑器称谓齐',
+    org.includes("p.kind==='poster'&&!(p.cz.imgs||[]).filter(Boolean).length")
+    && org.includes('0030_ym_poster.sql，再回来发布')
+    && org.includes("isPoster=p.kind==='poster'"));
 }
 
 // ---------- 印章 logo（owner 2026-08-07：緣滿朱印换掉 ym 字标）----------

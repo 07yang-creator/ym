@@ -6561,21 +6561,23 @@ function viewPost(){
   if(S.postEdit)return postEditor();
   const grp=k=>POSTS.filter(p=>p.kind===k);
   const row=p=>`<button class="postrow ${p.kind==='event'?'ev':''}" onclick="postOpen('${p.id}')">
-    <span class="k">${p.kind==='article'?'文章':p.kind==='news'?'新闻':'活动'}</span>
+    <span class="k">${p.kind==='article'?'文章':p.kind==='news'?'新闻':p.kind==='poster'?'海报':'活动'}</span>
     <span class="tt">${esc(p.title)}</span>
     <span class="st ${p.published?'on':'off'}">${p.published?'● 已发布':'○ 草稿'}</span></button>`;
   const sec=(t,k,hint)=>{const l=grp(k);return `<div class="sec">${t}</div>`+
     (l.length?l.map(row).join(''):`<div class="note9" style="margin:0 2px 10px">${hint}</div>`);};
   return `<div class="main" style="max-width:620px;margin:0 auto">
     <div class="evsw" style="margin-bottom:6px">
+      <button class="btn sm" onclick="postNew('poster')">＋ 海报</button>
       <button class="btn sm" onclick="postNew('article')">＋ 文章</button>
       <button class="btn sm" onclick="postNew('news')">＋ 新闻</button>
       <a class="btn ghost sm" href="../" target="_blank" style="text-decoration:none">看官网 ↗</a></div>
     <div class="hintbar">写一段话、传几张照片、贴一条视频链接 —— <b>排版官网自己来</b>。
       照片两张起自动轮播，YouTube 链接自动变播放器。发布后立即出现在官网。</div>
+    ${sec('海报（官网「近期活动」= 海报墙，可同时挂多张）','poster','还没有海报。发一张，官网顶部的文字活动卡就换成它。')}
     ${sec('文章','article','还没有文章。')}
     ${sec('新闻','news','还没有新闻。')}
-    ${sec('活动（来自「活动」页的「公开到官网」）','event','在活动页勾选「公开到官网」，活动卡就会出现在官网。')}
+    ${sec('活动（旧文字卡 —— 官网上有海报时不再显示）','event','在活动页勾选「公开到官网」，没有任何海报时官网仍显示这些文字卡。')}
   </div>`;
 }
 function postNew(kind){
@@ -6639,13 +6641,14 @@ function postClose(){S.postEdit=null;render();}
    官网阅读器/净化器/老贴全部不动 —— 「照片集」的标记就是结构本身（figure≥2 张图），
    因为 sanitize 只留结构、剥 class，结构是唯一活得过净化的记号。 */
 function czEditor(p){
-  const cz=p.cz,up=p._up,isNews=p.kind==='news';
+  const cz=p.cz,up=p._up,isNews=p.kind==='news',isPoster=p.kind==='poster';
+  const kindName=isNews?'新闻':isPoster?'海报':'文章';
   return `<div class="main" style="max-width:680px;margin:0 auto">
     <div class="dayhead"><div><div class="d dnav"><span class="dc-go" onclick="postClose()">← 发布列表</span>
-      <span>${isNews?'新闻':'文章'}${p.published?' · 已发布':' · 草稿'}</span></div></div></div>
+      <span>${kindName}${p.published?' · 已发布':' · 草稿'}</span></div></div></div>
     <label class="fld" style="display:block;margin:9px 0"><span class="lbl">标题</span>
       <input id="po_title" value="${esc(p.title||'')}" oninput="czMeta('title',this.value)"
-        placeholder="${isNews?'一句话新闻标题':'文章标题'}"></label>
+        placeholder="${isNews?'一句话新闻标题':isPoster?'海报标题（如：缘满沙龍第三期）':'文章标题'}"></label>
     <div style="display:flex;gap:8px">
       <label class="fld" style="flex:1;margin:9px 0"><span class="lbl">日期</span>
         <input id="po_date" type="date" value="${esc(p.post_date||'')}" oninput="czMeta('post_date',this.value)"></label>
@@ -6654,7 +6657,7 @@ function czEditor(p){
           placeholder="留空自动取正文开头"></label></div>
     <div class="czsec"><div class="czh">正文 · <span class="n9">空一行 = 分一段。只管写字，排版官网自己来</span></div>
       <textarea id="cz_text" oninput="czKeep()" placeholder="像发微信一样写就行">${esc(cz.text||'')}</textarea></div>
-    <div class="czsec"><div class="czh">照片集 · <span class="n9">两张起官网自动轮播；读者不用登录就看得到</span></div>
+    <div class="czsec"><div class="czh">${isPoster?'海报图 · <span class="n9">必填 —— 多页海报传多张，官网自动轮播</span>':'照片集 · <span class="n9">两张起官网自动轮播；读者不用登录就看得到</span>'}</div>
       <div class="czimgs">${cz.imgs.map((u,i)=>`<div class="ci"><img src="${esc(u)}" alt="" loading="lazy">
         <button class="x" onclick="czImgDel(${i})" title="移出（图还留在图库）">✕</button></div>`).join('')}
         ${up?`<div class="ci up">上传中 ${up.done}/${up.total}…</div>`:''}</div>
@@ -6965,6 +6968,9 @@ function postSave(publish){
   if(p.cz){
     if(p._up){toast('还有照片在上传，传完再保存');return;}
     czKeep();
+    // 海报墙上没有图的海报是一个空格子 —— 硬闸，不是提醒
+    if(p.kind==='poster'&&!(p.cz.imgs||[]).filter(Boolean).length){
+      toast('海报要有图 —— 用「上传照片」或「从图库选」放一张');return;}
     const bad=p.cz.vids.map(v=>String(v||'').trim())
       .filter(v=>v&&!(window.ymEnhance&&window.ymEnhance.videoId(v))).length;
     if(bad)toast('有 '+bad+' 条视频不是 YouTube 链接 —— 官网上会显示为普通链接');
@@ -6982,7 +6988,12 @@ function postSave(publish){
     row.summary=p.cz.text.trim().replace(/\s+/g,' ').slice(0,60);
   if(p.id)row.id=p.id;
   sb.from('ym_post').upsert(row).select().then(({data,error})=>{
-    if(error){toast('保存失败：'+error.message);return;}
+    if(error){
+      // 23514 kind CHECK = 服务端还不认识「海报」——0030 还没跑。说得出该找谁做什么，
+      // 别让它长成一句谁也看不懂的「保存失败」（07-28 那类误诊）
+      if(p.kind==='poster'&&/ym_post_kind_check|check constraint/i.test(error.message||'')){
+        toast('服务端还不认识「海报」—— 请管理员先跑迁移 0030_ym_poster.sql，再回来发布');return;}
+      toast('保存失败：'+error.message);return;}
     S.postEdit=null;POSTS=null;render();
     toast(publish?'已发布到官网':'已存草稿');
   });
