@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>缘满沙龙 · ym</title>
 <meta name="description" content="缘满沙龙 — 用心经营的相亲与交友活动。近期活动·文章·新闻。">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/touch.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -24,7 +26,8 @@
   /* navbar */
   header{position:sticky;top:0;z-index:20;background:var(--felt);color:var(--stock)}
   .nav{max-width:880px;margin:0 auto;padding:0 18px;height:54px;display:flex;align-items:center;gap:14px}
-  .nav .logo{font-family:Oswald,sans-serif;font-size:18px;color:var(--brass-l);letter-spacing:.06em}
+  /* 印章 logo（owner 2026-08-07）：緣滿朱印换掉 ym 字标。透明 png，深色导航上直接压 */
+  .nav .logo{height:36px;width:36px;display:block}
   .nav .name{font-size:13px;letter-spacing:.22em;color:var(--stock);opacity:.9}
   .nav .sp{flex:1}
   .nav a.lk{font-size:12.5px;letter-spacing:.12em;color:var(--stock);opacity:.75;padding:6px 9px}
@@ -150,7 +153,7 @@
 
 <header>
   <nav class="nav">
-    <span class="logo">ym</span><span class="name">缘满沙龙</span>
+    <img class="logo" src="img/logo.png" alt="缘满沙龙"><span class="name">缘满沙龙</span>
     <span class="sp"></span>
     <a class="lk" href="#about">组织介绍</a>
     <a class="lk" href="#events">活动</a>
@@ -231,7 +234,7 @@
 
 <footer>
   <div class="wrap">
-    <div class="brand">ym · 缘满沙龙</div>
+    <div class="brand"><img src="img/logo.png" alt="" style="height:22px;width:22px;vertical-align:-5px"> 缘满沙龙</div>
     <div>用心经营的相遇。 · <a href="member/">成员入口</a>（志愿者 · 嘉宾 · 捐赠者） ·
       <a href="member/#apply">申请加入</a> · <a href="organizer/">主办方入口</a> ·
       <a href="guide/">主办方使用手册</a></div>

@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>主办台 · ym</title>
+<link rel="icon" type="image/png" href="../img/favicon.png">
+<link rel="apple-touch-icon" href="../img/touch.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -35,7 +37,8 @@
   .topbar{position:sticky;top:0;z-index:20;height:50px;display:flex;align-items:center;gap:12px;
     padding:0 14px;background:var(--felt);border-bottom:1px solid var(--line)}
   /* logo 是回官网首页的门 (owner 2026-08-03) —— <a>，所以要压掉链接默认样式 */
-  .topbar .logo{font-family:Oswald,sans-serif;font-size:17px;color:var(--brass);letter-spacing:.06em;text-decoration:none}
+  .topbar .logo{display:block;text-decoration:none}
+  .topbar .logo img{height:30px;width:30px;display:block}
   .topbar .ttl{font-size:12px;color:var(--muted);letter-spacing:.18em}
   .topbar .sp{flex:1}
   .navlinks{display:flex;gap:2px}
@@ -2417,7 +2420,7 @@ function render(){
   else body=viewLib();
   $('app').innerHTML=`
     <div class="topbar">
-      <a class="logo" href="../" title="回官网首页">ym</a><span class="ttl">主办台</span>
+      <a class="logo" href="../" title="回官网首页"><img src="../img/logo.png" alt="缘满沙龙"></a><span class="ttl">主办台</span>
       <span class="sp"></span>
       <div class="navlinks">${nav}</div>
       ${/* 「演」的第三态没有了 —— 无会话根本到不了这里（render 开头的登录墙） */''}
@@ -2593,7 +2596,7 @@ function authWall(){
   return `<div style="max-width:380px;margin:0 auto;padding:64px 20px 40px">
     <div style="margin-bottom:22px;text-align:center">
       ${/* 登录墙上这颗也通官网 —— 点错门的人（志愿者/嘉宾）需要一条不输密码的退路 */''}
-      <a class="logo" href="../" title="回官网首页" style="font-size:26px;text-decoration:none;color:inherit">ym</a> <span class="ttl">主办台</span></div>
+      <a class="logo" href="../" title="回官网首页" style="text-decoration:none"><img src="../img/logo.png" alt="缘满沙龙" style="height:46px;width:46px;vertical-align:-14px"></a> <span class="ttl">主办台</span></div>
     ${inner}
     <p class="note9" style="margin-top:26px;text-align:center">主办台是给办活动的人用的 ——
       志愿者 / 嘉宾 / 捐赠者请走<a href="../member/" style="color:var(--brass)">成员页</a>${sb&&_authReady?` · ${guideLink('使用手册')}`:''}</p>
@@ -5847,7 +5850,7 @@ function capPhone(token){
   // 主办台的 CSS 全是挂在它下面的，页面会散成一堆窄条（2026-07-28 在浏览器里看见过一次）
   $('app').innerHTML=`<div style="max-width:460px;margin:0 auto;padding:14px 16px 40px">
     <div style="display:flex;align-items:center;gap:10px;height:50px;border-bottom:1px solid var(--line)">
-      <span style="font-family:Oswald,sans-serif;font-size:17px;color:var(--brass)">ym</span>
+      <img src="../img/logo.png" alt="缘满沙龙" style="height:26px;width:26px;display:block">
       <span class="lbl">拍一张票据</span></div>
     <p class="note9" style="line-height:1.9">拍下发票 / 收据 → 自动解析 → 传回你电脑上那一页确认。<br>
       这一页<b>不用登录</b>，也看不到任何其他内容。</p>

@@ -4715,6 +4715,26 @@ const pyBody = (code, sig) => {
     /elif data:\n            return self\._send\(400/.test(api));
 }
 
+// ---------- 印章 logo（owner 2026-08-07：緣滿朱印换掉 ym 字标）----------
+{
+  const assets = ['ym/img/logo.png', 'ym/img/favicon.png', 'ym/img/touch.png'].map(resolve);
+  console.log('ym — 印章 logo');
+  check('img', '三份印章资产都在（logo 透明 512 / favicon 64 / touch 不透明 180）', assets.every(Boolean));
+  for (const [pg, pre] of [['ym/index.html', 'img/'], ['ym/organizer/index.html', '../img/'],
+                           ['ym/member/index.html', '../img/'], ['ym/guide/index.html', '../img/']]) {
+    const t = read(pg);
+    check(t, `印章 + favicon 接上：${pg}`,
+      t.includes(pre + 'logo.png') && t.includes('rel="icon"') && t.includes(pre + 'favicon.png')
+      && t.includes(pre + 'touch.png'));
+  }
+  const l = read('ym/index.html'), o = read('ym/organizer/index.html');
+  check(l, '官网导航是印章 img，不再是 ym 字标',
+    !/<span class="logo">ym<\/span>/.test(l) && /<img class="logo" src="img\/logo\.png"/.test(l));
+  check(o, '主办台两颗 logo 锚点仍是回官网的门，字标全换印章',
+    (o.match(/<a class="logo" href="\.\.\/"/g) || []).length === 2
+    && !/">ym<\/a>/.test(stripComments(o)));
+}
+
 console.log('');
 if (failures) { console.error(`${failures} check(s) failed`); process.exit(1); }
 console.log('all ym checks passed');
