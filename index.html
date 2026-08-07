@@ -122,6 +122,23 @@
   .rd .body img{max-width:100%;height:auto;border-radius:5px;margin:12px 0;display:block}
   .rd .body a{color:var(--brass);text-decoration:underline}
   .rd .body blockquote{border-left:3px solid var(--line);margin:12px 0;padding-left:14px;color:var(--muted)}
+  /* enhance.js 造的播放器（16:9 responsive）。iframe 不来自存储的 HTML —— sanitizer 仍然杀 iframe */
+  .rd .body .ytv{position:relative;padding-top:56.25%;margin:14px 0;border-radius:6px;overflow:hidden;background:#10160f}
+  .rd .body .ytv iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .rd .body a.ytlink{font-size:12.5px;color:var(--muted)}
+  /* enhance.js 造的照片集轮播（存储形态只是 figure+img；轮播衣裳在渲染侧穿上） */
+  .rd .body .gal{position:relative;margin:14px 0;border-radius:6px;overflow:hidden;background:#10160f}
+  .rd .body .gal-track{display:flex;transition:transform .45s ease}
+  .rd .body .gal-cell{flex:0 0 100%;display:flex;align-items:center;justify-content:center;aspect-ratio:3/2;max-height:460px}
+  .rd .body .gal-cell img{max-width:100%;max-height:100%;object-fit:contain;margin:0;border-radius:0}
+  .rd .body .gal-a{position:absolute;top:50%;transform:translateY(-50%);border:0;background:rgba(22,36,30,.55);
+    color:#F4EFE2;width:32px;height:44px;font-size:20px;cursor:pointer;border-radius:4px}
+  .rd .body .gal-prev{left:8px}.rd .body .gal-next{right:8px}
+  .rd .body .gal-dots{position:absolute;left:0;right:0;bottom:8px;display:flex;gap:6px;justify-content:center}
+  .rd .body .gal-dot{width:7px;height:7px;border-radius:50%;border:0;padding:0;background:rgba(244,239,226,.45);cursor:pointer}
+  .rd .body .gal-dot.on{background:var(--brass-l)}
+  .rd .body figure{margin:14px 0}
+  .rd .body figure img{margin:6px 0}
   .rd .body table{border-collapse:collapse;width:100%;margin:12px 0}
   .rd .body td,.rd .body th{border:1px solid var(--line);padding:6px 9px;font-size:13.5px;text-align:left}
   .card.tap{cursor:pointer}
@@ -223,6 +240,7 @@
 </footer>
 
 <script src="sanitize.js"></script>
+<script src="enhance.js"></script>
 <script>
 /* Live content from the host's 发布 tab. Anon read of published rows only (0010 RLS).
    The static markup above stays as the fallback: if the fetch fails or nothing is
@@ -276,6 +294,10 @@
        If the sanitizer failed to load, degrade to TEXT rather than risk raw HTML. */
     if(window.ymSanitize)window.ymSanitize.into(body,p.body_html||'');
     else body.textContent=String(p.body_html||'').replace(/<[^>]*>/g,' ');
+    /* display-only enrichment on the SANITIZED tree: YouTube 链接 → 播放器、
+       连片空段落收拢（第一篇真文章里照片被剥掉后留下的整屏空洞就是它治的）。
+       enhance.js 没加载到就保持素文 —— 它从来不是安全边界，缺了只影响观感。 */
+    if(window.ymEnhance)window.ymEnhance.apply(body);
     inner.appendChild(x);inner.appendChild(h);inner.appendChild(m);inner.appendChild(body);
     rd.appendChild(inner);document.body.appendChild(bg);document.body.appendChild(rd);
     document.body.style.overflow='hidden';

@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../sanitize.js"></script>
+<script src="../enhance.js"></script>
 <style>
   /* ym identity — the reception table (see ym/design/ym-event-day.jsx) */
   :root{
@@ -95,6 +96,66 @@
   .pe table{border-collapse:collapse;width:100%;margin:8px 0}
   .pe td,.pe th{border:1px solid var(--line);padding:5px 8px;font-size:13px;text-align:left}
   .pe:empty:before{content:attr(data-ph);color:var(--brass-dim)}
+  .pe .upl{display:inline-block;background:var(--felt-up);border:1px dashed var(--brass-dim);
+    color:var(--stock-dim);border-radius:4px;padding:3px 9px;font-size:12px;margin:4px 0}
+  /* 预览 = 官网阅读器的样子。颜色**写死成官网的值** —— 这个 app 的 CSS 变量是深色后台的，
+     套变量预览就成了深色，主办看到的和读者看到的又不是一回事（这正是预览要治的病）。
+     动官网 index.html 的 .rd 样式时，这里要跟着对一遍。 */
+  .pvbg{position:fixed;inset:0;background:rgba(22,36,30,.55);z-index:70}
+  .pv{position:fixed;inset:0;z-index:71;overflow:auto;padding:0 0 60px}
+  .pv .inner{max-width:720px;margin:0 auto;background:#FBF8F0;color:#22302A;min-height:100%;
+    padding:26px 22px 50px;box-shadow:0 0 40px rgba(0,0,0,.35);
+    font:15px/1.95 "Noto Sans JP",-apple-system,"PingFang SC","Hiragino Sans",sans-serif}
+  .pv .x{position:sticky;top:10px;float:right;background:#16241E;color:#F4EFE2;border:0;
+    border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer}
+  .pv h1{font-size:22px;margin:6px 0 4px;letter-spacing:.02em}
+  .pv .m{color:#7C8A82;font-size:12px;margin-bottom:18px}
+  .pv .body{font-size:15px;line-height:1.95}
+  .pv .body h2{font-size:17px;margin:22px 0 8px}
+  .pv .body h3{font-size:15px;margin:18px 0 6px}
+  .pv .body p{margin:11px 0}
+  .pv .body ul,.pv .body ol{padding-left:22px;margin:11px 0}
+  .pv .body img{max-width:100%;height:auto;border-radius:5px;margin:12px 0;display:block}
+  .pv .body a{color:#A9853E;text-decoration:underline}
+  .pv .body blockquote{border-left:3px solid #E3DCC9;margin:12px 0;padding-left:14px;color:#7C8A82}
+  .pv .body table{border-collapse:collapse;width:100%;margin:12px 0}
+  .pv .body td,.pv .body th{border:1px solid #E3DCC9;padding:6px 9px;font-size:13.5px;text-align:left}
+  .pv .body .ytv{position:relative;padding-top:56.25%;margin:14px 0;border-radius:6px;overflow:hidden;background:#10160f}
+  .pv .body .ytv iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .pv .body a.ytlink{font-size:12.5px;color:#7C8A82}
+  .pv .body .gal{position:relative;margin:14px 0;border-radius:6px;overflow:hidden;background:#10160f}
+  .pv .body .gal-track{display:flex;transition:transform .45s ease}
+  .pv .body .gal-cell{flex:0 0 100%;display:flex;align-items:center;justify-content:center;aspect-ratio:3/2;max-height:460px}
+  .pv .body .gal-cell img{max-width:100%;max-height:100%;object-fit:contain;margin:0;border-radius:0}
+  .pv .body .gal-a{position:absolute;top:50%;transform:translateY(-50%);border:0;background:rgba(22,36,30,.55);
+    color:#F4EFE2;width:32px;height:44px;font-size:20px;cursor:pointer;border-radius:4px}
+  .pv .body .gal-prev{left:8px}.pv .body .gal-next{right:8px}
+  .pv .body .gal-dots{position:absolute;left:0;right:0;bottom:8px;display:flex;gap:6px;justify-content:center}
+  .pv .body .gal-dot{width:7px;height:7px;border-radius:50%;border:0;padding:0;background:rgba(244,239,226,.45);cursor:pointer}
+  .pv .body .gal-dot.on{background:#C9A356}
+  .pv .body figure{margin:14px 0}
+  /* 积木编辑器（composer v1）：三段固定 —— 正文 / 照片集 / 视频。深色后台的衣裳 */
+  .czsec{background:var(--felt-up);border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin:9px 0}
+  .czsec .czh{font-size:11.5px;letter-spacing:.1em;color:var(--stock-dim);margin-bottom:7px}
+  .czsec .czh .n9{letter-spacing:0}
+  .czsec textarea{width:100%;min-height:150px;resize:vertical;background:transparent;border:0;outline:0;
+    color:inherit;font:inherit;line-height:1.85}
+  .czimgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:7px;margin-bottom:9px}
+  .czimgs .ci{position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
+  .czimgs .ci img{width:100%;height:100%;object-fit:cover;display:block}
+  .czimgs .ci .x{position:absolute;top:3px;right:3px;width:20px;height:20px;border:0;border-radius:50%;
+    background:rgba(0,0,0,.62);color:#eee;font-size:11px;cursor:pointer;line-height:20px;padding:0}
+  .czimgs .ci.up{display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--stock-dim);
+    border-style:dashed}
+  .czvid{display:flex;gap:6px;margin:6px 0}
+  .czvid input{flex:1}
+  .czvid .x{border:0;background:transparent;color:var(--stock-dim);cursor:pointer;font-size:14px}
+  .czlib{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:7px;max-height:52vh;overflow:auto;margin:8px 0}
+  .czlib .ci{position:relative;aspect-ratio:1;border-radius:4px;overflow:hidden;border:2px solid transparent;cursor:pointer}
+  .czlib .ci img{width:100%;height:100%;object-fit:cover;display:block}
+  .czlib .ci.on{border-color:var(--brass)}
+  .czlib .ci.on:after{content:'✓';position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;
+    background:var(--brass);color:#16241E;font-size:11px;text-align:center;line-height:18px}
   .postrow{display:flex;gap:10px;align-items:baseline;background:var(--felt-up);border:1px solid var(--line);
     border-radius:5px;padding:11px 13px;margin-bottom:7px;width:100%;text-align:left}
   .postrow .k{font-size:10px;letter-spacing:.14em;color:var(--muted);flex:none;width:34px}
@@ -6507,24 +6568,34 @@ function viewPost(){
       <button class="btn sm" onclick="postNew('article')">＋ 文章</button>
       <button class="btn sm" onclick="postNew('news')">＋ 新闻</button>
       <a class="btn ghost sm" href="../" target="_blank" style="text-decoration:none">看官网 ↗</a></div>
-    <div class="hintbar">在任何地方写好（Notion / Word / 公众号草稿都行），<b>粘贴进来即可</b> —
-      格式保留，危险内容自动清除。发布后立即出现在官网。</div>
+    <div class="hintbar">写一段话、传几张照片、贴一条视频链接 —— <b>排版官网自己来</b>。
+      照片两张起自动轮播，YouTube 链接自动变播放器。发布后立即出现在官网。</div>
     ${sec('文章','article','还没有文章。')}
     ${sec('新闻','news','还没有新闻。')}
     ${sec('活动（来自「活动」页的「公开到官网」）','event','在活动页勾选「公开到官网」，活动卡就会出现在官网。')}
   </div>`;
 }
 function postNew(kind){
-  S.postEdit={kind,id:null,title:'',summary:'',body_html:'',post_date:todayStr(),published:false};
+  // composer（积木三段）是新贴的唯一入口 —— owner 2026-08-07 定案 B：
+  // 「title & context · photo gallery (self rotating) · video frame」，主办不做任何排版决定
+  S.postEdit={kind,id:null,title:'',summary:'',body_html:'',post_date:todayStr(),published:false,
+    cz:{text:'',imgs:[],vids:['']}};
   render();
 }
 function postOpen(id){
   const p=POSTS.find(x=>x.id===id);if(!p)return;
   if(p.kind==='event'){toast('活动卡在「活动」页编辑（内容跟着活动走）');return;}
-  S.postEdit=Object.assign({},p);render();
+  S.postEdit=Object.assign({},p);
+  /* composer 形状（文字段→figure 照片集→视频行）解析得回来就用积木编辑；解析不回来的
+     老富文本走旧编辑器 —— 老贴不许被静默降级成纯文本（blockquote/加粗一降就没了）。
+     composer 存的贴按构造必然解析得回来，所以这条岔路只有存量老贴会走。 */
+  const cz=czParse(p.body_html);
+  if(cz)S.postEdit.cz=cz;
+  render();
 }
 function postEditor(){
   const p=S.postEdit;
+  if(p.cz)return czEditor(p);
   const isNews=p.kind==='news';
   return `<div class="main" style="max-width:680px;margin:0 auto">
     <div class="dayhead"><div><div class="d dnav"><span class="dc-go" onclick="postClose()">← 发布列表</span>
@@ -6551,12 +6622,186 @@ function postEditor(){
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       <button class="btn" style="flex:1;min-width:120px" onclick="postSave(true)">
         ${p.published?'更新并保持发布':'发布到官网'}</button>
+      <button class="btn ghost sm" onclick="pePreview()">预览官网效果</button>
       <button class="btn ghost sm" onclick="postSave(false)">${p.published?'下架为草稿':'存草稿'}</button>
       ${p.id?`<span class="lnkdel" onclick="postDel()">删除</span>`:''}</div>
-    <p class="note9">粘贴的内容会自动净化（脚本、样式、可疑链接一律清除）；官网渲染时再净化一次。</p>
+    <p class="note9">照片用「图片」按钮上传（读者不用登录就看得到）；贴一条 YouTube 链接，官网上自动变成播放器。
+      拿不准排版就点「预览官网效果」—— 那就是读者看到的样子。粘贴的内容自动净化；官网渲染时再净化一次。</p>
   </div>`;
 }
 function postClose(){S.postEdit=null;render();}
+/* ================= composer v1 —— 积木三段（owner 2026-08-07 定案 B）=================
+   一篇 = 正文（textarea，空行分段）+ 照片集（自动轮播）+ 视频（可加多条链接）。
+   存储不变：序列化成 body_html 里的 <p>* + <figure><img>*</figure> + <p><a>*，
+   官网阅读器/净化器/老贴全部不动 —— 「照片集」的标记就是结构本身（figure≥2 张图），
+   因为 sanitize 只留结构、剥 class，结构是唯一活得过净化的记号。 */
+function czEditor(p){
+  const cz=p.cz,up=p._up,isNews=p.kind==='news';
+  return `<div class="main" style="max-width:680px;margin:0 auto">
+    <div class="dayhead"><div><div class="d dnav"><span class="dc-go" onclick="postClose()">← 发布列表</span>
+      <span>${isNews?'新闻':'文章'}${p.published?' · 已发布':' · 草稿'}</span></div></div></div>
+    <label class="fld" style="display:block;margin:9px 0"><span class="lbl">标题</span>
+      <input id="po_title" value="${esc(p.title||'')}" oninput="czMeta('title',this.value)"
+        placeholder="${isNews?'一句话新闻标题':'文章标题'}"></label>
+    <div style="display:flex;gap:8px">
+      <label class="fld" style="flex:1;margin:9px 0"><span class="lbl">日期</span>
+        <input id="po_date" type="date" value="${esc(p.post_date||'')}" oninput="czMeta('post_date',this.value)"></label>
+      <label class="fld" style="flex:2;margin:9px 0"><span class="lbl">摘要（官网卡片上显示）</span>
+        <input id="po_summary" value="${esc(p.summary||'')}" oninput="czMeta('summary',this.value)"
+          placeholder="留空自动取正文开头"></label></div>
+    <div class="czsec"><div class="czh">正文 · <span class="n9">空一行 = 分一段。只管写字，排版官网自己来</span></div>
+      <textarea id="cz_text" oninput="czKeep()" placeholder="像发微信一样写就行">${esc(cz.text||'')}</textarea></div>
+    <div class="czsec"><div class="czh">照片集 · <span class="n9">两张起官网自动轮播；读者不用登录就看得到</span></div>
+      <div class="czimgs">${cz.imgs.map((u,i)=>`<div class="ci"><img src="${esc(u)}" alt="" loading="lazy">
+        <button class="x" onclick="czImgDel(${i})" title="移出（图还留在图库）">✕</button></div>`).join('')}
+        ${up?`<div class="ci up">上传中 ${up.done}/${up.total}…</div>`:''}</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <button class="btn sm" onclick="czImgAdd()">${ico('image')}上传照片（可多选）</button>
+        <button class="btn ghost sm" onclick="czLibOpen()">从图库选</button></div></div>
+    <div class="czsec"><div class="czh">视频 · <span class="n9">贴 YouTube 链接，官网自动变成播放器</span></div>
+      ${cz.vids.map((v,i)=>`<div class="czvid"><input value="${esc(v)}" placeholder="https://youtu.be/…"
+        oninput="czVidSet(${i},this.value)"><button class="x" onclick="czVidDel(${i})" title="去掉这条">✕</button></div>`).join('')}
+      <button class="btn ghost sm" onclick="czVidAdd()">＋ 再加一个视频</button></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn" style="flex:1;min-width:120px" onclick="postSave(true)">
+        ${p.published?'更新并保持发布':'发布到官网'}</button>
+      <button class="btn ghost sm" onclick="pePreview()">预览官网效果</button>
+      <button class="btn ghost sm" onclick="postSave(false)">${p.published?'下架为草稿':'存草稿'}</button>
+      ${p.id?`<span class="lnkdel" onclick="postDel()">删除</span>`:''}</div>
+    <p class="note9">三段都可以留空 —— 只发照片集、只发一段话都行。拿不准就点「预览官网效果」，
+      那就是读者看到的样子。</p>
+  </div>`;
+}
+/* 输入即回写状态 —— 这个 app 会因云同步等原因整页重画，状态不新鲜就等于把主办打的字画掉。
+   textarea/输入框自己不触发重画（打字中重画会吃掉光标和中文输入法的组字）。 */
+function czKeep(){const p=S.postEdit,el=$('cz_text');if(p&&p.cz&&el)p.cz.text=el.value;}
+function czMeta(k,v){const p=S.postEdit;if(p)p[k]=v;}
+function czVidSet(i,v){const p=S.postEdit;if(p&&p.cz&&p.cz.vids[i]!=null)p.cz.vids[i]=v;}
+function czVidAdd(){const p=S.postEdit;if(p&&p.cz){p.cz.vids.push('');render();}}
+function czVidDel(i){const p=S.postEdit;if(p&&p.cz){p.cz.vids.splice(i,1);render();}}
+function czImgDel(i){const p=S.postEdit;if(p&&p.cz){p.cz.imgs.splice(i,1);render();
+  toast('已移出照片集（图还留在图库，「从图库选」找得回）');}}
+/* cz → body_html。全程 createElement + textContent，不拼字符串 —— 序列化自己先不带毒，
+   存库前 ymSanitize.html 再过一遍（两侧规矩不变）。 */
+function czHtml(cz){
+  const root=document.createElement('div');
+  String(cz.text||'').replace(/\r/g,'').split(/\n{2,}/).forEach(seg=>{
+    if(!seg.trim())return;
+    const pe=document.createElement('p');
+    seg.replace(/\s+$/,'').split('\n').forEach((ln,i)=>{
+      if(i)pe.appendChild(document.createElement('br'));
+      pe.appendChild(document.createTextNode(ln));});
+    root.appendChild(pe);});
+  const imgs=(cz.imgs||[]).filter(Boolean);
+  if(imgs.length){
+    const f=document.createElement('figure');
+    imgs.forEach(u=>{const im=document.createElement('img');im.setAttribute('src',u);f.appendChild(im);});
+    root.appendChild(f);}
+  (cz.vids||[]).map(v=>String(v||'').trim()).filter(Boolean).forEach(u=>{
+    const safe=window.ymSanitize?window.ymSanitize.safeUrl(u,false):'';
+    if(!safe)return;
+    const pe=document.createElement('p'),a=document.createElement('a');
+    a.setAttribute('href',safe);a.textContent=safe;pe.appendChild(a);root.appendChild(pe);});
+  return root.innerHTML;
+}
+/* body_html → cz，认不出 composer 形状就回 null（调用方落回旧富文本编辑器）。
+   形状 = 文字段（只有 text/br）→ 至多一个纯图 figure → 纯链接行；乱序/富标记/图文混排都拒。 */
+function czParse(html){
+  if(!window.ymSanitize)return null;
+  const box=document.createElement('div');window.ymSanitize.into(box,html||'');
+  if([...box.childNodes].some(n=>n.nodeType===3&&n.nodeValue.trim()))return null;
+  const cz={text:'',imgs:[],vids:[]},paras=[];let phase=0;   // 0 文字 → 1 照片集 → 2 视频
+  for(const n of [...box.children]){
+    if(n.nodeName==='FIGURE'){
+      if(phase>=1)return null;
+      const kids=[...n.children];
+      if(!kids.length||kids.some(k=>k.nodeName!=='IMG'))return null;
+      cz.imgs=kids.map(k=>k.getAttribute('src')||'').filter(Boolean);
+      phase=1;continue;}
+    if(n.nodeName!=='P')return null;
+    const kids=[...n.children];
+    if(kids.length===1&&kids[0].nodeName==='A'&&
+       n.textContent.trim()===kids[0].textContent.trim()){
+      cz.vids.push(kids[0].getAttribute('href')||'');phase=2;continue;}
+    if(kids.some(k=>k.nodeName!=='BR'))return null;
+    if(phase)return null;
+    let t='';n.childNodes.forEach(k=>{
+      if(k.nodeType===3)t+=k.nodeValue;
+      else if(k.nodeName==='BR')t+='\n';});
+    paras.push(t);
+  }
+  cz.text=paras.join('\n\n');
+  return cz;
+}
+function czImgAdd(){
+  if(!canCloud()){toast('登录并通过批准后才能上传图片');return;}
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';inp.multiple=true;
+  inp.onchange=()=>czImgFiles(inp.files);
+  inp.click();
+}
+/* 逐张：压 1600px → 传公共桶 → URL 进照片集。整批 upMark 挡住 cloudRefresh（和附件同一条
+   皮带）；打字中不重画（吃光标/打断输入法），状态照写，下一次重画自然带出来。 */
+async function czImgFiles(fs){
+  const list=[...(fs||[])].filter(f=>/^image\//.test(f.type||''));
+  if(!list.length){toast('没有可用的图片');return;}
+  const p=S.postEdit;if(!p||!p.cz)return;
+  const paint=()=>{const a=document.activeElement;
+    if(!a||!/^(INPUT|TEXTAREA)$/.test(a.tagName))render();};
+  p._up={done:0,total:list.length};upMark(1);paint();
+  try{
+    for(const f of list){
+      const b64=await new Promise(r=>shrink(f,r));
+      if(!b64){toast('「'+(f.name||'照片')+'」打不开（格式不支持？），跳过');}
+      else{
+        const up=await postImgUpload(b64);
+        if(up&&up.url){
+          if(S.postEdit===p)p.cz.imgs.push(up.url);
+          else{toast('编辑器已关闭 —— 传上去的图在「从图库选」里等你');break;}
+        }else toast(up&&up.msg?up.msg:'上传失败，这张先跳过');
+      }
+      if(S.postEdit!==p)break;
+      p._up.done++;paint();
+    }
+  }finally{upMark(-1);if(S.postEdit===p){p._up=null;paint();}}
+}
+/* 图库 = 公共桶里自己传过的全部图（服务端只列 post/<uid>/）。点选 → 加进照片集。 */
+let _czLib=null;
+async function czLibOpen(){
+  if(!canCloud()){toast('登录后才能用图库');return;}
+  czLibClose();
+  const w=document.createElement('div');w.id='czlibwrap';
+  w.innerHTML=`<div class="drawerbg" onclick="czLibClose()"></div>
+    <div class="exdlg jobdlg askdlg">
+      <div class="hd"><span class="tp">${ico('image')}图库 —— 传过的图都在这里</span>
+        <button class="btn ghost sm" onclick="czLibClose()">✕</button></div>
+      <div id="czlib_body"><div class="note9">读取中…</div></div>
+      <div class="df"><button class="btn" style="flex:1" onclick="czLibAdd()">把选中的加进照片集</button></div>
+    </div>`;
+  document.body.appendChild(w);_czLib=[];
+  try{
+    const r=await upFetch(API+'/api/ym_post_img',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({user_token:(await liveToken())||undefined,action:'list_media'})});
+    const bd=$('czlib_body');if(!bd)return;
+    if(!r.ok){bd.innerHTML=`<div class="note9">图库读取失败（HTTP ${r.status}）${r.status===503?' —— 图床还没接线':''}</div>`;return;}
+    const j=await r.json();
+    if(!j||!j.ok){bd.innerHTML=`<div class="note9">图库回包不对</div>`;return;}
+    if(!j.files||!j.files.length){bd.innerHTML=`<div class="note9">还没有传过图 —— 用「上传照片」传第一张，以后这里就找得到</div>`;return;}
+    _czLib=j.files.map(f=>({url:String(f.url||''),on:false})).filter(f=>f.url);
+    bd.innerHTML=`<div class="czlib">${_czLib.map((f,i)=>
+      `<div class="ci" onclick="czLibTog(${i},this)"><img src="${esc(f.url)}" alt="" loading="lazy"></div>`).join('')}</div>`;
+  }catch(e){const bd=$('czlib_body');if(bd)bd.innerHTML=`<div class="note9">网络不通，图库打不开</div>`;}
+}
+function czLibTog(i,el){if(_czLib&&_czLib[i]){_czLib[i].on=!_czLib[i].on;el.classList.toggle('on',_czLib[i].on);}}
+function czLibAdd(){
+  const p=S.postEdit;if(!p||!p.cz||!_czLib){czLibClose();return;}
+  const pick=_czLib.filter(f=>f.on).map(f=>f.url);
+  if(!pick.length){toast('先点选几张（出 ✓ 的算选中）');return;}
+  pick.forEach(u=>{if(p.cz.imgs.indexOf(u)<0)p.cz.imgs.push(u);});
+  czLibClose();render();toast('已加进照片集 '+pick.length+' 张');
+}
+function czLibClose(){const w=$('czlibwrap');if(w)w.remove();_czLib=null;}
 function peFocusBody(){const el=$('po_body');if(el)el.focus();}
 function peCmd(cmd,arg){peFocusBody();try{document.execCommand(cmd,false,arg||null);}catch(e){}}
 function peLink(){
@@ -6567,13 +6812,122 @@ function peLink(){
       if(!safe){toast('只支持 https:// 或 mailto: 链接');return;}
       peRestore(saved);try{document.execCommand('createLink',false,safe);}catch(e){}}});
 }
+/* 图片：主路是**从设备上传**（第一篇真文章就栽在这里 —— 主办手机里的照片没有 https 地址，
+   而旧对话框只收地址；粘贴进来的 data:/blob: 图又被净化器剥掉，于是文章里只剩一个整屏的空洞，
+   owner 2026-08-07 报「Photos uploaded did not displayed」）。贴地址留作旁路。
+   字节去 /api/ym_post_img → Supabase 公共桶 —— **不是** Drive：网盘那棵树有意不公开
+   （来宾正脸，owner 裁决），而文章配图的用途就是公开。两种照片信任边界相反，别合流。 */
+let _peSaved=null;
 function peImg(){
-  const sel=window.getSelection(),saved=sel&&sel.rangeCount?sel.getRangeAt(0).cloneRange():null;
-  ask({title:ico('image')+'加图片',note:'相册图片随 Drive 通道上线',
+  const sel=window.getSelection();
+  _peSaved=sel&&sel.rangeCount?sel.getRangeAt(0).cloneRange():null;
+  const w=document.createElement('div');w.id='peimgwrap';
+  w.innerHTML=`<div class="drawerbg" onclick="peImgClose()"></div>
+    <div class="exdlg jobdlg askdlg">
+      <div class="hd"><span class="tp">${ico('image')}加图片</span>
+        <button class="btn ghost sm" onclick="peImgClose()">✕</button></div>
+      <div class="sub" style="margin:0 0 8px">照片自动压到 1600px 再传官网图床，读者不用登录就看得到。</div>
+      <div class="df" style="flex-direction:column;gap:7px">
+        <button class="btn" onclick="peImgPick()">${ico('image')}选照片上传（可多选）</button>
+        <button class="btn ghost sm" onclick="peImgUrl()">粘贴图片地址（https://…）</button>
+      </div>
+    </div>`;
+  document.body.appendChild(w);
+}
+function peImgClose(){const w=$('peimgwrap');if(w)w.remove();}
+function peImgPick(){
+  if(!canCloud()){toast('登录并通过批准后才能上传图片');return;}
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';inp.multiple=true;
+  inp.onchange=()=>{peImgClose();peInsertFiles(inp.files);};
+  inp.click();
+}
+function peImgUrl(){
+  peImgClose();
+  ask({title:ico('image')+'加图片',note:'只接受 https:// 图片地址',
     fields:[{label:'图片地址',ph:'https://…'}],ok:'插入',fn:v=>{
       const safe=window.ymSanitize?window.ymSanitize.safeUrl(v[0],true):'';
       if(!safe){toast('图片只支持 https:// 地址');return;}
+      const saved=_peSaved;_peSaved=null;
       peRestore(saved);try{document.execCommand('insertImage',false,safe);}catch(e){}}});
+}
+/* 占位符钉住插入点：上传是异步的，回来时光标早就不在了。上传中挡住 cloudRefresh（upMark ——
+   和附件/媒体库同一条皮带），否则一次后台重画会把占位符变成孤儿，图就丢了。 */
+async function peInsertFiles(fs){
+  const list=[...(fs||[])].filter(f=>/^image\//.test(f.type||''));
+  if(!list.length){toast('没有可用的图片');return;}
+  peRestore(_peSaved);_peSaved=null;
+  upMark(1);
+  try{
+    let okN=0;
+    for(const f of list){
+      const ph=document.createElement('span');ph.className='upl';
+      ph.setAttribute('contenteditable','false');ph.textContent='照片上传中…';
+      peDropIn(ph);
+      const b64=await new Promise(r=>shrink(f,r));
+      if(!b64){ph.remove();toast('「'+(f.name||'照片')+'」打不开（格式不支持？），跳过');continue;}
+      const up=await postImgUpload(b64);
+      const holder=$('po_body');
+      if(!holder||!holder.contains(ph)){        // 编辑器已被重画/关闭 —— 别把图塞进虚空
+        if(up&&up.url)toast('编辑器被刷新了，这张没插上 —— 请再点一次「图片」');
+        continue;}
+      if(!up||!up.url){ph.remove();toast(up&&up.msg?up.msg:'上传失败，这张先跳过');continue;}
+      const img=document.createElement('img');img.src=up.url;img.alt=f.name||'';
+      ph.replaceWith(img);okN++;
+    }
+    if(okN)toast('已插入 '+okN+' 张 — 保存/发布后官网可见');
+  }finally{upMark(-1);}
+}
+function peDropIn(node){
+  peFocusBody();
+  const sel=window.getSelection(),body=$('po_body');
+  if(sel&&sel.rangeCount&&body&&body.contains(sel.getRangeAt(0).startContainer)){
+    const r=sel.getRangeAt(0);r.collapse(false);r.insertNode(node);
+    r.setStartAfter(node);r.collapse(true);sel.removeAllRanges();sel.addRange(r);
+  }else if(body)body.appendChild(node);
+}
+/* 成功 → {url}；失败 → {msg}。msg 是给 toast 的整句人话 —— owner 只能把 toast 原话发回来，
+   那句话必须自己携带诊断（08-02 的教训，和 attachUpload 同一条）。 */
+async function postImgUpload(b64){
+  try{
+    const r=await upFetch(API+'/api/ym_post_img',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({user_token:(await liveToken())||undefined,
+        mime_type:'image/jpeg',content_base64:b64})});
+    if(r.status===503)return {msg:'官网图床还没接线（服务端未配置）'};
+    if(r.status===401||r.status===403)return {msg:'请用已批准的主办账号登录后再传'};
+    if(!r.ok){let d='';try{d=JSON.stringify(await r.json());}catch(e3){}
+      console.warn('ym_post_img HTTP '+r.status,d);return {msg:'图片上传失败（HTTP '+r.status+'）'};}
+    const j=await r.json();
+    if(j&&j.ok&&j.url)return {url:String(j.url)};
+    console.warn('ym_post_img bad payload',j);return {msg:'图片上传回包不对'};
+  }catch(e2){console.warn('ym_post_img network',e2);return {msg:'网络不通，这张没传上去'};}
+}
+/* 预览 = 把「官网 open() 那条渲染路」原样走一遍（净化 → enhance），套官网的浅色纸面。
+   治的是 issue①「不知道排出来长什么样」：编辑器是深色后台，读者看的是浅色官网，
+   两边字号行距都不同 —— 主办没法在头脑里换算，就给他看真的。 */
+function pePreview(){
+  if(!window.ymSanitize){toast('净化组件未加载，刷新页面再试');return;}
+  pvClose();
+  const bg=document.createElement('div');bg.className='pvbg';bg.onclick=pvClose;
+  const rd=document.createElement('div');rd.className='pv';
+  const inner=document.createElement('div');inner.className='inner';
+  const x=document.createElement('button');x.className='x';x.textContent='✕';x.onclick=pvClose;
+  const h=document.createElement('h1');h.textContent=($('po_title').value||'').trim()||'（无标题）';
+  const m=document.createElement('div');m.className='m';
+  m.textContent=($('po_date').value||'')+(S.postEdit&&S.postEdit.kind==='news'?' · 新闻':' · 文章');
+  const body=document.createElement('div');body.className='body';
+  // composer（积木）从状态序列化；旧富文本从 contenteditable 取 —— 两种来源，同一条渲染路
+  const pz=S.postEdit;if(pz&&pz.cz)czKeep();
+  window.ymSanitize.into(body,pz&&pz.cz?czHtml(pz.cz):$('po_body').innerHTML);
+  if(window.ymEnhance)window.ymEnhance.apply(body);
+  inner.appendChild(x);inner.appendChild(h);inner.appendChild(m);inner.appendChild(body);
+  rd.appendChild(inner);document.body.appendChild(bg);document.body.appendChild(rd);
+  document.body.style.overflow='hidden';
+}
+function pvClose(){
+  ['.pvbg','.pv'].forEach(s=>{const n=document.querySelector(s);if(n)n.remove();});
+  document.body.style.overflow='';
 }
 // the dialog steals the caret; put it back where the host left it before execCommand runs
 function peRestore(r){peFocusBody();if(!r)return;
@@ -6582,6 +6936,11 @@ function pePaste(e){
   e.preventDefault();
   const cd=e.clipboardData||window.clipboardData;if(!cd)return;
   const html=cd.getData('text/html'),txt=cd.getData('text/plain')||'';
+  /* 截图/单张图片直接 ⌘V：剪贴板里只有文件、没有 HTML —— 以前这条路什么都不发生
+     （图一声不响地消失，issue② 的另一半）。走上传，落点就是当前光标。
+     带 HTML 的富文本粘贴不进这支：文字优先，图用「图片」按钮补。 */
+  const imgs=cd.files?[...cd.files].filter(f=>/^image\//.test(f.type||'')):[];
+  if(imgs.length&&!html){_peSaved=null;peInsertFiles(imgs);return;}
   if(html&&window.ymSanitize){
     const frag=window.ymSanitize.frag(html);
     const sel=window.getSelection();
@@ -6599,10 +6958,25 @@ function postSave(publish){
   if(!title){toast('标题不能为空');return;}
   // never save with the sanitizer missing — that would silently blank a published article
   if(!window.ymSanitize){toast('净化组件未加载，请刷新页面后再保存');return;}
-  const body=window.ymSanitize.html($('po_body').innerHTML);
+  let body;
+  if(p.cz){
+    if(p._up){toast('还有照片在上传，传完再保存');return;}
+    czKeep();
+    const bad=p.cz.vids.map(v=>String(v||'').trim())
+      .filter(v=>v&&!(window.ymEnhance&&window.ymEnhance.videoId(v))).length;
+    if(bad)toast('有 '+bad+' 条视频不是 YouTube 链接 —— 官网上会显示为普通链接');
+    body=window.ymSanitize.html(czHtml(p.cz));
+  }else{
+    // 占位符是 span，净化会把它拆成一句裸文字存进正文 —— 等图上完再存
+    if($('po_body').querySelector('.upl')){toast('还有照片在上传，等它显示出来再保存');return;}
+    body=window.ymSanitize.html($('po_body').innerHTML);
+  }
   const row={author:SESSION.user.id,kind:p.kind,title,
     summary:($('po_summary').value||'').trim(),body_html:body,
     post_date:($('po_date').value||null),published:!!publish};
+  // 摘要留空 = 自动取正文开头（少一件要想的事；官网卡片不至于光秃秃）
+  if(p.cz&&!row.summary&&p.cz.text.trim())
+    row.summary=p.cz.text.trim().replace(/\s+/g,' ').slice(0,60);
   if(p.id)row.id=p.id;
   sb.from('ym_post').upsert(row).select().then(({data,error})=>{
     if(error){toast('保存失败：'+error.message);return;}

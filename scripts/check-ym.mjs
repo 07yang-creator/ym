@@ -2137,11 +2137,11 @@ const pyBody = (code, sig) => {
   // owner 同日二次点名：左右两个导航要**同一款按钮**（dc-go），文字链不算 —— 所以 ← 也是
   // 药丸，且覆盖全部页头（3 个阶段页 + 报名/总账/发布编辑）。.bk 文字链只留给行内小动作
   // （回登录/婉拒那类）。规矩 9：数量/缺席断言跑在剥完注释的文本上。
-  check(s, '页头导航全是 dc-go 药丸：6 个 ←（阶段页×3 + 报名/总账/发布）+ 3 颗「计划」，无文字链残留',
+  check(s, '页头导航全是 dc-go 药丸：7 个 ←（阶段页×3 + 报名/总账 + 发布新旧两台）+ 3 颗「计划」，无文字链残留',
     (() => { const c = stripComments(s);
       const backs=(c.match(/class="dc-go" onclick="(?:go\('desk'\)|postClose\(\))">← /g)||[]).length;
       const pills=(c.match(/class="dc-go"[^>]*onclick="go\('sheet'\)">计划</g)||[]).length;
-      return backs===6 && pills===3
+      return backs===7 && pills===3
         && !/class="bk"[^>]*>← (?:列表|工作台|发布列表)/.test(c)
         && !/← 计划/.test(c);
     })());
@@ -2215,8 +2215,8 @@ const pyBody = (code, sig) => {
     /function busyNow\(\)\{return _upBusy>0;\}/.test(s)
     && /_upBusy=Math\.max\(0,_upBusy\+d\)/.test(s)
     && /upMark\(1\);return Promise\.resolve\(\)\.then\(fn\)\.finally\(\(\)=>upMark\(-1\)\)/.test(s)
-    && count(stripComments(s), /upMark\(1\)/g) === 3        // upSerial + mediaAdd + attachTo
-    && count(stripComments(s), /upMark\(-1\)/g) === 3);     // 每一处都有配对的解除
+    && count(stripComments(s), /upMark\(1\)/g) === 5        // upSerial + mediaAdd + attachTo + peInsertFiles + czImgFiles
+    && count(stripComments(s), /upMark\(-1\)/g) === 5);     // 每一处都有配对的解除
   check(s, '活同步只合并 events，不碰 library（mergeLibrary 的种子陷阱不高频跑）',
     (() => { const c = stripComments(s); const a = c.indexOf('async function cloudRefresh');
       const seg = c.slice(a, c.indexOf('function docPullStart'));
@@ -4624,6 +4624,95 @@ const pyBody = (code, sig) => {
   console.log('ym/.vercelignore');
   check(v, 'plan/design/archive + docs excluded from the subdomain deploy',
     v.includes('design/') && v.includes('archive/') && v.includes('*.md'));
+}
+
+// ---------- 发布正文：配图 / 视频 / 预览（2026-08-07，第一篇真文章暴露的三个洞）----------
+{
+  /* owner 报的三件事：①主办不知道怎么排版 ②传的照片不显示 ③视频只是一条链接。
+     ②的根：图片按钮只收 https 地址，粘贴的 data:/blob: 图被净化器（正确地）剥掉 ——
+     修法不是放宽净化器，是给一条真的上传路。③的根：净化器（正确地）杀 iframe ——
+     修法不是放行 iframe，是渲染侧用**验证过的 11 位 id** 自己造播放器。 */
+  const en = read('ym/enhance.js');
+  console.log('ym — 发布正文：配图上传 / 视频播放器 / 预览 (2026-08-07)');
+  check(en, 'enhance 只造 youtube-nocookie 播放器，id 先过 11 位白名单',
+    en.includes("'https://www.youtube-nocookie.com/embed/' + id") &&
+    /\^\[A-Za-z0-9_-\]\{11\}\$/.test(en) && en.includes('ID_RE.test(id)'));
+  check(en, 'host 整串比较（youtu.be / youtube.com），不是 substring 匹配',
+    en.includes("host === 'youtu.be'") && en.includes("host === 'www.youtube.com'") &&
+    !/hostname.*(indexOf|includes)\(/.test(stripComments(en)));
+  check(en, '连片空段落收拢：首尾全去、中间一段留一个（照片被剥后的整屏空洞）',
+    en.includes('function collapseEmpties') && en.includes('function isEmptyBlock'));
+  check(en, '播放器有数量上限，同一视频不重复嵌',
+    /MAX_EMBEDS\s*=\s*4/.test(en) && /seen\[id\]/.test(en));
+
+  const land = read('ym/index.html');
+  check(land, '官网阅读器：净化之后才 enhance，缺了 enhance 只影响观感不破安全',
+    /ymSanitize\.into\(body[\s\S]{0,400}ymEnhance\.apply\(body\)/.test(land) &&
+    land.includes('<script src="enhance.js"></script>'));
+  check(land, '阅读器带播放器样式（16:9 responsive）',
+    land.includes('.rd .body .ytv{') && land.includes('padding-top:56.25%'));
+
+  const org = read('ym/organizer/index.html');
+  check(org, '编辑器图片主路 = 从设备上传到 /api/ym_post_img（不再只收 https 地址）',
+    org.includes("API+'/api/ym_post_img'") && org.includes('function peInsertFiles') &&
+    org.includes('function peImgPick'));
+  check(org, '截图直接粘贴也走上传（剪贴板只有文件、没有 HTML 的那条路）',
+    /cd\.files[\s\S]{0,200}peInsertFiles\(imgs\)/.test(stripComments(org)));
+  check(org, '上传占位符挡保存 —— 半传的文章不落库',
+    /querySelector\('\.upl'\)[\s\S]{0,120}toast/.test(org));
+  check(org, '预览 = 官网同一条渲染路（净化 → enhance），套官网浅色纸面',
+    /function pePreview[\s\S]{0,900}ymSanitize\.into\(body[\s\S]{0,200}ymEnhance\.apply\(body\)/
+      .test(stripComments(org)) &&
+    org.includes('<script src="../enhance.js"></script>') && org.includes('.pv .inner{'));
+
+  const api = read('api/ym_post_img.py');
+  check(api, '图床端点只放行主办/管理员 —— 没有持码成员那一档（不查 ym_code）',
+    api.includes('ym_member?select=user_id&status=eq.approved') &&
+    api.includes('profile?select=user_id&is_admin=is.true') &&
+    !stripComments(api).includes('ym_code'));
+  check(api, 'mime 白名单无 svg + 魔数嗅探，两个都过才收',
+    api.includes('def sniff_ok') && !/["']image\/svg/.test(api) &&
+    api.includes('image/jpeg') && api.includes('xff\\xd8\\xff'.replace('xff\\xd8\\xff','\\xff\\xd8\\xff')));
+  check(api, '公共桶 ym-public：public=True 是这条路的全部意义；对象键零调用方输入',
+    /"public": True/.test(api) && api.includes('secrets.token_hex(8)') &&
+    /path = "post\/" \+ uid \+ "\/"/.test(api));
+  check(api, 'CORS 名单和 ym_file 逐字一致（同一批页面）',
+    api.includes('https://ym.jjconnect.tokyo') && api.includes('http://localhost:8772'));
+  check(api, '体积闸与 ym_file 同档（MAX_B64），read 之前先挡 content-length',
+    /MAX_B64 = 6000000/.test(api) && /n > MAX_B64 \+ 65536/.test(api));
+
+  const vj = read('vercel.json');
+  check(vj, '新端点在 vercel.json functions 里有名字（部署了才存在）',
+    vj.includes('api/ym_post_img.py'));
+
+  /* ---- composer v1（owner 08-07 定案 B：正文 / 照片集自动轮播 / 视频框）---- */
+  check(en, '照片集：figure≥2 张图 → 轮播；单张原样留（结构就是标记，class 活不过净化）',
+    en.includes('function buildGallery') && /length >= 2\) buildGallery/.test(en)
+    && en.includes("className = 'gal'"));
+  check(en, '轮播计时器在节点离开文档后自杀（阅读器关 overlay 不会来通知）',
+    /if \(!gal\.isConnected\) \{ clearInterval\(timer\); return; \}/.test(en));
+  check(land, '官网阅读器带照片集轮播样式', land.includes('.rd .body .gal-track{') &&
+    land.includes('.rd .body .gal-dot.on{'));
+  check(org, '预览也带照片集轮播样式（预览 = 官网同一条渲染路）',
+    org.includes('.pv .body .gal-track{'));
+  check(org, 'composer 三段编辑器在：正文 textarea / 照片集 / 视频框（可加多条）',
+    org.includes('function czEditor') && org.includes('id="cz_text"')
+    && org.includes('function czVidAdd') && org.includes('function czImgAdd'));
+  check(org, '序列化=DOM 构建（不拼字符串）且存前再净化一遍；解析不回 composer 形状就落旧编辑器',
+    org.includes('function czHtml') && /ymSanitize\.html\(czHtml\(p\.cz\)\)/.test(org)
+    && org.includes('function czParse') && /const cz=czParse\(p\.body_html\);/.test(org)
+    && org.includes('function postEditor'));
+  check(org, '新贴一律 composer（postNew 播 cz 种子）；上传中挡保存；摘要留空自动取正文开头',
+    /S\.postEdit=\{kind,id:null[^}]*cz:\{text:'',imgs:\[\],vids:\[''\]\}\}/.test(stripComments(org))
+    && /if\(p\._up\)\{toast\('还有照片在上传/.test(org)
+    && /row\.summary=p\.cz\.text\.trim\(\)/.test(org));
+  check(org, '图库走 list_media，选图只在浏览器端点选（服务端不认路径参数）',
+    org.includes("action:'list_media'") && org.includes('function czLibTog'));
+  check(api, 'list_media 只列 post/<uid>/ 自己那一格，前缀来自令牌不来自调用方',
+    /"prefix": "post\/" \+ uid \+ "\/"/.test(api)
+    && api.includes('ACTIONS = ("upload_media", "list_media")'));
+  check(api, '体积闸按动作生效：只有 upload_media 收正文，别的动作夹带正文一律拒',
+    /elif data:\n            return self\._send\(400/.test(api));
 }
 
 console.log('');

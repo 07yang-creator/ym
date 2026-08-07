@@ -1,3 +1,47 @@
+# ym 交接 — 2026-08-07 晚（发布通道 v2：积木三段 + 官网图床 + 轮播/播放器）
+
+第一篇真文章暴露三件事（owner 报）：①主办不知道怎么排版 ②传的照片不显示 ③视频只是一条链接。
+owner 定案走「积木三段」（方案 B 收窄版）：**正文 textarea（空行=分段）· 照片集（两张起自动轮播）·
+视频框（可加多条 YouTube 链接）**。主办不做任何排版决定 —— 排版从此是官网渲染侧的事。
+
+## 各层（三层一起看，别只看一层）
+
+- **图床 `/api/ym_post_img`（住 JJcashflow 仓，同 ym_file 一批 env，owner 零配置）**：
+  已批准主办/管理员 → Supabase Storage **公共桶 `ym-public`**（首传自动建桶；mime 白名单无 svg
+  + 魔数嗅探两道都过才收；对象键 post/<uid>/<随机>，零调用方输入）。
+  ⚠ 它和 Drive 网盘是**方向相反的两条路**：网盘有意不公开（真人来宾正脸，owner 08-05 裁决），
+  文章配图的用途就是公开 —— **永远别合流**。`list_media` 只列自己的 post/<uid>/（图库用）。
+- **`enhance.js`（新文件，读渲染侧，官网 + 编辑器预览共用）**：在**净化之后**的树上做三件事
+  ① YouTube 链接 → youtube-nocookie 播放器（11 位 id 白名单，iframe 由本文件 createElement —
+  净化器照旧杀存储里的一切 iframe）② 连片空段收拢（治第一篇文章那个整屏空洞，老贴渲染时自愈）
+  ③ **figure≥2 img → 自动轮播**。轮播的存储形态就是素 `<figure><img>*</figure>` ——
+  sanitize 剥 class 留结构，**结构是唯一活得过净化的标记**；没有 enhance 的读者看到的是
+  诚实的一列图。计时器在节点离开文档后 isConnected 自杀（阅读器关 overlay 不会来通知）。
+- **composer（organizer 发布 tab，cz* 函数族）**：新贴一律积木（postNew 播 cz 种子）；
+  打开老贴先 `czParse(body_html)`，认不出 composer 形状（富标记/图文混排/乱序）就落回**旧富文本
+  编辑器** —— 老贴不许被静默降级成纯文本。序列化 `czHtml` 全程 DOM 构建不拼字符串，
+  存库前 `ymSanitize.html` 再过一遍（两侧规矩没变）。摘要留空自动取正文开头 60 字。
+  上传中（`_up`）挡保存；输入即回写状态（整页重画不吃字）；打字中不重画（光标 + 中文输入法组字）。
+  图库 = `czLib*`（列表来自 list_media，点选出 ✓，去重后加进照片集）。
+- **预览 = 官网同一条渲染路**（净化 → enhance），浅色纸面色值写死成官网的（改官网 .rd 样式要跟着对）。
+
+## 验证（真跑，不是读代码）
+
+套件 +26 pin 全绿（两个既有计数 pin 跟着新形状走：dc-go ← 6→7、upMark 对 4→5…最终 5 对）。
+jsdom harness（session scratchpad，未入仓）22 条打**真文件**：轮播结构/点点/单张不穿衣、
+播放器/空段收拢、双重 apply 不翻倍。浏览器在 fetch 边界下桩真跑：czHtml↔czParse 无损往返、
+富文本判旧、czImgFiles 真传两张、图库点选去重、标题/上传中两道保存闸。
+**踩过一个真雷留档**：collapseEmpties 内层 drop() 借用外层循环变量 i → 连片空段**同步死循环**
+（把浏览器标签页整个卡死，症状像「面板挂了」）—— jsdom 复验当场抓到，修法 var j，套件有 pin。
+
+## 没做（下一班按需，都不挡今天的路）
+
+- 图库里**删除**图（孤儿图公开但无害，Supabase dashboard 可手删）；照片集内**排序**（现=加入顺序）
+- 非 YouTube 平台的播放器（B 站等）：存的是链接，官网显示为普通链接，存草稿时 toast 有提醒
+- 回顾模板 / ✨AI 起稿（/api/phrase 现成，接上是小半天）；member 页不渲染 post，没动
+
+---
+
 # ym 交接 — 2026-08-03（co-admin + 活动负责人/协办 第一阶段）
 
 owner 两条：**① ljzhujudy@gmail.com 升 co-admin；② 每场活动要有 owner** —— admin 建活动、
