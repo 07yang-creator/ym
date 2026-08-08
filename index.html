@@ -288,6 +288,22 @@
   var SB='https://ugkopxmeqsbtjeimultz.supabase.co',
       KEY='sb_publishable_IRGVl9uD8uvqJrEPn1r0ZA_14praaii';
   var POSTS=[];
+
+  /* 访问打点（owner 08-07：管理员想在管理 tab 看到每天多少人来）。一台设备一天记一次
+     （localStorage 旗），fire-and-forget —— 失败无声，绝不拖页面。这是官网**唯一**的写：
+     ym_visit_bump 只 +1 一个数字，没有 IP、没有 UA、没有任何个人数据（0031；read-only
+     pin 点名放行的就是这一条）。旧旗顺手清掉，别在 localStorage 里长年堆日期。 */
+  try{
+    var vk='ymv-'+new Date().toISOString().slice(0,10);
+    if(!localStorage.getItem(vk)){
+      for(var vi=localStorage.length-1;vi>=0;vi--){var kk=localStorage.key(vi);
+        if(kk&&kk.indexOf('ymv-')===0&&kk!==vk)localStorage.removeItem(kk);}
+      localStorage.setItem(vk,'1');
+      fetch(SB+'/rest/v1/rpc/ym_visit_bump',{method:'POST',
+        headers:{apikey:KEY,Authorization:'Bearer '+KEY,'content-type':'application/json'},
+        body:JSON.stringify({p_page:'home'})}).catch(function(){});
+    }
+  }catch(e){}
   function esc(s){return String(s==null?'':s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function fmt(d){if(!d)return '';var x=new Date(d+'T00:00:00');

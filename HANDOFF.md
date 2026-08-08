@@ -1,3 +1,22 @@
+# ym 交接 — 2026-08-07 晚 V（官网访问计数 → 管理 tab）
+
+owner：想知道每天多少人来。自己数自己，不挂第三方统计：
+- **0031_ym_visit.sql（owner 待跑）**：ym_visit(day,page,n)（PK=天×页，行数天然有界）+
+  ym_visit_bump（security definer + pg_temp，页名白名单 5 值，**有意** grant 给 anon ——
+  打点者就是匿名访客；0028 的判据反着用：授权说得出给谁为什么）。读只给 is_admin()；
+  没有任何 insert/update 策略，RPC 是唯一的笔。自检真打一发（落 'other'）。
+- **官网**：一台设备一天 ping 一次（localStorage 旗 ymv-<日>，UTC 口径和服务端 current_date
+  同基准），fire-and-forget，失败无声；旧旗打点时清。**read-only pin 重写成「只读 + 一个
+  点名例外」**：唯一的 POST 必须是 ym_visit_bump —— 不点名的放宽等于没有闸。
+  没有 IP/UA/任何个人数据，body 只有 p_page:'home'。
+- **管理 tab**：顶部「官网访问」卡 —— 今天/近7天/近14天 + 14 天补零柱状（没人来的日子画底座，
+  不静默跳日）。ym_visit 容错读（0031 没跑 → 卡片点名迁移文件，不拖垮整屏 —— ym_trash 同款）。
+- 验证：jsdom 整页 +5 条（恰好一发/旗当日挡二发/旧旗清扫/静默失败不进渲染路）；套件 +6 pin。
+  管理卡的实机样子等 owner（admin 会话）跑完 0031 打开管理页看 —— PROFILE/ADMIN 是词法
+  let，页外桩不进去，这块只有真会话能亮。
+
+---
+
 # ym 交接 — 2026-08-07 晚 IV（海报墙换掉文字活动卡）
 
 owner 三条：①海报和文章/新闻同一套发布 ②可同时挂多张 ③后台开给主办+管理员。

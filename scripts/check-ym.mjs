@@ -1429,12 +1429,21 @@ const pyBody = (code, sig) => {
   check(s, 'no fabricated activity/stats on the public page', !/420\+|对成功牵手|促成3对牵手/.test(s));
   check(s, 'front-of-house is light (stock bg) with felt navbar — inverse of the app',
     s.includes('--stock:#F4EFE2') && /header\{[^}]*background:var\(--felt\)/.test(s));
-  // Y6: the landing now reads published posts. It must stay READ-ONLY and key-safe:
-  // publishable key only, no writes, no auth, no AI endpoints, no service key.
-  check(s, 'landing is read-only: anon GET of ym_post only — no writes/auth/AI/service key',
+  // Y6: the landing reads published posts. 0031 起有**一个点名的例外**：访问打点
+  // （ym_visit_bump，一天一台设备一次，只 +1 一个数字）。除它之外仍然零写入、
+  // 零 auth、零 AI、零 service key —— 例外必须点名，不点名的放宽等于没有闸。
+  check(s, 'landing 只读 + 一个点名例外：唯一的 POST 是 ym_visit_bump 打点',
     s.includes('sb_publishable_') && !s.includes('service_role') && !s.includes('SUPABASE_SERVICE')
-    && !s.includes('/api/') && !/method:\s*['"](POST|PUT|PATCH|DELETE)/i.test(s)
+    && !s.includes('/api/')
+    && count(stripComments(s), /method:\s*['"]POST/gi) === 1
+    && /rpc\/ym_visit_bump'[\s\S]{0,80}method:'POST'/.test(s)
+    && !/method:\s*['"](PUT|PATCH|DELETE)/i.test(s)
     && !s.includes('auth.signIn') && !s.includes('supabase-js'));
+  check(s, '打点一天一次、静默失败、不带任何个人数据（只有 p_page）',
+    s.includes("var vk='ymv-'+new Date().toISOString().slice(0,10)")
+    && /catch\(function\(\)\{\}\)/.test(s)
+    && s.includes("body:JSON.stringify({p_page:'home'})")
+    && !/navigator\.userAgent|screen\.|language/.test(stripComments(s)));
   check(s, 'fonts URL is well-formed', s.includes('family=Oswald:wght@400;600') && !s.includes('wghtght'));
   /* 组织介绍全文（owner 2026-08-07 原稿）：平时折叠，点击展开。<details> 无 open 属性 =
      默认折叠；两态文案都在（.more/.less），CSS 按 [open] 切换。改介绍文案时更新锚句即可。 */
@@ -4747,6 +4756,29 @@ const pyBody = (code, sig) => {
     org.includes("p.kind==='poster'&&!(p.cz.imgs||[]).filter(Boolean).length")
     && org.includes('0030_ym_poster.sql，再回来发布')
     && org.includes("isPoster=p.kind==='poster'"));
+}
+
+// ---------- 官网访问计数（owner 08-07：管理 tab 看每天多少人来）----------
+{
+  const mig = read('supabase/migrations/0031_ym_visit.sql');
+  console.log('ym — 官网访问计数 (0031)');
+  check(mig, '0031：一天×一页一行（PK day,page）；definer+pg_temp；页名白名单；anon 点名授权；自检真写',
+    mig.includes('primary key (day, page)')
+    && mig.includes('security definer set search_path = public, pg_temp')
+    && mig.includes("p_page in ('home','member','organizer','guide')")
+    && mig.includes('grant execute on function ym_visit_bump(text) to anon, authenticated')
+    && mig.includes("perform ym_visit_bump('selfcheck')"));
+  check(mig, '0031：读只给管理员，写只有 RPC 一条路（无 insert/update 策略）',
+    mig.includes('for select using (is_admin())')
+    && !/for (insert|update|all)/.test(mig));
+  const o = read('ym/organizer/index.html');
+  check(o, '管理 tab：容错读 ym_visit（0031 没跑不拖垮整屏，卡片点名迁移文件）',
+    o.includes("sb.from('ym_visit').select('day,page,n')")
+    && o.includes('visitsOff:!!(v&&v.error)')
+    && o.includes('0031_ym_visit.sql，跑完刷新本页'));
+  check(o, '管理 tab：14 天补零画柱 + 今天/7天/14天合计 + 「没有个人信息」的说明',
+    o.includes('const vdays=[...Array(14)]')
+    && o.includes('只有数字，没有任何个人信息'));
 }
 
 // ---------- 印章 logo（owner 2026-08-07：緣滿朱印换掉 ym 字标）----------

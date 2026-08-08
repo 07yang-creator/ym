@@ -7055,12 +7055,16 @@ function adminLoad(){
     sb.from('ym_code').select('code,role,paid,host,member,revoked,bound_at'),
     // 0029：被主办移除、等管理员恢复的成员记录。0029 没跑时这条会 error —— 容错读，
     // 别让整屏变空（0019 那次 42703 的教训：少一列不能拖垮整个管理页）
-    sb.from('ym_trash').select('host,item_id,label,code,deleted_at,restored_at')
-  ]).then(([p,c,k,t])=>{
+    sb.from('ym_trash').select('host,item_id,label,code,deleted_at,restored_at'),
+    // 0031：官网访问计数（近 14 天）。没跑迁移时这条 error —— 容错读，卡片自己说明去跑哪个文件
+    sb.from('ym_visit').select('day,page,n')
+      .gte('day',new Date(Date.now()-13*864e5).toISOString().slice(0,10)).order('day')
+  ]).then(([p,c,k,t,v])=>{
     if(p.error)toast('读取用户失败：'+p.error.message);
     if(c.error)toast('读取邀请码失败：'+c.error.message);
     ADMIN={people:p.data||[],codes:c.data||[],mcodes:k.error?[]:(k.data||[]),
-           trash:t&&!t.error?(t.data||[]):[],trashOff:!!(t&&t.error)};render();
+           trash:t&&!t.error?(t.data||[]):[],trashOff:!!(t&&t.error),
+           visits:v&&!v.error?(v.data||[]):[],visitsOff:!!(v&&v.error)};render();
   });
 }
 // 这个 uid 名下有哪些成员编码（＝TA 是别的主办的志愿者/嘉宾/捐赠者）
@@ -7103,7 +7107,28 @@ function viewAdmin(){
       <button class="btn ghost sm" onclick="adminCopyCode('${esc(c.code)}')">复制</button>
       ${c.uses_left>0?`<span class="lnkdel" onclick="adminRevokeCode('${esc(c.code)}')">作废</span>`:''}
     </span></div>`;
+  /* 官网访问（0031）：14 天**补零**画柱 —— 没人来的日子画底座，不让柱子静默跳日。
+     一台设备一天一次（官网侧 localStorage 旗），所以这更接近「每天来了几台设备」。 */
+  const vdays=[...Array(14)].map((_,i)=>new Date(Date.now()-(13-i)*864e5).toISOString().slice(0,10));
+  const vmap={};(ADMIN.visits||[]).forEach(x=>{vmap[x.day]=(vmap[x.day]||0)+(+x.n||0);});
+  const vmax=Math.max(1,...vdays.map(d=>vmap[d]||0));
+  const vT=vmap[vdays[13]]||0,
+        v7=vdays.slice(7).reduce((a,d)=>a+(vmap[d]||0),0),
+        v14=vdays.reduce((a,d)=>a+(vmap[d]||0),0);
+  const visHtml=ADMIN.visitsOff
+    ?`<div class="note9">访问计数还没接线 —— 请在 SQL editor 跑 0031_ym_visit.sql，跑完刷新本页。</div>`
+    :`<div style="display:flex;gap:16px;align-items:baseline;margin:1px 0 9px;font-size:13px">
+        <span>今天 <b class="num">${vT}</b></span>
+        <span>近7天 <b class="num">${v7}</b></span>
+        <span>近14天 <b class="num">${v14}</b></span></div>
+      <div style="display:flex;gap:3px;align-items:flex-end;height:44px">${
+        vdays.map(d=>{const n=vmap[d]||0;
+          return `<div title="${d.slice(5)} · ${n}" style="flex:1;background:${n?'var(--brass)':'var(--line)'};height:${Math.max(4,Math.round(n/vmax*44))}px;border-radius:2px 2px 0 0"></div>`;}).join('')
+      }</div>
+      <div class="note9" style="margin-top:6px">官网首页 · 一台设备一天记一次 · 只有数字，没有任何个人信息</div>`;
   return `<div class="main" style="max-width:680px;margin:0 auto">
+    <div class="sec">官网访问</div>
+    <div class="rvsec" style="padding:11px 13px">${visHtml}</div>
     <div class="sec">待批准 ${pend.length?`· ${pend.length}`:''}</div>
     <div class="rvsec">${pend.length?pend.map(pRow).join(''):'<div class="note9">没有待批准的注册。</div>'}</div>
     <div class="sec">邀请码 — 有码即时开通，无码等待批准</div>
