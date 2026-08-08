@@ -1306,7 +1306,7 @@ function setPubName(){
   ask({title:'你的公开名称',
     note:'申请人要「一字不差」地打出这个名字，申请才会落到你名下。所以用你平时对外报的那个名字'
       +'（写在海报、名片、群公告上的那个）。这个 app 不提供主办目录 —— 人必须本来就知道你。',
-    fields:[{label:'公开名称',val:pubName(),ph:'例如：缘满沙龙'}],ok:'保存',
+    fields:[{label:'公开名称',val:pubName(),ph:'例如：緣滿沙龍'}],ok:'保存',
     fn:async(v)=>{
       const n=(v[0]||'').trim().slice(0,60);
       /* ⚠ 不能再走裸 update。这一列是**路由键**：ym_member_upd_self 不限列、
@@ -1796,7 +1796,7 @@ function grantSend(){
   const g=_grant;if(!g||!g.invite)return;
   const p=STORE.library.resources.find(x=>x.id===g.pid);if(!p)return;
   const st=codeState(p);
-  share(['【缘满沙龙】'+p.name+' 你好，这是你的账号邀请：',
+  share(['【緣滿沙龍】'+p.name+' 你好，这是你的账号邀请：',
     '打开 https://ym.jjconnect.tokyo/member/ → 选「注册」',
     '邀请码：'+g.invite,
     '你的编号（显示身份，不用来登录）：'+st.code,
@@ -2420,7 +2420,7 @@ function render(){
   else body=viewLib();
   $('app').innerHTML=`
     <div class="topbar">
-      <a class="logo" href="../" title="回官网首页"><img src="../img/logo.png" alt="缘满沙龙"></a><span class="ttl">主办台</span>
+      <a class="logo" href="../" title="回官网首页"><img src="../img/logo.png" alt="緣滿沙龍"></a><span class="ttl">主办台</span>
       <span class="sp"></span>
       <div class="navlinks">${nav}</div>
       ${/* 「演」的第三态没有了 —— 无会话根本到不了这里（render 开头的登录墙） */''}
@@ -2596,7 +2596,7 @@ function authWall(){
   return `<div style="max-width:380px;margin:0 auto;padding:64px 20px 40px">
     <div style="margin-bottom:22px;text-align:center">
       ${/* 登录墙上这颗也通官网 —— 点错门的人（志愿者/嘉宾）需要一条不输密码的退路 */''}
-      <a class="logo" href="../" title="回官网首页" style="text-decoration:none"><img src="../img/logo.png" alt="缘满沙龙" style="height:46px;width:46px;vertical-align:-14px"></a> <span class="ttl">主办台</span></div>
+      <a class="logo" href="../" title="回官网首页" style="text-decoration:none"><img src="../img/logo.png" alt="緣滿沙龍" style="height:46px;width:46px;vertical-align:-14px"></a> <span class="ttl">主办台</span></div>
     ${inner}
     <p class="note9" style="margin-top:26px;text-align:center">主办台是给办活动的人用的 ——
       志愿者 / 嘉宾 / 捐赠者请走<a href="../member/" style="color:var(--brass)">成员页</a>${sb&&_authReady?` · ${guideLink('使用手册')}`:''}</p>
@@ -5850,7 +5850,7 @@ function capPhone(token){
   // 主办台的 CSS 全是挂在它下面的，页面会散成一堆窄条（2026-07-28 在浏览器里看见过一次）
   $('app').innerHTML=`<div style="max-width:460px;margin:0 auto;padding:14px 16px 40px">
     <div style="display:flex;align-items:center;gap:10px;height:50px;border-bottom:1px solid var(--line)">
-      <img src="../img/logo.png" alt="缘满沙龙" style="height:26px;width:26px;display:block">
+      <img src="../img/logo.png" alt="緣滿沙龍" style="height:26px;width:26px;display:block">
       <span class="lbl">拍一张票据</span></div>
     <p class="note9" style="line-height:1.9">拍下发票 / 收据 → 自动解析 → 传回你电脑上那一页确认。<br>
       这一页<b>不用登录</b>，也看不到任何其他内容。</p>
@@ -7110,7 +7110,7 @@ function viewAdmin(){
     <div class="rvsec">
       ${ADMIN.codes.length?ADMIN.codes.map(cRow).join(''):'<div class="note9">还没有邀请码。</div>'}
       <div class="addform" style="margin-top:10px">
-        <div class="frow"><input id="ac_note" placeholder="备注，如：缘满沙龙 主办方">
+        <div class="frow"><input id="ac_note" placeholder="备注，如：緣滿沙龍 主办方">
           <input id="ac_uses" style="width:90px" placeholder="可用次数" inputmode="numeric" value="1"></div>
         <button class="btn sm" onclick="adminNewCode()">生成邀请码</button>
         <p class="note9">邀请码只有管理员看得见；使用后次数自动递减。</p>

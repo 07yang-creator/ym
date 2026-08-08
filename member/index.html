@@ -186,7 +186,7 @@ function render(){
   else body=SHARES.map(shareHtml).join('');
   const guest=(MYCODES||[]).length&&(MYCODES||[]).every(c=>c.role==='P');
   $('app').innerHTML=`
-    <div class="top"><a class="logo" href="../" title="回官网首页"><img src="../img/logo.png" alt="缘满沙龙"></a>
+    <div class="top"><a class="logo" href="../" title="回官网首页"><img src="../img/logo.png" alt="緣滿沙龍"></a>
       <span class="t">${guest?'我的活动页':'我的成员页'}</span><span class="sp"></span>
       ${myCode()?`<span class="num" style="color:var(--brass);font-size:13px">${esc(myCode())}</span>`:''}
       ${SESSION&&!RECOVERY?`<span class="fold" style="padding:0 8px" onclick="TAB='pw';render()">改密码</span>
